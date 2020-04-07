@@ -1,6 +1,7 @@
 import os
-import numpy as np
+import sys
 from shutil import copyfile
+import numpy as np
 
 def write(ensemble_dict, cfg):
 
