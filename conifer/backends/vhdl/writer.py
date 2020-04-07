@@ -211,7 +211,7 @@ def decision_function(X, config):
                Xint, delimiter=' ', fmt='%d')
     latency = 20
     t = 5 * (len(X) + latency)
-    cmd = 'vsim -c -do "vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench; run {} ns; quit -f"'.format(t)
+    cmd = 'vsim -c -do "vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench; run {} ns; quit -f" > vsim.log'.format(t)
     cwd = os.getcwd()
     os.chdir(config['OutputDir'])
     success = os.system(cmd)
