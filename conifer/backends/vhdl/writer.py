@@ -127,6 +127,7 @@ def write(ensembleDict, cfg):
       fout.write(newline)
     else:
       fout.write(line)
+  fout.write('write_edif -file {}'.format(cfg['ProjectName']))
   f.close()
   fout.close()
 
@@ -217,7 +218,18 @@ def decision_function(X, config):
     success = os.system(cmd)
     os.chdir(cwd)
     if(success > 0):
-        print("'decision_function' failed")
+        print("'decision_function' failed, see vsim.log")
         sys.exit()
     y = np.loadtxt('{}/SimulationOutput.txt'.format(config['OutputDir'])) * 1. / mult
     return y
+
+def build(config):
+    cmd = 'vivado -mode batch -source synth.tcl'
+    cwd = os.getcwd()
+    os.chdir(config['OutputDir'])
+    success = os.system(cmd)
+    os.chdir(cwd)
+    if(success > 0):
+        print("build failed!")
+        sys.exit()
+            

@@ -26,3 +26,6 @@ model.compile()
 # Run HLS C Simulation and get the output
 y_hdl = model.decision_function(X)
 y_skl = clf.decision_function(X)
+
+# Synthesize the model
+model.build()

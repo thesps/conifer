@@ -38,3 +38,5 @@ model.compile()
 y_hls = expit(model.decision_function(X_test)[:,0])
 y_xgb = bst.predict(dtest)
 
+# Synthesize the model
+model.build()

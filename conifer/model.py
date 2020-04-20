@@ -29,3 +29,6 @@ class model:
 
     def decision_function(self, X):
         return self.backend.decision_function(X, self.config)
+
+    def build(self):
+        self.backend.build(self.config)

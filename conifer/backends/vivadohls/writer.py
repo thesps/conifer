@@ -248,3 +248,14 @@ def decision_function(X, config):
 
 def sim_compile(config):
     return
+
+def build(config):
+    cwd = os.getcwd()
+    os.chdir(config['OutputDir'])
+    cmd = 'vivado_hls -f build_prj.tcl "csim=0 synth=1"'
+    success = os.system(cmd)
+    if(success > 0):
+        print("'build' failed")
+        sys.exit()
+    os.chdir(cwd)
+
