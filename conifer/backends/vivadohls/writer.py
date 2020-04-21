@@ -61,9 +61,9 @@ def write(ensemble_dict, cfg):
             if iip < len(ensemble_dict['init_predict']) - 1:
                 newline += '{},'.format(ip)
             else:
-                newline += '{}}, // The init_predict\n'.format(ip)
+                newline += '{}}}, // The init_predict\n'.format(ip)
     else:
-        newline += str(ensemble_dict['init_predict']) + '},\n'
+        newline += str(ensemble_dict['init_predict'][0]) + '},\n'
     fout.write(newline)
     fout.write("\t{ // The array of trees\n")
     # loop over trees

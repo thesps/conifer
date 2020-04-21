@@ -4,9 +4,9 @@ from ..model import model
 
 def convert(bdt):
   ensembleDict = {'max_depth' : bdt.max_depth, 'n_trees' : bdt.n_estimators,
-                  'n_features' : len(bdt.feature_importances_),
+                  'n_features' : bdt.n_features_,
                   'n_classes' : bdt.n_classes_, 'trees' : [],
-                  'init_predict' : bdt.init_.predict(np.array([0]))[0].tolist(),
+                  'init_predict' : bdt._raw_predict_init(np.zeros(bdt.n_features_).reshape(1, -1))[0].tolist(),
                   'norm' : 1}
   for trees in bdt.estimators_:
     treesl = []

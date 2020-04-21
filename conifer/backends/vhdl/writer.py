@@ -64,7 +64,7 @@ def write(ensembleDict, cfg):
   for i in range(n_classes):
     fout[i].write(array_header_text)
     fout[i].write('package Arrays{} is\n\n'.format(i))
-    fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(int(np.round(ensembleDict['init_predict'] * mult))))
+    fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(int(np.round(ensembleDict['init_predict'][i] * mult))))
     #fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(int(np.round(ensembleDict['init_predict'][i] * mult))))
 
 
