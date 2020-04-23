@@ -17,8 +17,8 @@ dtrain = xgb.DMatrix(X_train, label=y_train)
 dtest = xgb.DMatrix(X_test, label=y_test)
 
 # Train a BDT
-param = {'max_depth':2, 'eta':1, 'objective':'binary:logistic' }
-num_round = 2
+param = {'max_depth':3, 'eta':1, 'objective':'binary:logistic' }
+num_round = 20 # num_round is equivalent to number of trees
 bst = xgb.train(param, dtrain, num_round)
 
 # Create a conifer config

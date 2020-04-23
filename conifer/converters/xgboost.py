@@ -7,20 +7,26 @@ def convert(bdt):
     meta = json.loads(bdt.save_config())
     max_depth = int(meta['learner']['gradient_booster']['updater']['grow_colmaker']['train_param']['max_depth'])
     n_classes = int(meta['learner']['learner_model_param']['num_class'])
-    n_classes = 2 if n_classes == 0 else n_classes
+    fn_classes = 1 if n_classes == 0 else n_classes # the number of learners
+    n_classes = 2 if n_classes == 0 else n_classes # the actual number of classes
     n_features = int(meta['learner']['learner_model_param']['num_feature'])
     ensembleDict = {'max_depth' : max_depth,
-                    'n_trees' : len(bdt.get_dump()),
+                    'n_trees' : int(len(bdt.get_dump()) / fn_classes),
                     'n_classes' : n_classes,
                     'n_features' : n_features,
                     'trees' : [],
-                    'init_predict' : 0,
+                    'init_predict' : [0] * n_classes,
                     'norm' : 1}
-    for tree in bdt.get_dump():
-        tree = treeToDict(bdt, tree)
-        tree = addParentAndDepth(tree)
-        tree = padTree(ensembleDict, tree)
-        ensembleDict['trees'].append([tree])
+    trees = bdt.get_dump()
+    for i in range(ensembleDict['n_trees']):
+        treesl = []
+        for j in range(fn_classes):
+            tree = trees[fn_classes * i + j]
+            tree = treeToDict(bdt, tree)
+            tree = addParentAndDepth(tree)
+            tree = padTree(ensembleDict, tree)
+            treesl.append(tree)
+        ensembleDict['trees'].append(treesl)
     return ensembleDict
 
 def treeToDict(bdt, tree):
