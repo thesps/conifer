@@ -1,4 +1,5 @@
-# conifer
+<img src="conifer_v1.png" width="250" alt="conifer">
+
 Conifer translates trained Boosted Decision Trees to FPGA firmware for extreme low latency inference. Check the examples directory for examples to get started with.
 
 Currently models from `sklearn`, `xgboost`, and `TMVA` are supported. FPGA firmware can be produced in Xilinx Vivado HLS or VHDL.
