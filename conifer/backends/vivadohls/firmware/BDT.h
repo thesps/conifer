@@ -114,7 +114,7 @@ public:
 	score_t init_predict[fn_classes(n_classes)];
 	Tree<max_depth, input_t, score_t, threshold_t> trees[n_trees][fn_classes(n_classes)];
 
-	void decision_function(input_t x, score_t score[fn_classes(n_classes)]) const{
+	void decision_function(input_t x, score_t score[fn_classes(n_classes)], score_t tree_scores[fn_classes(n_classes) * n_trees]) const{
 		#pragma HLS ARRAY_PARTITION variable=trees dim=0
 		for(int j = 0; j < fn_classes(n_classes); j++){
 			score[j] = init_predict[j];
@@ -123,7 +123,9 @@ public:
 		for(int i = 0; i < n_trees; i++){
 			Classes:
 			for(int j = 0; j < fn_classes(n_classes); j++){
-				score[j] += trees[i][j].decision_function(x);
+                score_t s = trees[i][j].decision_function(x);
+				score[j] += s;
+                tree_scores[i * fn_classes(n_classes) + j] = s;
 			}
 		}
         for(int j = 0; j < fn_classes(n_classes); j++){

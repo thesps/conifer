@@ -18,29 +18,85 @@
 //
 #include <fstream>
 #include <iostream>
+#include <algorithm>
+#include <vector>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 
-#include "firmware/parameters.h"
 #include "firmware/myproject.h"
-#include "nnet_helpers.h"
+#include "firmware/parameters.h"
+#include "firmware/BDT.h"
 
+#define CHECKPOINT 5000
 
 int main(int argc, char **argv)
 {
+  //load input data from text file
+  std::ifstream fin("tb_data/tb_input_features.dat");
 
-  //hls-fpga-machine-learning insert data
+#ifdef RTL_SIM
+  std::string RESULTS_LOG = "tb_data/cosim_results.log";
+  std::string VERBOSE_LOG = "tb_data/cosim_tree_results.log";
+#else
+  std::string RESULTS_LOG = "tb_data/csim_results.log";
+  std::string VERBOSE_LOG = "tb_data/csim_tree_results.log";
+#endif
+  std::ofstream fout(RESULTS_LOG);
+  std::ofstream ftrees(VERBOSE_LOG);
 
+  std::string iline;
+  std::string pline;
+  int e = 0;
 
-  result_t res_str[N_OUTPUTS] = {0};
-  unsigned short size_in, size_out;
-  myproject(data_str, res_str, size_in, size_out);
-    
-  for(int i=0; i<N_OUTPUTS; i++){
-    std::cout << res_str[i] << " ";
+  if (fin.is_open()) {
+    while ( std::getline(fin,iline) ) {
+      if (e % CHECKPOINT == 0) std::cout << "Processing input " << e << std::endl;
+      e++;
+      char* cstr=const_cast<char*>(iline.c_str());
+      char* current;
+      std::vector<float> in;
+      current=strtok(cstr," ");
+      while(current!=NULL) {
+        in.push_back(atof(current));
+        current=strtok(NULL," ");
+      }
+
+      //hls-fpga-machine-learning insert data
+
+      //hls-fpga-machine-learning insert top-level-function
+
+      for(int i = 0; i < BDT::fn_classes(n_classes); i++){
+        fout << score[i] << " ";
+      }
+      fout << std::endl;
+      for(int  i = 0; i < n_trees; i++){
+          for(int j = 0; j < BDT::fn_classes(n_classes); j++){
+            ftrees << tree_scores[i * BDT::fn_classes(n_classes) + j] << " ";
+          }
+      }
+      ftrees << std::endl;
+
+      if (e % CHECKPOINT == 0) {
+        std::cout << "Quantized predictions" << std::endl;
+        //hls-fpga-machine-learning insert quantized
+      }
+    }
+    fin.close();
+  } else {
+    std::cout << "INFO: Unable to open input file, using default input." << std::endl;
+    //hls-fpga-machine-learning insert zero
+
+    //hls-fpga-machine-learning insert top-level-function
+
+    //hls-fpga-machine-learning insert output
+
+    //hls-fpga-machine-learning insert tb-output
   }
-  std::cout << std::endl;
-  
+
+  fout.close();
+  ftrees.close();
+  std::cout << "INFO: Saved inference results to file: " << RESULTS_LOG << std::endl;
+
   return 0;
 }

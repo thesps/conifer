@@ -27,8 +27,8 @@ class model:
         self.write()
         self.backend.sim_compile(self.config)
 
-    def decision_function(self, X):
-        return self.backend.decision_function(X, self.config)
+    def decision_function(self, X, trees=False):
+        return self.backend.decision_function(X, self.config, trees=trees)
 
     def build(self):
         self.backend.build(self.config)

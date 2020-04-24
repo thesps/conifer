@@ -20,20 +20,16 @@ def write(ensemble_dict, cfg):
     fout.write('#include "parameters.h"\n')
     fout.write('#include "{}.h"\n'.format(cfg['ProjectName']))
 
-    fout.write('void {}(input_arr_t x, score_arr_t score){{\n'.format(cfg['ProjectName']))
-    # TODO: probably only one of the pragmas is necessary?
-    #fout.write('\t#pragma HLS pipeline II = {}\n'.format(cfg['ReuseFactor']))
-    #fout.write('\t#pragma HLS unroll factor = {}\n'.format(cfg['ReuseFactor']))
+    fout.write('void {}(input_arr_t x, score_arr_t score, score_t tree_scores[BDT::fn_classes(n_classes) * n_trees]){{\n'.format(cfg['ProjectName']))
     fout.write('\t#pragma HLS array_partition variable=x\n\n')
     fout.write('\t#pragma HLS array_partition variable=score\n\n')
-    fout.write('\tbdt.decision_function(x, score);\n}')
+    fout.write('\tbdt.decision_function(x, score, tree_scores);\n}')
     fout.close()
 
     ###################
     ## parameters.h
     ###################
 
-    #f = open(os.path.join(filedir,'../hls-template/firmware/parameters.h'),'r')
     fout = open('{}/firmware/parameters.h'.format(cfg['OutputDir']),'w')
     fout.write('#ifndef BDT_PARAMS_H__\n#define BDT_PARAMS_H__\n\n')
     fout.write('#include  "BDT.h"\n')
@@ -109,11 +105,10 @@ def write(ensemble_dict, cfg):
             newline = line.replace('MYPROJECT',format(cfg['ProjectName'].upper()))
         elif 'void myproject(' in line:
             newline = 'void {}(\n'.format(cfg['ProjectName'])
-        elif 'input_t data[N_INPUTS]' in line:
-            newline = '\tinput_arr_t data,\n\tscore_arr_t score);'
+        elif 'hls-fpga-machine-learning insert args' in line:
+            newline = '\tinput_arr_t data,\n\tscore_arr_t score,\n\tscore_t tree_scores[BDT::fn_classes(n_classes) * n_trees]);'
         # Remove some lines
-        elif ('result_t' in line) or ('unsigned short' in line):
-            newline = ''
+
         else:
             newline = line
         fout.write(newline)
@@ -125,7 +120,7 @@ def write(ensemble_dict, cfg):
     ## myproject_test.cpp
     #######################
 
-    f = open(os.path.join(filedir, 'hls-template/myproject_test2.cpp'))
+    f = open(os.path.join(filedir, 'hls-template/myproject_test.cpp'))
     fout = open('{}/{}_test.cpp'.format(cfg['OutputDir'], cfg['ProjectName']),'w')
 
     for line in f.readlines():
@@ -144,6 +139,7 @@ def write(ensemble_dict, cfg):
             newline += '      in_begin = in_end;\n'
             # brace-init zeros the array out because we use std=c++0x
             newline += '      score_arr_t score{};\n'
+            newline += '      score_t tree_scores[BDT::fn_classes(n_classes) * n_trees]{};\n'
             # but we can still explicitly zero out if you want
             newline += '      std::fill_n(score, {}, 0.);\n'.format(ensemble_dict['n_classes'])
         elif '//hls-fpga-machine-learning insert zero' in line:
@@ -151,10 +147,11 @@ def write(ensemble_dict, cfg):
             newline += '    input_arr_t x;\n'
             newline += '    std::fill_n(x, {}, 0.);\n'.format(ensemble_dict['n_features'])
             newline += '    score_arr_t score{};\n'
-            newline += '      std::fill_n(score, {}, 0.);\n'.format(ensemble_dict['n_classes'])
+            newline += '    score_t tree_scores[BDT::fn_classes(n_classes) * n_trees]{};\n'
+            newline += '    std::fill_n(score, {}, 0.);\n'.format(ensemble_dict['n_classes'])
         elif '//hls-fpga-machine-learning insert top-level-function' in line:
             newline = line
-            top_level = indent + '{}(x, score);\n'.format(cfg['ProjectName'])
+            top_level = indent + '{}(x, score, tree_scores);\n'.format(cfg['ProjectName'])
             newline += top_level
         elif '//hls-fpga-machine-learning insert predictions' in line:
             newline = line
@@ -167,7 +164,6 @@ def write(ensemble_dict, cfg):
             newline += indent + 'for(int i = 0; i < {}; i++) {{\n'.format(ensemble_dict['n_classes'])
             newline += indent + '  fout << score[i] << " ";\n'
             newline += indent + '}\n'
-            newline += indent + 'fout << std::endl;\n'
         elif '//hls-fpga-machine-learning insert output' in line or '//hls-fpga-machine-learning insert quantized' in line:
             newline = line
             newline += indent + 'for(int i = 0; i < {}; i++) {{\n'.format(ensemble_dict['n_classes'])
@@ -232,7 +228,7 @@ def auto_config():
               'ClockPeriod' : '5'}
     return config
 
-def decision_function(X, config):
+def decision_function(X, config, trees=False):
     np.savetxt('{}/tb_data/tb_input_features.dat'.format(config['OutputDir']),
                X, delimiter=",", fmt='%10f')
     cwd = os.getcwd()
@@ -243,8 +239,13 @@ def decision_function(X, config):
         print("'predict' failed, check predict.log")
         sys.exit()
     y = np.loadtxt('tb_data/csim_results.log')
+    if trees:
+        tree_scores = np.loadtxt('tb_data/csim_tree_results.log')
     os.chdir(cwd)
-    return y
+    if trees:
+        return y, tree_scores
+    else:
+        return y
 
 def sim_compile(config):
     return

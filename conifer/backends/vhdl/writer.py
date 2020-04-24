@@ -197,7 +197,7 @@ def sim_compile(config):
         sys.exit()
     return
 
-def decision_function(X, config):
+def decision_function(X, config, trees=False):
     dtype = config['Precision']
     if not 'ap_fixed' in dtype:
         print("Only ap_fixed is currently supported, exiting")
@@ -221,6 +221,8 @@ def decision_function(X, config):
         print("'decision_function' failed, see vsim.log")
         sys.exit()
     y = np.loadtxt('{}/SimulationOutput.txt'.format(config['OutputDir'])) * 1. / mult
+    if trees:
+        print("Individual tree output (trees=True) not yet implemented for this backend")
     return y
 
 def build(config):
