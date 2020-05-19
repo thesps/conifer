@@ -21,8 +21,10 @@ def write(ensemble_dict, cfg):
     fout.write('#include "{}.h"\n'.format(cfg['ProjectName']))
 
     fout.write('void {}(input_arr_t x, score_arr_t score, score_t tree_scores[BDT::fn_classes(n_classes) * n_trees]){{\n'.format(cfg['ProjectName']))
-    fout.write('\t#pragma HLS array_partition variable=x\n\n')
-    fout.write('\t#pragma HLS array_partition variable=score\n\n')
+    fout.write('\t#pragma HLS array_partition variable=x\n')
+    fout.write('\t#pragma HLS array_partition variable=score\n')
+    fout.write('\t#pragma HLS pipeline\n')
+    fout.write('\t#pragma HLS unroll\n')
     fout.write('\tbdt.decision_function(x, score, tree_scores);\n}')
     fout.close()
 
