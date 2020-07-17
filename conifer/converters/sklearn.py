@@ -26,17 +26,29 @@ def convert_random_forest(bdt):
                   'n_classes' : bdt.n_classes_, 'trees' : [],
                   'init_predict' : [0] * bdt.n_classes_, 
                   'norm' : 1}
-  for tree in bdt.estimators_:
-    treesl = []
-    tree = treeToDict(bdt, tree.tree_)
-    tree = padTree(ensembleDict, tree)
-    # Random forest takes the mean prediction, do that here
-    # Also need to scale the values by their sum
-    v = np.array(tree['value'])
-    tree['value'] = (v / v.sum(axis=2)[:, np.newaxis] / bdt.n_estimators)[:,0,0].tolist()
-    treesl.append(tree)
-    ensembleDict['trees'].append(treesl)
-
+  if bdt.n_classes_ == 2:
+      for tree in bdt.estimators_:
+        treesl = []
+        tree = treeToDict(bdt, tree.tree_)
+        tree = padTree(ensembleDict, tree)
+        # Random forest takes the mean prediction, do that here
+        # Also need to scale the values by their sum
+        v = np.array(tree['value'])
+        tree['value'] = (v / v.sum(axis=2)[:, np.newaxis] / bdt.n_estimators)[:,0,0].tolist()
+        treesl.append(tree)
+        ensembleDict['trees'].append(treesl)
+  else:
+      for tree in bdt.estimators_:
+          trees_list = []
+          for c in range(bdt.n_classes_):
+              tree_dict = treeToDict(bdt, tree.tree_)
+              padded_tree = padTree(ensembleDict, tree_dict)
+              # Random forest takes the mean prediction, do that here
+              # Also need to scale the values by their sum
+              v = np.array(padded_tree['value'])
+              padded_tree['value'] = (v / v.sum(axis=2)[:, np.newaxis] / bdt.n_estimators)[:, 0, c].tolist()
+              trees_list.append(padded_tree)
+          ensembleDict['trees'].append(trees_list)
   return ensembleDict
 
 def convert(bdt):
