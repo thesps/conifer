@@ -215,8 +215,6 @@ def write(ensemble_dict, cfg):
         # Remove some lines
         elif ('weights' in line) or ('-tb firmware/weights' in line):
             line = ''
-        elif ('cosim_design' in line):
-            line = ''
 
         fout.write(line)
     f.close()
