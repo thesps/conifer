@@ -50,10 +50,10 @@ if {$opt(synth)} {
 }
 
 if {$opt(cosim)} {
-    cosim_design -trace_level all
+    cosim_design -trace_level al
 }
 
-if {$opt(vsynth)} {
+if {$opt(export)} {
     export_design -format ip_catalog
 }
 
