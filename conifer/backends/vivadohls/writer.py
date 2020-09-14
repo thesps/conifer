@@ -233,9 +233,11 @@ def decision_function(X, config, trees=False):
                X, delimiter=",", fmt='%10f')
     cwd = os.getcwd()
     os.chdir(config['OutputDir'])
-    if not os.path.isfile('tb_data/csim_results.log'):
-        print("error: build your model with csim before running 'decision_function'")
-        sys.exit() 
+    cmd = 'vivado_hls -f build_prj.tcl "csim=1 synth=0" > predict.log'
+    success = os.system(cmd)
+    if(success > 0):
+        print("'predict' failed, check predict.log")
+        sys.exit()
     y = np.loadtxt('tb_data/csim_results.log')
     if trees:
         tree_scores = np.loadtxt('tb_data/csim_tree_results.log')
