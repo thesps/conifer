@@ -250,10 +250,11 @@ def decision_function(X, config, trees=False):
 def sim_compile(config):
     return
 
-def build(config):
+def build(config, reset, csim, synth, cosim, export):
     cwd = os.getcwd()
     os.chdir(config['OutputDir'])
-    cmd = 'vivado_hls -f build_prj.tcl'
+    cmd = 'vivado_hls -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}"'\
+        .format(reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
     success = os.system(cmd)
     if(success > 0):
         print("'build' failed")

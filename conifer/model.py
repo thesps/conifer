@@ -30,8 +30,8 @@ class model:
     def decision_function(self, X, trees=False):
         return self.backend.decision_function(X, self.config, trees=trees)
 
-    def build(self):
-        self.backend.build(self.config)
+    def build(self, reset=False, csim=False, synth=True, cosim=False, export=False):
+        self.backend.build(self.config, reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
 
     def profile(self, bins=50, return_data=False, return_figure=True):
         try:
