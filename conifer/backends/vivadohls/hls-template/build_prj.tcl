@@ -50,7 +50,7 @@ if {$opt(synth)} {
 }
 
 if {$opt(cosim)} {
-    cosim_design -trace_level al
+    cosim_design -trace_level all
 }
 
 if {$opt(export)} {
