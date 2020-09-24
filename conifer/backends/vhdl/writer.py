@@ -225,7 +225,7 @@ def decision_function(X, config, trees=False):
         print("Individual tree output (trees=True) not yet implemented for this backend")
     return y
 
-def build(config):
+def build(config, **kwargs):
     cmd = 'vivado -mode batch -source synth.tcl'
     cwd = os.getcwd()
     os.chdir(config['OutputDir'])
