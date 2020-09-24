@@ -215,8 +215,6 @@ def write(ensemble_dict, cfg):
         # Remove some lines
         elif ('weights' in line) or ('-tb firmware/weights' in line):
             line = ''
-        elif ('cosim_design' in line):
-            line = ''
 
         fout.write(line)
     f.close()
@@ -252,10 +250,11 @@ def decision_function(X, config, trees=False):
 def sim_compile(config):
     return
 
-def build(config):
+def build(config, reset, csim, synth, cosim, export):
     cwd = os.getcwd()
     os.chdir(config['OutputDir'])
-    cmd = 'vivado_hls -f build_prj.tcl "csim=0 synth=1"'
+    cmd = 'vivado_hls -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}"'\
+        .format(reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
     success = os.system(cmd)
     if(success > 0):
         print("'build' failed")

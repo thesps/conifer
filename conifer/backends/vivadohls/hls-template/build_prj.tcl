@@ -53,7 +53,7 @@ if {$opt(cosim)} {
     cosim_design -trace_level all
 }
 
-if {$opt(vsynth)} {
+if {$opt(export)} {
     export_design -format ip_catalog
 }
 
