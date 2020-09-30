@@ -35,7 +35,18 @@ def treeToDict(bdt, tree):
   nodes = tree.split('\n')[:-1]
   # remove tab characters
   nodes = list(map(lambda x: x.replace('\t',''), nodes))
-  nNodes = len(nodes)
+
+  tmp_nNodes = len(nodes)
+  actual_nodes = []
+  for i in range(tmp_nNodes):
+    iNode = int(nodes[i].split(':')[0])
+    actual_nodes.append(iNode)
+
+  nNodes = max(actual_nodes)+1
+  expected_nodes = [i for i in range(nNodes)]
+  pruned_nodes = [i for i in expected_nodes + actual_nodes if i not in expected_nodes or i not in actual_nodes] 
+
+
   features = [0] * nNodes
   thresholds = [0] * nNodes
   children_left = [0] * nNodes
@@ -69,6 +80,14 @@ def treeToDict(bdt, tree):
     children_left[iNode] = child_left
     children_right[iNode] = child_right
     values[iNode] = value
+
+  for node in pruned_nodes:
+    del features[node]
+    del thresholds[node]
+    del children_left[node]
+    del children_right[node]
+    del values[node]
+    
   treeDict = {'feature' : features, 'threshold' : thresholds, 'children_left' : children_left,
               'children_right' : children_right, 'value' : values}
   return treeDict
