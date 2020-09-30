@@ -43,8 +43,8 @@ def treeToDict(bdt, tree):
     actual_nodes.append(iNode)
 
   nNodes = max(actual_nodes)+1
-  expected_nodes = [i for i in range(nNodes)]
-  pruned_nodes = [i for i in expected_nodes + actual_nodes if i not in expected_nodes or i not in actual_nodes] 
+  #expected_nodes = [i for i in range(nNodes)]
+  #pruned_nodes = [i for i in expected_nodes + actual_nodes if i not in expected_nodes or i not in actual_nodes] 
 
 
   features = [0] * nNodes
@@ -81,12 +81,6 @@ def treeToDict(bdt, tree):
     children_right[iNode] = child_right
     values[iNode] = value
 
-  for node in pruned_nodes:
-    del features[node]
-    del thresholds[node]
-    del children_left[node]
-    del children_right[node]
-    del values[node]
     
   treeDict = {'feature' : features, 'threshold' : thresholds, 'children_left' : children_left,
               'children_right' : children_right, 'value' : values}
