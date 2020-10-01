@@ -93,12 +93,14 @@ def treeToDict(bdt, tree):
     children_right[iNode] = child_right
     values[iNode] = value
 
-  for iNode in pruned_nodes:
-    del features[iNode]
-    del thresholds[iNode] 
-    del children_left[iNode]
-    del children_right[iNode] 
-    del values[iNode]
+  if len(pruned_nodes) > 0:
+    print(pruned_nodes)
+    for iNode in pruned_nodes:
+      del features[iNode]
+      del thresholds[iNode] 
+      del children_left[iNode]
+      del children_right[iNode] 
+      del values[iNode]
 
     
   treeDict = {'feature' : features, 'threshold' : thresholds, 'children_left' : children_left,
