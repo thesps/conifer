@@ -53,6 +53,8 @@ def treeToDict(bdt, tree):
     print("Pruned Nodes: ",pruned_nodes)
     iNode_shift = max(expected_nodes)-max(pruned_nodes)
     min_pruned_nodes = min(pruned_nodes)
+  else:
+    min_pruned_nodes = max(expected_nodes)
 
 
   features = [0] * nNodes
