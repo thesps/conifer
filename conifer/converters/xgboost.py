@@ -47,10 +47,10 @@ def treeToDict(bdt, tree):
   pruned_nodes = [i for i in expected_nodes + actual_nodes if i not in expected_nodes or i not in actual_nodes] 
 
   if len(pruned_nodes) > 0:
-    print("Length of nodes: ",tmp_nNodes)
-    print("Actual Nodes: ",actual_nodes)
-    print("Expected Nodes: ",expected_nodes)
-    print("Pruned Nodes: ",pruned_nodes)
+    #print("Length of nodes: ",tmp_nNodes)
+    #print("Actual Nodes: ",actual_nodes)
+    #print("Expected Nodes: ",expected_nodes)
+    #print("Pruned Nodes: ",pruned_nodes)
     iNode_shift = max(expected_nodes)-max(pruned_nodes)
     min_pruned_nodes = min(pruned_nodes)
   else:
