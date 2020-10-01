@@ -52,8 +52,7 @@ def treeToDict(bdt, tree):
     print("Expected Nodes: ",expected_nodes)
     print("Pruned Nodes: ",pruned_nodes)
     iNode_shift = max(expected_nodes)-max(pruned_nodes)
-  else: 
-    iNode_shift = 0
+    min_pruned_nodes = min(pruned_nodes)
 
 
   features = [0] * nNodes
@@ -68,7 +67,7 @@ def treeToDict(bdt, tree):
       # Looks like: 'i:leaf=value[i]'
       data = node.split('leaf')
       iNode = int(data[0].replace(':',''))
-      if iNode >= tmp_nNodes:
+      if iNode > min_pruned_nodes:
         iNode -= iNode_shift
 
       feature = -2
@@ -86,9 +85,9 @@ def treeToDict(bdt, tree):
       threshold = float(data[1].split(']')[0])
       child_left = int(node.split('yes=')[1].split(',')[0])
       child_right = int(node.split('no=')[1].split(',')[0])
-      if child_left >= tmp_nNodes:
+      if child_left > min_pruned_nodes:
         child_left -= iNode_shift
-      if child_right >= tmp_nNodes:
+      if child_right > min_pruned_nodes:
         child_right -= iNode_shift
       value = 0
     features[iNode] = feature
