@@ -19,17 +19,20 @@ def convert(bdt):
                     'norm' : 1}
     trees = bdt.get_dump()
     for i in range(ensembleDict['n_trees']):
+
         treesl = []
         for j in range(fn_classes):
             tree = trees[fn_classes * i + j]
             tree = treeToDict(bdt, tree)
             tree = addParentAndDepth(tree)
             tree = padTree(ensembleDict, tree)
+
             treesl.append(tree)
         ensembleDict['trees'].append(treesl)
     return ensembleDict
 
 def treeToDict(bdt, tree):
+
   # First of all make the tree sklearn-like
   # split by newline, ignore the last line
   nodes = tree.split('\n')[:-1]
@@ -37,24 +40,19 @@ def treeToDict(bdt, tree):
   nodes = list(map(lambda x: x.replace('\t',''), nodes))
 
   tmp_nNodes = len(nodes)
-  actual_nodes = []
+  old_pruned_nodes = []
   for i in range(tmp_nNodes):
     iNode = int(nodes[i].split(':')[0])
-    actual_nodes.append(iNode)
+    old_pruned_nodes.append(iNode)
 
-  nNodes = max(actual_nodes)+1
-  expected_nodes = [i for i in range(nNodes)]
-  pruned_nodes = [i for i in expected_nodes + actual_nodes if i not in expected_nodes or i not in actual_nodes] 
 
-  if len(pruned_nodes) > 0:
-    #print("Length of nodes: ",tmp_nNodes)
-    #print("Actual Nodes: ",actual_nodes)
-    #print("Expected Nodes: ",expected_nodes)
-    #print("Pruned Nodes: ",pruned_nodes)
-    iNode_shift = max(expected_nodes)-max(pruned_nodes)
-    min_pruned_nodes = min(pruned_nodes)
-  else:
-    min_pruned_nodes = max(expected_nodes)
+
+  nNodes = max(old_pruned_nodes)+1
+  nPrunedNodes = nNodes - len(old_pruned_nodes) 
+
+  if nPrunedNodes > 0:
+    node_to_node_dict = dict(list(enumerate(sorted(old_pruned_nodes))))
+    node_to_node_dict = {value:key for key, value in node_to_node_dict.items()}
 
 
   features = [0] * nNodes
@@ -69,8 +67,8 @@ def treeToDict(bdt, tree):
       # Looks like: 'i:leaf=value[i]'
       data = node.split('leaf')
       iNode = int(data[0].replace(':',''))
-      if iNode > min_pruned_nodes:
-        iNode -= iNode_shift
+      if nPrunedNodes > 0:
+        iNode = node_to_node_dict[iNode]
 
       feature = -2
       threshold = 0
@@ -81,16 +79,18 @@ def treeToDict(bdt, tree):
       # Looks like:
       # 'i:[f{feature[i]}<{threshold[i]} yes={children_left[i]},no={children_right[i]}...'
       iNode = int(node.split(':')[0]) # index comes before ':'
+      if nPrunedNodes > 0:
+        iNode = node_to_node_dict[iNode]
       # split around 'feature<threshold'
       data = node.split('<')
       feature = int(data[0].split('[')[-1].replace('f',''))
       threshold = float(data[1].split(']')[0])
       child_left = int(node.split('yes=')[1].split(',')[0])
       child_right = int(node.split('no=')[1].split(',')[0])
-      if child_left > min_pruned_nodes:
-        child_left -= iNode_shift
-      if child_right > min_pruned_nodes:
-        child_right -= iNode_shift
+      if nPrunedNodes > 0:
+        child_left = node_to_node_dict[child_left]
+        child_right = node_to_node_dict[child_right]
+
       value = 0
     features[iNode] = feature
     thresholds[iNode] = threshold
@@ -98,13 +98,13 @@ def treeToDict(bdt, tree):
     children_right[iNode] = child_right
     values[iNode] = value
 
-  if len(pruned_nodes) > 0:
-    for iNode in pruned_nodes:
-      del features[iNode]
-      del thresholds[iNode] 
-      del children_left[iNode]
-      del children_right[iNode] 
-      del values[iNode]
+
+  if nPrunedNodes > 0:
+    del features[-nPrunedNodes:]
+    del thresholds[-nPrunedNodes:] 
+    del children_left[-nPrunedNodes:]
+    del children_right[-nPrunedNodes:] 
+    del values[-nPrunedNodes:]
 
     
   treeDict = {'feature' : features, 'threshold' : thresholds, 'children_left' : children_left,
