@@ -39,22 +39,26 @@ def treeToDict(bdt, tree):
   # remove tab characters
   nodes = list(map(lambda x: x.replace('\t',''), nodes))
 
-  tmp_nNodes = len(nodes)
-  old_pruned_nodes = []
-  for i in range(tmp_nNodes):
+  real_nNodes = len(nodes)
+  # Number of nodes that are in the tree
+  # Pruning removes nodes but does not reset index 
+  old_node_indices = []
+  for i in range(real_nNodes):
     iNode = int(nodes[i].split(':')[0])
-    old_pruned_nodes.append(iNode)
+    old_node_indices.append(iNode)
+    # Node indices that are left in the tree after pruning
 
 
 
-  nNodes = max(old_pruned_nodes)+1
-  nPrunedNodes = nNodes - len(old_pruned_nodes) 
+  nNodes = max(old_node_indices)+1
+  # Maximum Node index 
+  nPrunedNodes = nNodes - len(old_node_indices) 
 
   if nPrunedNodes > 0:
-    node_to_node_dict = dict(list(enumerate(sorted(old_pruned_nodes))))
+    node_to_node_dict = dict(list(enumerate(sorted(old_node_indices))))
     node_to_node_dict = {value:key for key, value in node_to_node_dict.items()}
-
-
+    # Create a dictionary remapping old Node indicies to new node indicies and invert
+    
   features = [0] * nNodes
   thresholds = [0] * nNodes
   children_left = [0] * nNodes
@@ -69,6 +73,7 @@ def treeToDict(bdt, tree):
       iNode = int(data[0].replace(':',''))
       if nPrunedNodes > 0:
         iNode = node_to_node_dict[iNode]
+        # Remap node index
 
       feature = -2
       threshold = 0
@@ -81,6 +86,8 @@ def treeToDict(bdt, tree):
       iNode = int(node.split(':')[0]) # index comes before ':'
       if nPrunedNodes > 0:
         iNode = node_to_node_dict[iNode]
+        # Remap node index
+
       # split around 'feature<threshold'
       data = node.split('<')
       feature = int(data[0].split('[')[-1].replace('f',''))
@@ -90,6 +97,7 @@ def treeToDict(bdt, tree):
       if nPrunedNodes > 0:
         child_left = node_to_node_dict[child_left]
         child_right = node_to_node_dict[child_right]
+        # Remap node index for children to preserve tree structure
 
       value = 0
     features[iNode] = feature
@@ -105,6 +113,7 @@ def treeToDict(bdt, tree):
     del children_left[-nPrunedNodes:]
     del children_right[-nPrunedNodes:] 
     del values[-nPrunedNodes:]
+    # Remove the last N unused nodes in the tree 
 
     
   treeDict = {'feature' : features, 'threshold' : thresholds, 'children_left' : children_left,
