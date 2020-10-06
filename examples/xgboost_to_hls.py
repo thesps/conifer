@@ -35,7 +35,7 @@ model.compile()
 # xgboost 'predict' returns a probability like sklearn 'predict_proba'
 # so we need to compute the probability from the decision_function returned
 # by the HLS C Simulation
-y_hls = expit(model.decision_function(X_test)[:,0])
+y_hls = expit(model.decision_function(X_test))
 y_xgb = bst.predict(dtest)
 
 # Synthesize the model
