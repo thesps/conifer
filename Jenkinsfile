@@ -2,7 +2,7 @@ pipeline {
   agent {
     docker {
       image 'conifer-test'
-      args  '-v /tools/Xilinx:/tools/Xilinx'
+      args  '-v /tools:/tools'
     }
   }
   options {
@@ -13,20 +13,15 @@ pipeline {
       steps {
         dir(path: 'tests') {
           sh '''#!/bin/bash --login
+              source /home/jenkins/miniconda/etc/profile.d/conda.sh
+              export PATH=$PATH:/tools/modeltech/bin
               source /tools/Xilinx/Vivado/2020.1/settings64.sh
+              source /home/jenkins/.bashrc
               conda activate conifer-test
               pip install -U ../ --user
               pytest --cov-report term --cov=conifer
               pip uninstall conifer -y'''
         }
-      }
-    }
-  }
-  post {
-    always {
-      dir(path: 'tests') {
-          sh '''#!/bin/bash
-             ./cleanup.sh'''
       }
     }
   }
