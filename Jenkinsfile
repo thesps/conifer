@@ -1,5 +1,10 @@
 pipeline {
-  agent any
+  agent {
+    docker {
+      image 'conifer-test'
+      args  '-v /tools/Xilinx:/tools/Xilinx'
+    }
+  }
   options {
     timeout(time: 1, unit: 'HOURS')
   }
