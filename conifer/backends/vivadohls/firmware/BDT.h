@@ -66,7 +66,8 @@ public:
 		Compare: for(int i = 0; i < n_nodes; i++){
 			#pragma HLS unroll
 			// Only non-leaf nodes do comparisons
-			if(feature[i] != -2){ // -2 means is a leaf (at least for sklearn)
+			// negative values mean is a leaf (sklearn: -2)
+			if(feature[i] >= 0){
 				comparison[i] = x[feature[i]] <= threshold[i];
 			}else{
 				comparison[i] = true;
