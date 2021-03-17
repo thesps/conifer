@@ -1,2 +1,2 @@
-from . import vivadohls
+from . import xilinxhls
 from . import vhdl
