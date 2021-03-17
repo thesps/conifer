@@ -17,17 +17,18 @@ dtrain = xgb.DMatrix(X_train, label=y_train)
 dtest = xgb.DMatrix(X_test, label=y_test)
 
 # Train a BDT
-param = {'max_depth':3, 'eta':1, 'objective':'binary:logistic' }
-num_round = 20 # num_round is equivalent to number of trees
+param = {'max_depth': 3, 'eta': 1, 'objective': 'binary:logistic'}
+num_round = 20  # num_round is equivalent to number of trees
 bst = xgb.train(param, dtrain, num_round)
 
 # Create a conifer config
-cfg = conifer.backends.vivadohls.auto_config()
+cfg = conifer.backends.xilinxhls.auto_config()
 # Set the output directory to something unique
 cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
 
 # Create and compile the model
-model = conifer.model(bst, conifer.converters.xgboost, conifer.backends.vivadohls, cfg)
+model = conifer.model(bst, conifer.converters.xgboost,
+                      conifer.backends.xilinxhls, cfg)
 model.compile()
 
 

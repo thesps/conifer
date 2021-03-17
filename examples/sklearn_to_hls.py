@@ -12,15 +12,16 @@ y_train, y_test = y[:2000], y[2000:]
 
 # Train a BDT
 clf = GradientBoostingClassifier(n_estimators=20, learning_rate=1.0,
-    max_depth=3, random_state=0).fit(X_train, y_train)
+                                 max_depth=3, random_state=0).fit(X_train, y_train)
 
 # Create a conifer config
-cfg = conifer.backends.vivadohls.auto_config()
+cfg = conifer.backends.xilinxhls.auto_config()
 # Set the output directory to something unique
 cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
 
 # Create and compile the model
-model = conifer.model(clf, conifer.converters.sklearn, conifer.backends.vivadohls, cfg)
+model = conifer.model(clf, conifer.converters.sklearn,
+                      conifer.backends.xilinxhls, cfg)
 model.compile()
 
 # Run HLS C Simulation and get the output
