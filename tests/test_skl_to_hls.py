@@ -30,6 +30,7 @@ def hls_convert(train_skl):
     cfg['Precision'] = 'ap_fixed<32,16,AP_RND,AP_SAT>'
     # Set the output directory to something unique
     cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
+    cfg['XilinxPart'] = 'xcu250-figd2104-2L-e'
 
     # Create and compile the model
     model = conifer.model(clf, conifer.converters.sklearn, conifer.backends.vivadohls, cfg)
@@ -48,6 +49,7 @@ def vhdl_convert(train_skl):
     cfg['Precision'] = 'ap_fixed<32,16>'
     # Set the output directory to something unique
     cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
+    cfg['XilinxPart'] = 'xcu250-figd2104-2L-e'
 
     # Create and compile the model
     model = conifer.model(clf, conifer.converters.sklearn, conifer.backends.vhdl, cfg)
@@ -69,6 +71,11 @@ def test_skl_build(hls_convert):
     model = hls_convert
     model.build()
     assert True
+
+def test_hdl_predict(train_skl, vhdl_convert):
+    clf, X, y = train_skl
+    model = vhdl_convert
+    return util.predict(clf, X, y, model)
 
 def test_hdl_build(vhdl_convert):
     model = vhdl_convert

@@ -1,8 +1,11 @@
 pipeline {
+  environment {
+    MGLS_LICENSE_FILE = credentials('msim_licence')
+  }
   agent {
     docker {
       image 'conifer-test'
-      args  '-v /tools:/tools'
+      args  '-v /tools:/tools -e MGLS_LICENSE_FILE=$MGLS_LICENSE_FILE'
     }
   }
   options {
