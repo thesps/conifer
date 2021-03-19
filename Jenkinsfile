@@ -18,15 +18,23 @@ pipeline {
           sh '''#!/bin/bash --login
               source /home/jenkins/miniconda/etc/profile.d/conda.sh
               export PATH=$PATH:/tools/modeltech/bin
-              source /tools/Xilinx/Vivado/2020.1/settings64.sh
+              export LIBRARY_PATH=$LIBRARY_PATH:/usr/lib/x86_64-linux-gnu
+              source /tools/Xilinx/Vivado/2019.2/settings64.sh
               source /home/jenkins/.bashrc
               conda activate conifer-test
               pip install -U ../ --user
-              pytest --cov-report term --cov=conifer
-              pip uninstall conifer -y'''
+              pytest --cov-report term --cov=conifer --junitxml='reports/report.xml'
+              status=$?
+              pip uninstall conifer -y
+              rm -r prj*
+              exit $status'''
         }
       }
     }
   }
+  post {
+      always {
+        junit '**/reports/*.xml' 
+      }
+  }
 }
-
