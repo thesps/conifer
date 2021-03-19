@@ -4,9 +4,10 @@ import numpy as np
 import os
 import sys
 
+
 class model:
 
-    def __init__(self, bdt, converter, backend=backends.vivadohls, config=None):
+    def __init__(self, bdt, converter, backend=backends.xilinxhls, config=None):
         self._ensembleDict = converter.convert(bdt)
         self.backend = backend
         if config is not None:
@@ -38,8 +39,10 @@ class model:
             import matplotlib.pyplot as plt
         except ImportError:
             raise Exception("matplotlib not found. Please install matplotlib")
-        value = np.array([tree['value'] for trees in self._ensembleDict['trees'] for tree in trees]).flatten()
-        threshold = np.array([tree['threshold'] for trees in self._ensembleDict['trees'] for tree in trees]).flatten()
+        value = np.array([tree['value'] for trees in self._ensembleDict['trees']
+                         for tree in trees]).flatten()
+        threshold = np.array(
+            [tree['threshold'] for trees in self._ensembleDict['trees'] for tree in trees]).flatten()
         hv, bv = np.histogram(value, bins=bins)
         wv = bv[1] - bv[0]
         ht, bt = np.histogram(threshold, bins=bins)
