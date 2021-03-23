@@ -25,6 +25,11 @@ def write(ensemble_dict, cfg):
     fout.write('\t#pragma HLS array_partition variable=score\n')
     fout.write('\t#pragma HLS pipeline\n')
     fout.write('\t#pragma HLS unroll\n')
+    
+    io_type = cfg['IOtype'] 
+    if (io_type=='stream') or (io_type=='s_axilite') or (io_type=='axis'):
+        fout.write('\t#pragma HLS INTERFACE s_axilite port=x\n');
+        fout.write('\t#pragma HLS INTERFACE s_axilite port=score\n');
     fout.write('\tbdt.decision_function(x, score, tree_scores);\n}')
     fout.close()
 
@@ -224,7 +229,8 @@ def auto_config():
     config = {'ProjectName' : 'my_prj',
               'OutputDir'   : 'my-conifer-prj',
               'Precision'   : 'ap_fixed<18,8>',
-              'XilinxPart' : 'xcvu9p-flgb2104-2L-e',
+              'XilinxPart'  : 'xcvu9p-flgb2104-2L-e',
+              'IOtype'      : 'parallel',
               'ClockPeriod' : '5'}
     return config
 
