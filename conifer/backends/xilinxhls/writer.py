@@ -59,8 +59,10 @@ def write(ensemble_dict, cfg):
         'void {}(input_arr_t x, score_arr_t score, score_t tree_scores[BDT::fn_classes(n_classes) * n_trees]){{\n'.format(cfg['ProjectName']))
     fout.write('\t#pragma HLS array_partition variable=x\n')
     fout.write('\t#pragma HLS array_partition variable=score\n')
-    fout.write('\t#pragma HLS pipeline\n')
-    fout.write('\t#pragma HLS unroll\n')
+    fout.write('\t#pragma HLS array_partition variable=tree_scores\n')
+    if(cfg['Pipeline']):
+        fout.write('\t#pragma HLS pipeline\n')
+        fout.write('\t#pragma HLS unroll\n')
     fout.write('\tbdt.decision_function(x, score, tree_scores);\n}')
     fout.close()
 
@@ -80,6 +82,8 @@ def write(ensemble_dict, cfg):
         ensemble_dict['n_features']))
     fout.write('static const int n_classes = {};\n'.format(
         ensemble_dict['n_classes']))
+    fout.write('static const bool unroll = {};\n'.format(
+        str(cfg['Pipeline']).lower()))
     fout.write('typedef {} input_t;\n'.format(cfg['Precision']))
     fout.write('typedef input_t input_arr_t[n_features];\n')
     fout.write('typedef {} score_t;\n'.format(cfg['Precision']))
@@ -91,7 +95,7 @@ def write(ensemble_dict, cfg):
                    'children_left', 'children_right', 'parent']
 
     fout.write(
-        "static const BDT::BDT<n_trees, max_depth, n_classes, input_arr_t, score_t, threshold_t> bdt = \n")
+        "static const BDT::BDT<n_trees, max_depth, n_classes, input_arr_t, score_t, threshold_t, unroll> bdt = \n")
     fout.write("{ // The struct\n")
     newline = "\t" + str(ensemble_dict['norm']) + ", // The normalisation\n"
     fout.write(newline)
@@ -283,7 +287,8 @@ def auto_config():
               'OutputDir': 'my-conifer-prj',
               'Precision': 'ap_fixed<18,8>',
               'XilinxPart': 'xcvu9p-flgb2104-2L-e',
-              'ClockPeriod': '5'}
+              'ClockPeriod': '5',
+              'Pipeline' : True}
     return config
 
 
