@@ -21,13 +21,14 @@ clf = GradientBoostingRegressor(n_estimators=100, max_depth=4, min_samples_split
 clf.fit(X_train, y_train)
 
 # Create a conifer config
-cfg = conifer.backends.vivadohls.auto_config()
+cfg = conifer.backends.xilinxhls.auto_config()
 # Set the output directory to something unique
 cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
 cfg['Precision'] = 'ap_fixed<64,32>'
 
 # Create and compile the model
-model = conifer.model(clf, conifer.converters.sklearn, conifer.backends.vhdl, cfg)
+model = conifer.model(clf, conifer.converters.sklearn,
+                      conifer.backends.vhdl, cfg)
 model.compile()
 
 # Run HLS C Simulation and get the output
@@ -36,4 +37,4 @@ y_hls, y_trees = model.decision_function(X)
 y_skl = clf.predict(X)
 
 # Synthesize the model
-#model.build()
+# model.build()
