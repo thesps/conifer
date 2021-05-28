@@ -30,7 +30,7 @@ end tree;
 architecture rtl of tree is
 
   signal comparison : boolArray(0 to nNodes-1) := (others => false);
-  signal comparisonPipe : boolArray2D(0 to maxdepth)(0 to nNodes-1) := (others => (others => false));
+  signal comparisonPipe : boolArray2DnNodes(0 to maxdepth) := (others => (others => false));
   signal activation : boolArray(0 to nNodes-1) := (others => false);
   signal vld_pipe : boolArray(0 to maxdepth + 3) := (others => false);
 

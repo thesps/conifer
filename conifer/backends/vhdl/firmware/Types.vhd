@@ -9,21 +9,27 @@ use work.Constants.all;
 package Types is
 
   type intArray is array(natural range <>) of integer;
+  subtype intArraynLeaves is intArray(0 to nLeaves - 1); -- nLeaves defined in Constants
+  subtype intArraynNodes is intArray(0 to nNodes - 1); -- nLeaves defined in Constants
   type boolArray is array(natural range <>) of boolean;
+  subtype boolArraynNodes is boolArray(0 to nNodes - 1); -- nNodes defined in Constants
   type txArray is array(natural range <>) of tx; -- tx defined in Constants
+  subtype txArraynNodes is txArray(0 to nNodes - 1); -- nNodes defined in Constants
   type tyArray is array(natural range <>) of ty; -- ty defined in Constants
+  subtype tyArraynNodes is tyArray(0 to nNodes - 1); -- nNodes defined in Constants
 
-  type intArray2D is array(natural range <>) of intArray;
-  type boolArray2D is array(natural range <>) of boolArray;
-  type txArray2D is array(natural range <>) of txArray;
-  type tyArray2D is array(natural range <>) of tyArray;
+  type intArray2DnNodes is array(natural range <>) of intArraynNodes;
+  type intArray2DnLeaves is array(natural range <>) of intArraynLeaves;
+  type boolArray2DnNodes is array(natural range <>) of boolArraynNodes;
+  type txArray2DnNodes is array(natural range <>) of txArraynNodes;
+  type tyArray2DnNodes is array(natural range <>) of tyArraynNodes;
 
   function addReduce(y : in tyArray) return ty;
   function to_tyArray(yArray : intArray) return tyArray;
-  function to_tyArray2D(yArray2D : intArray2D) return tyArray2D;
+  function to_tyArray2D(yArray2D : intArray2DnNodes) return tyArray2DnNodes;
   function to_txArray(xArray : intArray) return txArray;
-  function to_txArray2D(xArray2D : intArray2D) return txArray2D;
-  
+  function to_txArray2D(xArray2D : intArray2DnNodes) return txArray2DnNodes;
+
 end Types;
 
 package body Types is
@@ -37,51 +43,51 @@ package body Types is
     variable nMid : natural;
   begin
     if y'length = 1 then
-      ySum := y(y'left);
+      ySum := y(y'low);
     elsif y'length = 2 then
-      ySum := y(y'left) + y(y'right);
+      ySum := y(y'low) + y(y'high);
     else
       -- Find the halfway point
-      nMid := (y'length + 1) / 2 + y'right;
+      nMid := (y'length + 1) / 2 + y'high;
       -- Sum each half separately with this function
-      rTree := addReduce(y(y'left downto nMid));
-      lTree := addReduce(y(nMid-1 downto y'right));
+      rTree := addReduce(y(y'low downto nMid));
+      lTree := addReduce(y(nMid-1 downto y'high));
       ySum := ltree + rtree;
     end if;
     return ySum;
   end addReduce;
   
   function to_tyArray(yArray : intArray) return tyArray is
-    variable yArrayCast : tyArray(yArray'left downto yArray'right);
+    variable yArrayCast : tyArray(yArray'low to yArray'high);
   begin
-    for i in yArray'right to yArray'left loop
+    for i in yArray'low to yArray'high loop
         yArrayCast(i) := to_ty(yArray(i));
     end loop;
     return yArrayCast;
   end to_tyArray;
   
-    function to_tyArray2D(yArray2D : intArray2D) return tyArray2D is
-    variable yArray2DCast : tyArray2D(yArray2D'left downto yArray2D'right)(yArray2D(0)'left downto yArray2D(0)'right);
+    function to_tyArray2D(yArray2D : intArray2DnNodes) return tyArray2DnNodes is
+    variable yArray2DCast : tyArray2DnNodes(yArray2D'low to yArray2D'high);
   begin
-    for i in yArray2D'right to yArray2D'left loop
+    for i in yArray2D'low to yArray2D'high loop
         yArray2DCast(i) := to_tyArray(yArray2D(i));
     end loop;
     return yArray2DCast;
   end to_tyArray2D;
   
     function to_txArray(xArray : intArray) return txArray is
-    variable xArrayCast : txArray(xArray'left downto xArray'right);
+    variable xArrayCast : txArray(xArray'low to xArray'high);
   begin
-    for i in xArray'right to xArray'left loop
+    for i in xArray'low to xArray'high loop
         xArrayCast(i) := to_tx(xArray(i));
     end loop;
     return xArrayCast;
   end to_txArray;
   
-    function to_txArray2D(xArray2D : intArray2D) return txArray2D is
-    variable xArray2DCast : txArray2D(xArray2D'left downto xArray2D'right)(xArray2D(0)'left downto xArray2D(0)'right);
+    function to_txArray2D(xArray2D : intArray2DnNodes) return txArray2DnNodes is
+    variable xArray2DCast : txArray2DnNodes(xArray2D'low to xArray2D'high);
   begin
-    for i in xArray2D'right to xArray2D'left loop
+    for i in xArray2D'low to xArray2D'high loop
         xArray2DCast(i) := to_txArray(xArray2D(i));
     end loop;
     return xArray2DCast;

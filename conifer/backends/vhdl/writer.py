@@ -2,6 +2,11 @@ import os
 import sys
 from shutil import copyfile
 import numpy as np
+from enum import Enum
+
+class Simulators(Enum):
+   modelsim = 0
+   xsim = 1
 
 def write(ensembleDict, cfg):
   array_header_text = """library ieee;
@@ -13,8 +18,8 @@ def write(ensembleDict, cfg):
   use work.Types.all;
   """
 
-  array_cast_text = """    constant value : tyArray2D(nTrees-1 downto 0)(nNodes-1 downto 0) := to_tyArray2D(value_int);
-      constant threshold : txArray2D(nTrees-1 downto 0)(nNodes-1 downto 0) := to_txArray2D(threshold_int);"""
+  array_cast_text = """    constant value : tyArray2DnNodes(0 to nTrees - 1) := to_tyArray2D(value_int);
+      constant threshold : txArray2DnNodes(0 to nTrees - 1) := to_txArray2D(threshold_int);"""
 
   bdt_instantiation_template = """  BDT{} : entity work.BDT
   generic map(
@@ -82,7 +87,7 @@ def write(ensembleDict, cfg):
         for ii, trees in enumerate(ensembleDict['trees']):
           ensembleDict['trees'][ii][iclass][field] = np.round(np.array(ensembleDict['trees'][ii][iclass][field]) * mult).astype('int')
       nElem = 'nLeaves' if field == 'iLeaf' else 'nNodes'
-      fout[iclass].write('    constant {} : intArray2D(nTrees-1 downto 0)({}-1 downto 0) := ('.format(fieldName, nElem))
+      fout[iclass].write('    constant {} : intArray2D{}(0 to nTrees - 1) := ('.format(fieldName, nElem))
     # Loop over the trees within the class
     for itree, trees in enumerate(ensembleDict['trees']):
       for iclass, tree in enumerate(trees):
@@ -97,23 +102,7 @@ def write(ensembleDict, cfg):
     fout[i].write('end Arrays{};'.format(i))
     fout[i].close()
 
-  f = open(os.path.join(filedir,'./scripts/modelsim_compile.sh'),'r')
-  fout = open('{}/modelsim_compile.sh'.format(cfg['OutputDir']),'w')
-  for line in f.readlines():
-    if 'insert arrays' in line:
-      for i in range(n_classes):
-        newline = 'vcom -2008 -work BDT ./firmware/Arrays{}.vhd\n'.format(i)
-        fout.write(newline)
-    else:
-      fout.write(line)
-  f.close()
-  fout.close()
-
-  f = open('{}/test.tcl'.format(cfg['OutputDir']), 'w')
-  f.write('vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench\n')
-  f.write('run 100 ns\n')
-  f.write('quit -f\n')
-  f.close()
+  write_sim_scripts(cfg, filedir, n_classes)
 
   f = open('{}/SimulationInput.txt'.format(cfg['OutputDir']), 'w')
   f.write(' '.join(map(str, [0] * ensembleDict['n_features'])))
@@ -187,17 +176,34 @@ def auto_config():
     return config
 
 def sim_compile(config):
-    cwd = os.getcwd()
-    os.chdir(config['OutputDir'])
-    cmd = 'sh modelsim_compile.sh > modelsim_compile.log'
-    success = os.system(cmd)
-    os.chdir(cwd)
-    if(success > 0):
-        print("'sim_compile' failed, check modelsim_compile.log")
-        sys.exit()
-    return
+  from conifer.backends.vhdl import simulator
+  xsim_cmd = 'sh xsim_compile.sh > xsim_compile.log'
+  msim_cmd = 'sh modelsim_compile.sh > modelsim_compile.log'
+  cmdmap = {Simulators.modelsim : msim_cmd,
+            Simulators.xsim : xsim_cmd}
+  cmd = cmdmap[simulator]
+  cwd = os.getcwd()
+  os.chdir(config['OutputDir'])
+  success = os.system(cmd)
+  os.chdir(cwd)
+  if(success > 0):
+      print("'sim_compile' failed, check {}_compile.log".format(simulator.name))
+      sys.exit()
+  return
 
 def decision_function(X, config, trees=False):
+    from conifer.backends.vhdl import simulator
+    msim_cmd = 'vsim -c -do "vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench; run -all; quit -f" > vsim.log'
+    xsim_cmd = 'xsim -R bdt_tb > xsim.log'
+    cmdmap = {Simulators.modelsim : msim_cmd,
+              Simulators.xsim : xsim_cmd}
+    cmd = cmdmap[simulator]
+    msim_log = 'vsim.log'
+    xsim_log = 'xsim.log'
+    logmap = {Simulators.modelsim : msim_log,
+              Simulators.xsim : xsim_log}
+    logfile = logmap[simulator]
+
     dtype = config['Precision']
     if not 'ap_fixed' in dtype:
         print("Only ap_fixed is currently supported, exiting")
@@ -212,13 +218,12 @@ def decision_function(X, config, trees=False):
                Xint, delimiter=' ', fmt='%d')
     latency = 20
     t = 5 * (len(X) + latency)
-    cmd = 'vsim -c -do "vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench; run {} ns; quit -f" > vsim.log'.format(t)
     cwd = os.getcwd()
     os.chdir(config['OutputDir'])
     success = os.system(cmd)
     os.chdir(cwd)
     if(success > 0):
-        print("'decision_function' failed, see vsim.log")
+        print("'decision_function' failed, see {}.log".format(logfile))
         sys.exit()
     y = np.loadtxt('{}/SimulationOutput.txt'.format(config['OutputDir'])) * 1. / mult
     if trees:
@@ -235,3 +240,40 @@ def build(config, **kwargs):
         print("build failed!")
         sys.exit()
             
+def write_sim_scripts(cfg, filedir, n_classes):
+  from conifer.backends.vhdl import simulator
+  fmap = {Simulators.modelsim : write_modelsim_scripts,
+          Simulators.xsim : write_xsim_scripts}
+  fmap[simulator](cfg, filedir, n_classes)
+
+def write_modelsim_scripts(cfg, filedir, n_classes):
+  f = open(os.path.join(filedir,'./scripts/modelsim_compile.sh'),'r')
+  fout = open('{}/modelsim_compile.sh'.format(cfg['OutputDir']),'w')
+  for line in f.readlines():
+    if 'insert arrays' in line:
+      for i in range(n_classes):
+        newline = 'vcom -2008 -work BDT ./firmware/Arrays{}.vhd\n'.format(i)
+        fout.write(newline)
+    else:
+      fout.write(line)
+  f.close()
+  fout.close()
+
+  f = open('{}/test.tcl'.format(cfg['OutputDir']), 'w')
+  f.write('vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench\n')
+  f.write('run 100 ns\n')
+  f.write('quit -f\n')
+  f.close()
+
+def write_xsim_scripts(cfg, filedir, n_classes):
+  f = open(os.path.join(filedir, './scripts/xsim_compile.sh'), 'r')
+  fout = open('{}/xsim_compile.sh'.format(cfg['OutputDir']), 'w')
+  for line in f.readlines():
+    if 'insert arrays' in line:
+      for i in range(n_classes):
+        newline = 'xvhdl -2008 -work BDT ./firmware/Arrays{}.vhd\n'.format(i)
+        fout.write(newline)
+    else:
+      fout.write(line)
+  f.close()
+  fout.close()
