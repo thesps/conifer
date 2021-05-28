@@ -11,14 +11,14 @@ use work.Types.all;
 
 entity BDT is
   generic(
-    iFeature : intArray2D(0 to nTrees-1)(0 to nNodes-1);
-    iChildLeft : intArray2D(0 to nTrees-1)(0 to nNodes-1);
-    iChildRight : intArray2D(0 to nTrees-1)(0 to nNodes-1);
-    iParent : intArray2D(0 to nTrees-1)(0 to nNodes-1);
-    iLeaf : intArray2D(0 to nTrees-1)(0 to nLeaves-1);
-    depth : intArray2D(0 to nTrees-1)(0 to nNodes-1);
-    threshold : txArray2D(0 to nTrees-1)(0 to nNodes-1);
-    value : tyArray2D(0 to nTrees-1)(0 to nNodes-1);
+    iFeature : intArray2DnNodes(0 to nTrees-1);
+    iChildLeft : intArray2DnNodes(0 to nTrees-1);
+    iChildRight : intArray2DnNodes(0 to nTrees-1);
+    iParent : intArray2DnNodes(0 to nTrees-1);
+    iLeaf : intArray2DnLeaves(0 to nTrees-1);
+    depth : intArray2DnNodes(0 to nTrees-1);
+    threshold : txArray2DnNodes(0 to nTrees-1);
+    value : tyArray2DnNodes(0 to nTrees-1);
     initPredict : ty
   );
   port(

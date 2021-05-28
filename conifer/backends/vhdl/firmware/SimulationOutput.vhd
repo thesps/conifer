@@ -36,6 +36,7 @@ end SimulationOutput;
 -- -------------------------------------------------------------------------
 -- -------------------------------------------------------------------------
 architecture rtl of SimulationOutput is
+  signal v_last : boolean := false;
 begin
 -- pragma synthesis_off
   process(clk)
@@ -49,6 +50,10 @@ begin
         write(s, string'(" "), right, 1);
       end loop;
       writeline( f , s );
+    end if;
+    v_last <= v;
+    if v_last and not v then
+      std.env.finish;
     end if;
   end if;
   end process;
