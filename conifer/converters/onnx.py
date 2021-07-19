@@ -22,6 +22,7 @@ def convert_bdt(onnx_clf):
 
 
 def convert(onnx_clf):
+    print(onnx_clf)
     if onnx_clf.graph.node[0]=='TreeEnsembleClassifier'
         return convert_bdt(onnx_clf)
     elif 'RandomForest' in bdt.__class__.__name__:
