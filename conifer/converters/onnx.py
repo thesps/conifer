@@ -12,6 +12,9 @@ def convert_bdt(onnx_clf):
   #for trees in treelist:
    # treesl = []
   for treeDict in treelist:
+    for key in treeDict.keys():
+        treeDict[key]=treeDict[key].tolist()
+    print(type(treeDict['children_left']))
     treeDict = ParentandDepth(treeDict)
     tree = padTree(ensembleDict, treeDict)
     # NB node values are multiplied by the learning rate here, saving work in the FPGA
@@ -48,13 +51,13 @@ def convert_graph(onnx_clf):
   n_estimators=max(node.attribute[get_key('nodes_treeids',attr_dict)].ints)+1
   print(n_estimators)
 
-  tree_ids=np.array(node.attribute[get_key('nodes_treeids',attr_dict)].ints).tolist()
-  children_right=np.array(node.attribute[get_key('nodes_falsenodeids',attr_dict)].ints).tolist()
-  children_left=np.array(node.attribute[get_key('nodes_truenodeids',attr_dict)].ints).tolist()
-  threshold=np.array(node.attribute[get_key('nodes_values',attr_dict)].floats).tolist()
-  feature=np.array(node.attribute[get_key('nodes_featureids',attr_dict)].ints).tolist()
-  values=np.array(node.attribute[get_key('class_weights',attr_dict)].floats).tolist()
-  modes=np.array(node.attribute[get_key('nodes_modes',attr_dict)].strings).tolist()
+  tree_ids=np.array(node.attribute[get_key('nodes_treeids',attr_dict)].ints)
+  children_right=np.array(node.attribute[get_key('nodes_falsenodeids',attr_dict)].ints)
+  children_left=np.array(node.attribute[get_key('nodes_truenodeids',attr_dict)].ints)
+  threshold=np.array(node.attribute[get_key('nodes_values',attr_dict)].floats)
+  feature=np.array(node.attribute[get_key('nodes_featureids',attr_dict)].ints)
+  values=np.array(node.attribute[get_key('class_weights',attr_dict)].floats)
+  modes=np.array(node.attribute[get_key('nodes_modes',attr_dict)].strings)
   values_copy=np.copy(values)
   print("\n\nUnique Nodes_treeids",np.unique(tree_ids))
   tree_no=len(np.unique(tree_ids))
@@ -77,13 +80,13 @@ def convert_graph(onnx_clf):
           dict_tree['children_left'][mode==b'LEAF'] = -1
           dict_tree['children_right'][mode==b'LEAF'] = -1
           no_leaf_nodes=np.count_nonzero(mode==b'LEAF')
-          dict_tree['values']=values_copy[:no_leaf_nodes]
+          dict_tree['value']=values_copy[:no_leaf_nodes]
           values_copy=np.delete(values_copy, np.arange(0,no_leaf_nodes))
           treelist.append(dict_tree)
           max_childern=max(max_childern,len(dict_tree['children_left']))
-  print(treelist)
+
   max_depth=math.ceil(math.log2(max_childern)-1)
-  print(max_depth)
+  print('Maximum depth',max_depth)
   return treelist, max_depth
 
 def ParentandDepth(treeDict):
