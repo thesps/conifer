@@ -1,6 +1,7 @@
 import numpy as np
 from .converter import addParentAndDepth, padTree
 from ..model import model
+import math
 
 def convert_bdt(onnx_clf):
   treelist,max_depth=convert_graph(onnx_clf)
