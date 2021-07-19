@@ -28,7 +28,7 @@ def convert(onnx_clf):
     #elif 'RandomForest' in bdt.__class__.__name__:
     #    return convert_random_forest(onnx_clf)
 
-def get_key(val):
+def get_key(val,attr_dict):
       for key, value in attr_dict.items():
            if val == value:
                return key
@@ -44,7 +44,7 @@ def convert_graph(onnx_clf):
   print(attr_dict)
   print("\n\n")
 
-  n_estimators=max(node.attribute[get_key('nodes_treeids')].ints)+1
+  n_estimators=max(node.attribute[get_key('nodes_treeids',attr_dict)].ints)+1
   print(n_estimators)
 
   tree_ids=np.array(node.attribute[get_key('nodes_treeids')].ints)
