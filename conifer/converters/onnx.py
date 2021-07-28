@@ -4,23 +4,26 @@ from ..model import model
 import math
 
 def convert_bdt(onnx_clf):
-  treelist,max_depth=convert_graph(onnx_clf)
+  treelist,max_depth,base_values,no_features=convert_graph(onnx_clf)
   ensembleDict = {'max_depth' : max_depth, 'n_trees' : len(treelist),
-                   'trees' : [],
-                  #'init_predict' : bdt._raw_predict_init(np.zeros(bdt.n_features_).reshape(1, -1))[0].tolist(),
+                   'trees' : [],'n_features' : no_features,
+                  'n_classes' : 2,
+                  'init_predict' : base_values,
                   'norm' : 1}
-  #for trees in treelist:
-   # treesl = []
-  for treeDict in treelist:
-    for key in treeDict.keys():
+  treelist=np.array(treelist)
+  treelist=treelist[np.newaxis,:]
+  for trees in treelist:
+    treesl = []
+    for treeDict in trees:
+      for key in treeDict.keys():
         treeDict[key]=treeDict[key].tolist()
-    print(type(treeDict['children_left']))
-    treeDict = ParentandDepth(treeDict)
-    tree = padTree(ensembleDict, treeDict)
-    # NB node values are multiplied by the learning rate here, saving work in the FPGA
-    tree['value'] = (np.array(tree['value'])[:,0,0] * 1).tolist()
-    
-  ensembleDict['trees'].append(trees)
+      #print(type(treeDict['children_left']))
+      treeDict = ParentandDepth(treeDict)
+      tree = padTree(ensembleDict, treeDict)
+      # NB node values are multiplied by the learning rate here, saving work in the FPGA
+      tree['value'] = (np.array(tree['value']) * 1).tolist()
+      treesl.append(tree)
+    ensembleDict['trees'].append(treesl)
 
   return ensembleDict
 
@@ -56,9 +59,10 @@ def convert_graph(onnx_clf):
   children_left=np.array(node.attribute[get_key('nodes_truenodeids',attr_dict)].ints)
   threshold=np.array(node.attribute[get_key('nodes_values',attr_dict)].floats)
   feature=np.array(node.attribute[get_key('nodes_featureids',attr_dict)].ints)
-  values=np.array(node.attribute[get_key('class_weights',attr_dict)].floats)
+  leaf_values=np.array(node.attribute[get_key('class_weights',attr_dict)].floats)
+  node_values=np.array(node.attribute[get_key('nodes_values',attr_dict)].floats)
   modes=np.array(node.attribute[get_key('nodes_modes',attr_dict)].strings)
-  values_copy=np.copy(values)
+  values_copy=np.copy(leaf_values)
   print("\n\nUnique Nodes_treeids",np.unique(tree_ids))
   tree_no=len(np.unique(tree_ids))
   print("Number of trees",tree_no)
@@ -79,15 +83,18 @@ def convert_graph(onnx_clf):
           dict_tree['threshold'][mode==b'LEAF'] = -2
           dict_tree['children_left'][mode==b'LEAF'] = -1
           dict_tree['children_right'][mode==b'LEAF'] = -1
+          dict_tree['value']=node_values[tree_ids==tree_id]
           no_leaf_nodes=np.count_nonzero(mode==b'LEAF')
-          dict_tree['value']=values_copy[:no_leaf_nodes]
+          dict_tree['value'][mode==b'LEAF']=values_copy[:no_leaf_nodes]
           values_copy=np.delete(values_copy, np.arange(0,no_leaf_nodes))
           treelist.append(dict_tree)
           max_childern=max(max_childern,len(dict_tree['children_left']))
 
   max_depth=math.ceil(math.log2(max_childern)-1)
   print('Maximum depth',max_depth)
-  return treelist, max_depth
+  base_values=np.array(node.attribute[get_key('base_values',attr_dict)].floats)
+  no_features=onnx_clf.graph.input[0].type.tensor_type.shape.dim[1].dim_value
+  return treelist, max_depth, base_values, no_features
 
 def ParentandDepth(treeDict):
   # Extract the relevant tree parameters
