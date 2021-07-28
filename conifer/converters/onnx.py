@@ -11,7 +11,7 @@ def convert_bdt(onnx_clf):
                   'init_predict' : base_values,
                   'norm' : 1}
   treelist=np.array(treelist)
-  treelist=treelist[np.newaxis,:]
+  treelist=treelist.reshape(treelist.shape[0],1)
   for trees in treelist:
     treesl = []
     for treeDict in trees:
