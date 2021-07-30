@@ -4,14 +4,12 @@ from ..model import model
 import math
 
 def convert_bdt(onnx_clf):
-  treelist,max_depth,base_values,no_features=convert_graph(onnx_clf)
+  treelist,max_depth,base_values,no_features,no_classes=convert_graph(onnx_clf)
   ensembleDict = {'max_depth' : max_depth, 'n_trees' : len(treelist),
                    'trees' : [],'n_features' : no_features,
-                  'n_classes' : 2,
+                  'n_classes' : no_classes,
                   'init_predict' : base_values,
                   'norm' : 1}
-  treelist=np.array(treelist)
-  treelist=treelist.reshape(treelist.shape[0],1)
   for trees in treelist:
     treesl = []
     for treeDict in trees:
@@ -42,6 +40,7 @@ def get_key(val,attr_dict):
       return "key doesn't exist"
 
 def convert_graph(onnx_clf):
+  no_classes=max(onnx_clf.graph.node[1].attribute[0].ints) +1
   node = onnx_clf.graph.node[0]
   attr_dict={}
   key=0
@@ -63,7 +62,7 @@ def convert_graph(onnx_clf):
   node_values=np.array(node.attribute[get_key('nodes_values',attr_dict)].floats)
   modes=np.array(node.attribute[get_key('nodes_modes',attr_dict)].strings)
   values_copy=np.copy(leaf_values)
-  print("\n\nUnique Nodes_treeids",np.unique(tree_ids))
+  #print("\n\nUnique Nodes_treeids",np.unique(tree_ids))
   tree_no=len(np.unique(tree_ids))
   print("Number of trees",tree_no)
   #treelist = [dict() for x in range(tree_no)]
@@ -95,7 +94,14 @@ def convert_graph(onnx_clf):
   base_values=np.array(node.attribute[get_key('base_values',attr_dict)].floats)
   no_features=onnx_clf.graph.input[0].type.tensor_type.shape.dim[1].dim_value
   no_features=onnx_clf.graph.input[0].type.tensor_type.shape.dim[1].dim_value
-  return treelist, max_depth, base_values, no_features
+  treelist=np.array(treelist)
+  if (no_classes>2):
+    treelist=treelist.reshape(-1,no_classes)
+  else:
+    treelist=treelist.reshape(treelist.shape[0],1)
+
+  print("no of estimators: ",len(treelist))
+  return treelist, max_depth, base_values, no_features, no_classes
 
 def ParentandDepth(treeDict):
   # Extract the relevant tree parameters
@@ -111,3 +117,4 @@ def ParentandDepth(treeDict):
   ##no estimator loop
   ##
   
+
