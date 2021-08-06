@@ -40,7 +40,11 @@ def get_key(val,attr_dict):
       return "key doesn't exist"
 
 def convert_graph(onnx_clf):
-  no_classes=max(onnx_clf.graph.node[1].attribute[0].ints) +1
+  if(onnx_clf.graph.node[1].name=='ZipMap'):
+    no_classes=max(onnx_clf.graph.node[1].attribute[0].ints) +1
+  elif(onnx_clf.graph.node[2].name=='ZipMap'):
+    no_classes=max(onnx_clf.graph.node[2].attribute[0].ints) +1
+
   node = onnx_clf.graph.node[0]
   attr_dict={}
   key=0
