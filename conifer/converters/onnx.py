@@ -19,7 +19,7 @@ def convert_bdt(onnx_clf):
       treeDict = ParentandDepth(treeDict)
       tree = padTree(ensembleDict, treeDict)
       # NB node values are multiplied by the learning rate here, saving work in the FPGA
-      tree['value'] = (np.array(tree['value']) * 1).tolist()
+      tree['value'] = (np.array(tree['value']) * 1.0).tolist()
       treesl.append(tree)
     ensembleDict['trees'].append(treesl)
 

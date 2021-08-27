@@ -2,7 +2,7 @@ import pytest
 import util
 
 @pytest.fixture
-def train_skl():
+def train_onnx():
     # Example BDT creation from: https://scikit-learn.org/stable/modules/ensemble.html
     from sklearn.datasets import make_hastie_10_2
     from sklearn.ensemble import GradientBoostingClassifier
@@ -19,18 +19,18 @@ def train_skl():
     return clf, X_test, y_test
     
 @pytest.fixture
-def hls_convert(train_skl):
+def hls_convert(train_onnx):
     import conifer
     import datetime
 
-    clf, X, y = train_skl
+    clf, X, y = train_onnx
 
     # Create a conifer config
     cfg = conifer.backends.vivadohls.auto_config()
     cfg['Precision'] = 'ap_fixed<32,16,AP_RND,AP_SAT>'
     # Set the output directory to something unique
     cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
-    cfg['XilinxPart'] = 'XAZU5EV-figd2104-2L-e'
+    cfg['XilinxPart'] = 'xcu250-figd2104-2L-e'
 
     # Create and compile the model
     model = conifer.model(clf, conifer.converters.sklearn, conifer.backends.vivadohls, cfg)
@@ -38,18 +38,18 @@ def hls_convert(train_skl):
     return model
 
 @pytest.fixture
-def vhdl_convert(train_skl):
+def vhdl_convert(train_onnx):
     import conifer
     import datetime
 
-    clf, X, y = train_skl
+    clf, X, y = train_onnx
 
     # Create a conifer config
     cfg = conifer.backends.vivadohls.auto_config()
     cfg['Precision'] = 'ap_fixed<32,16>'
     # Set the output directory to something unique
     cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
-    cfg['XilinxPart'] = 'XAZU5EV-figd2104-2L-e'
+    cfg['XilinxPart'] = 'xcu250-figd2104-2L-e'
 
     # Create and compile the model
     model = conifer.model(clf, conifer.converters.sklearn, conifer.backends.vhdl, cfg)
@@ -57,8 +57,8 @@ def vhdl_convert(train_skl):
     return model
 
 @pytest.fixture
-def predict(train_skl, hls_convert):
-    clf, X, y = train_skl
+def predict(train_onnx, hls_convert):
+    clf, X, y = train_onnx
     model = hls_convert
     return util.predict(clf, X, y, model)
 
@@ -72,8 +72,8 @@ def test_skl_build(hls_convert):
     model.build()
     assert True
 
-def test_hdl_predict(train_skl, vhdl_convert):
-    clf, X, y = train_skl
+def test_hdl_predict(train_onnx, vhdl_convert):
+    clf, X, y = train_onnx
     model = vhdl_convert
     return util.predict(clf, X, y, model)
 
@@ -81,5 +81,3 @@ def test_hdl_build(vhdl_convert):
     model = vhdl_convert
     model.build()
     assert True
-
-

@@ -1,0 +1,12 @@
+INFO-FLOW: Workspace /home/farheenasif/conifer/tests/prj_1629782301/my_prj_prj/solution1 opened at Tue Aug 24 10:18:23 PKT 2021
+Execute     set_part XAZU5EV-figd2104-2L-e 
+Execute       add_library xilinx/azynquplus/azynquplus:XAZU5EV:-figd2104:-2L-e 
+Execute         get_default_platform 
+Execute         license_isbetapart XAZU5EV 
+Execute         license_exists XAZU5EV 
+Command         license_exists done; error code: 1; 0.25 sec.
+ERROR: [HLS 200-70] License checkout unsuccessful. Make sure that a license is accessible or specify an appropriate one through an environment variable.
+Command       add_library done; error code: 2; 0.33 sec.
+Command     set_part done; error code: 2; 0.34 sec.
+Command   ap_source done; error code: 1; 0.35 sec.
+Execute   cleanup_all 
