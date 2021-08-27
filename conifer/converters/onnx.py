@@ -3,6 +3,7 @@ from .converter import addParentAndDepth, padTree
 from ..model import model
 import math
 
+#main converter function
 def convert_bdt(onnx_clf):
   treelist,max_depth,base_values,no_features,no_classes=convert_graph(onnx_clf)
   ensembleDict = {'max_depth' : max_depth, 'n_trees' : len(treelist),
@@ -27,11 +28,8 @@ def convert_bdt(onnx_clf):
 
 
 def convert(onnx_clf):
-    #print(onnx_clf)
-    #if onnx_clf.graph.node[0]=='TreeEnsembleClassifier'
     return convert_bdt(onnx_clf)
-    #elif 'RandomForest' in bdt.__class__.__name__:
-    #    return convert_random_forest(onnx_clf)
+
 
 def get_key(val,attr_dict):
       for key, value in attr_dict.items():
@@ -57,6 +55,7 @@ def convert_graph(onnx_clf):
   n_estimators=max(node.attribute[get_key('nodes_treeids',attr_dict)].ints)+1
   print(n_estimators)
 
+  #converting flat representtaion in to numpy arrays through key value relationship
   tree_ids=np.array(node.attribute[get_key('nodes_treeids',attr_dict)].ints)
   children_right=np.array(node.attribute[get_key('nodes_falsenodeids',attr_dict)].ints)
   children_left=np.array(node.attribute[get_key('nodes_truenodeids',attr_dict)].ints)
@@ -75,6 +74,8 @@ def convert_graph(onnx_clf):
   max_childern=0
 
   #print(children_left[tree_ids==0])
+
+  #create tree dictionary items from onnx graphical representation using numpy array slicing
   for tree_id in np.unique(tree_ids):
           dict_tree={}
           mode=modes[tree_ids==tree_id]
@@ -93,12 +94,18 @@ def convert_graph(onnx_clf):
           treelist.append(dict_tree)
           max_childern=max(max_childern,len(dict_tree['children_left']))
 
+
+  #finding depth of tree through maximum number of childern in the left branch of tree
   max_depth=math.ceil(math.log2(max_childern)-1)
-  print('Maximum depth',max_depth)
+  #print('Maximum depth',max_depth)
+
+  #base values and total number of features are found through onnx representation
   base_values=np.array(node.attribute[get_key('base_values',attr_dict)].floats)
   no_features=onnx_clf.graph.input[0].type.tensor_type.shape.dim[1].dim_value
   no_features=onnx_clf.graph.input[0].type.tensor_type.shape.dim[1].dim_value
   treelist=np.array(treelist)
+
+  #rearranging tree list arrays for binary or multiclass 
   if (no_classes>2):
     treelist=treelist.reshape(-1,no_classes)
   else:
@@ -114,11 +121,10 @@ def ParentandDepth(treeDict):
 
 
 
-  ##flat representation
+  ##onnx -> flat representation
   ##scikit-learn representation --> there is an array of trees with different attributes
   ##ONNX --> one array per attribute for the whole model 
   ##nodes_treeids --> the index of the tree --> flattened over all trees
-  ##no estimator loop
-  ##
-  
+  ##loop for total no of estimators
+  ##rearranging loops for number of classes
 
