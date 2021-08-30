@@ -68,12 +68,8 @@ def convert_graph(onnx_clf):
   #print("\n\nUnique Nodes_treeids",np.unique(tree_ids))
   tree_no=len(np.unique(tree_ids))
   print("Number of trees",tree_no)
-  #treelist = [dict() for x in range(tree_no)]
-  #print(treelist)
   treelist=[]
   max_childern=0
-
-  #print(children_left[tree_ids==0])
 
   #create tree dictionary items from onnx graphical representation using numpy array slicing
   for tree_id in np.unique(tree_ids):
@@ -97,7 +93,7 @@ def convert_graph(onnx_clf):
 
   #finding depth of tree through maximum number of childern in the left branch of tree
   max_depth=math.ceil(math.log2(max_childern)-1)
-  #print('Maximum depth',max_depth)
+  print('Maximum depth',max_depth)
 
   #base values and total number of features are found through onnx representation
   base_values=np.array(node.attribute[get_key('base_values',attr_dict)].floats)
