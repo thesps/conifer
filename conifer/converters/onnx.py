@@ -48,11 +48,8 @@ def convert_graph(onnx_clf):
   for attribute in node.attribute:
       attr_dict[key]=attribute.name
       key=key+1
-  print(attr_dict)
-  print("\n\n")
 
   n_estimators=max(node.attribute[get_key('nodes_treeids',attr_dict)].ints)+1
-  print(n_estimators)
 
   #converting flat representtaion in to numpy arrays through key value relationship
   tree_ids=np.array(node.attribute[get_key('nodes_treeids',attr_dict)].ints)
@@ -65,7 +62,6 @@ def convert_graph(onnx_clf):
   modes=np.array(node.attribute[get_key('nodes_modes',attr_dict)].strings)
   values_copy=np.copy(leaf_values)
   tree_no=len(np.unique(tree_ids))
-  print("Number of trees",tree_no)
   treelist=[]
   max_childern=0
 
@@ -91,7 +87,6 @@ def convert_graph(onnx_clf):
 
   #finding depth of tree through maximum number of childern in the left branch of tree
   max_depth=math.ceil(math.log2(max_childern)-1)
-  print('Maximum depth',max_depth)
 
   #base values and total number of features are found through onnx representation
   base_values=np.array(node.attribute[get_key('base_values',attr_dict)].floats)
@@ -105,20 +100,10 @@ def convert_graph(onnx_clf):
   else:
     treelist=treelist.reshape(treelist.shape[0],1)
 
-  print("no of estimators: ",len(treelist))
   return treelist, max_depth, base_values, no_features, no_classes
 
 def ParentandDepth(treeDict):
   # Extract the relevant tree parameters
   treeDict = addParentAndDepth(treeDict)
   return treeDict
-
-
-
-  ##onnx -> flat representation
-  ##scikit-learn representation --> there is an array of trees with different attributes
-  ##ONNX --> one array per attribute for the whole model 
-  ##nodes_treeids --> the index of the tree --> flattened over all trees
-  ##loop for total no of estimators
-  ##rearranging loops for number of classes
 
