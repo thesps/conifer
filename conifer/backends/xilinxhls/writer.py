@@ -36,14 +36,51 @@ def get_hls():
     return tool_exe
 
 
-def write(ensemble_dict, cfg):
+def mod_bdt_file(path, ensemble_dict):
+    nodes=[]
+    leaves=[]
+    trees=[]
+    decision_functions=[]
+    for ntree, x in enumerate(ensemble_dict['trees']):
+        nodes.append('\tcase {}:return {};'.format(ntree, len(x[0]['feature'])))
+        leaves.append('\tcase {}:return {};'.format(ntree, len([f for f in x[0]['feature'] if f==-2])))
+        trees.append("\tTree<{0}, input_t, score_t, threshold_t> tree_{0}[fn_classes(n_classes)];".format(ntree))
+        decision_functions.append("\t\tfor(int j = 0; j < fn_classes(n_classes); j++){{\n\t\t\tscore_t s = tree_{0}[j].decision_function(x);"\
+            "\n\t\t\tscore[j] += s;\n\t\t\ttree_scores[{0} * fn_classes(n_classes) + j] = s;\n\t\t}}".format(ntree))
+    nodes.append("\tdefault:return {};".format(2**(ensemble_dict['max_depth'] + 1) - 1))
+    leaves.append("\tdefault:return {};".format(2**(ensemble_dict['max_depth'])))
+    #print(nodes)
+    #print(leaves)
+    
+    switch_case_nodes="\n".join(nodes)
+    switch_case_leaves="\n".join(leaves)
+    tree_list = "\n".join(trees)
+    decision_functions_list = "\n".join(decision_functions)
+    #print(switch_case_nodes)
+    #print(switch_case_leaves)
+    #print(decision_functions_list)
+    
+    with open(path, "r") as f:
+        data=f.read()
 
+    data=data.replace("%%SWITCH_CASE_N_NODES%%", switch_case_nodes)
+    data=data.replace("%%SWITCH_CASE_N_LEAVES%%", switch_case_leaves)
+    data=data.replace("%%TREE_LIST%%", tree_list)
+    data=data.replace("%%DECISION_FUNCTION_LIST%%", decision_functions_list)
+        
+    with open(path, "w") as f:
+        f.write(data)
+
+def write(ensemble_dict, cfg):
     filedir = os.path.dirname(os.path.abspath(__file__))
 
     os.makedirs('{}/firmware'.format(cfg['OutputDir']))
     os.makedirs('{}/tb_data'.format(cfg['OutputDir']))
+    out_bdt_file = '{}/firmware/BDT.h'.format(cfg['OutputDir'])
     copyfile('{}/firmware/BDT.h'.format(filedir),
-             '{}/firmware/BDT.h'.format(cfg['OutputDir']))
+             out_bdt_file)
+    
+    mod_bdt_file(out_bdt_file, ensemble_dict)
 
     ###################
     # myproject.cpp
@@ -109,13 +146,13 @@ def write(ensemble_dict, cfg):
     else:
         newline += str(ensemble_dict['init_predict'][0]) + '},\n'
     fout.write(newline)
-    fout.write("\t{ // The array of trees\n")
+    fout.write("\t// The trees\n")
     # loop over trees
     for itree, trees in enumerate(ensemble_dict['trees']):
-        fout.write('\t\t{ // trees[' + str(itree) + ']\n')
+        fout.write('\t\t// trees[' + str(itree) + ']\n')
         # loop over classes
         for iclass, tree in enumerate(trees):
-            fout.write('\t\t\t{ // [' + str(iclass) + ']\n')
+            fout.write('\t\t\t{{ // [' + str(iclass) + ']\n')
             # loop over fields
             for ifield, field in enumerate(tree_fields):
                 newline = '\t\t\t\t{'
@@ -135,7 +172,7 @@ def write(ensemble_dict, cfg):
             newline += ','
         newline += '\n'
         fout.write(newline)
-    fout.write('\t}\n};')
+    fout.write('\n};')
 
     fout.write('\n#endif')
     fout.close()

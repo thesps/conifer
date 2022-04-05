@@ -24,7 +24,7 @@ def convert(bdt):
             tree = trees[fn_classes * i + j]
             tree = treeToDict(bdt, tree)
             tree = addParentAndDepth(tree)
-            tree = padTree(ensembleDict, tree)
+            #tree = padTree(ensembleDict, tree)
             treesl.append(tree)
         ensembleDict['trees'].append(treesl)
     return ensembleDict
