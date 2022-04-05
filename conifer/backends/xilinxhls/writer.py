@@ -1,6 +1,7 @@
 import os
 import sys
 from shutil import copyfile
+import warnings
 import numpy as np
 
 _TOOLS = {
@@ -84,12 +85,38 @@ def write(ensemble_dict, cfg):
         ensemble_dict['n_classes']))
     fout.write('static const bool unroll = {};\n'.format(
         str(cfg['Pipeline']).lower()))
-    fout.write('typedef {} input_t;\n'.format(cfg['Precision']))
+
+    input_precision = None
+    if 'InputPrecision' in cfg.keys():
+        input_precision = cfg['InputPrecision']
+    elif 'Precision' in cfg.keys():
+        input_precision = cfg['Precision']
+    if input_precision is None:
+        raise ValueError('Neither Precision nor InputPrecision specified in configuration')
+    fout.write('typedef {} input_t;\n'.format(input_precision))
     fout.write('typedef input_t input_arr_t[n_features];\n')
-    fout.write('typedef {} score_t;\n'.format(cfg['Precision']))
+
+    threshold_precision = None
+    if 'ThresholdPrecision' in cfg.keys():
+        threshold_precision = cfg['ThresholdPrecision']
+    elif 'InputPrecision' in cfg.keys():
+        warnings.warn("ThresholdPrecision not specified, but InputPrecision is - using InputPrecision for ThresholdPrecision")
+        threshold_precision = cfg['InputPrecision']
+    elif 'Precision' in cfg.keys():
+        threshold_precision = cfg['Precision']
+    if threshold_precision is None:
+        raise ValueError('None of Precision, ThresholdPrecision, nor InputPrecision specified in configuration')
+    fout.write('typedef {} threshold_t;\n'.format(threshold_precision))
+
+    score_precision = None
+    if 'ScorePrecision' in cfg.keys():
+        score_precision = cfg['ScorePrecision']
+    elif 'Precision' in cfg.keys():
+        score_precision = cfg['Precision']
+    if score_precision is None:
+        raise ValueError('Neither Precision nor ScorePrecision specified in configuration')
+    fout.write('typedef {} score_t;\n'.format(score_precision))
     fout.write('typedef score_t score_arr_t[n_classes];\n')
-    # TODO score_arr_t
-    fout.write('typedef input_t threshold_t;\n\n')
 
     tree_fields = ['feature', 'threshold', 'value',
                    'children_left', 'children_right', 'parent']
@@ -235,19 +262,6 @@ def write(ensemble_dict, cfg):
         else:
             newline = line
         fout.write(newline)
-    # fout.write('#include "BDT.h"\n')
-    # fout.write('#include "firmware/parameters.h"\n')
-    # fout.write('#include "firmware/{}.h"\n'.format(cfg['ProjectName']))
-
-    #fout.write('int main(){\n')
-    #fout.write('\tinput_arr_t x = {{{}}};\n'.format(str([0] * ensemble_dict['n_features'])[1:-1]));
-    #fout.write('\tscore_arr_t score;\n')
-    #fout.write('\t{}(x, score);\n'.format(cfg['ProjectName']))
-    #fout.write('\tfor(int i = 0; i < n_classes; i++){\n')
-    #fout.write('\t\tstd::cout << score[i] << ", ";\n\t}\n')
-    #fout.write('\tstd::cout << std::endl;\n')
-    #fout.write('\treturn 0;\n}')
-    # fout.close()
 
     fout.close()
 
@@ -266,8 +280,6 @@ def write(ensemble_dict, cfg):
         line = line.replace('nnet_utils', relpath)
         line = line.replace('myproject', cfg['ProjectName'])
 
-        # if 'set_top' in line:
-        #    line = line.replace('myproject', '{}_decision_function'.format(cfg['ProjectName']))
         if 'set_part {xc7vx690tffg1927-2}' in line:
             line = 'set_part {{{}}}\n'.format(cfg['XilinxPart'])
         elif 'create_clock -period 5 -name default' in line:
@@ -282,13 +294,28 @@ def write(ensemble_dict, cfg):
     fout.close()
 
 
-def auto_config():
+def auto_config(granularity='simple'):
+    '''
+    Create an initial configuration dictionary to modify
+    Parameters
+    ----------
+    granularity : string, optional
+        Which granularity to fill the template. Can be 'simple' (default) or 'full'
+        If 'simple', only 'Precision' is included. If 'full', 'InputPrecision', 'ThresholdPrecision', and 'ScorePrecision'
+        are included.
+    '''
     config = {'ProjectName': 'my_prj',
               'OutputDir': 'my-conifer-prj',
-              'Precision': 'ap_fixed<18,8>',
               'XilinxPart': 'xcvu9p-flgb2104-2L-e',
               'ClockPeriod': '5',
               'Pipeline' : True}
+    if granularity == 'full':
+        config['InputPrecision'] = 'ap_fixed<18,8>'
+        config['ThresholdPrecision'] = 'ap_fixed<18,8>'
+        config['ScorePrecision'] = 'ap_fixed<18,8>'
+    else:
+        config['Precision'] = 'ap_fixed<18,8>'
+
     return config
 
 
