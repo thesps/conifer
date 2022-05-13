@@ -35,52 +35,100 @@ def get_hls():
 
     return tool_exe
 
-
-def mod_bdt_file(path, ensemble_dict):
-    nodes=[]
-    leaves=[]
-    trees=[]
-    decision_functions=[]
+def make_optimized_optimized_bdt_code_replacements(ensemble_dict):
+    nodes_list=[]
+    leaves_list=[]
+    trees_list=[]
+    decision_functions_list=[]
     for ntree, x in enumerate(ensemble_dict['trees']):
-        nodes.append('\tcase {}:return {};'.format(ntree, len(x[0]['feature'])))
-        leaves.append('\tcase {}:return {};'.format(ntree, len([f for f in x[0]['feature'] if f==-2])))
-        trees.append("\tTree<{0}, input_t, score_t, threshold_t> tree_{0}[fn_classes(n_classes)];".format(ntree))
-        decision_functions.append("\t\tfor(int j = 0; j < fn_classes(n_classes); j++){{\n\t\t\tscore_t s = tree_{0}[j].decision_function(x);"\
+        nodes_list.append('\tcase {}:return {};'.format(ntree, len(x[0]['feature'])))
+        leaves_list.append('\tcase {}:return {};'.format(ntree, len([f for f in x[0]['feature'] if f==-2])))
+        trees_list.append("\tTree<{0}, input_t, score_t, threshold_t> tree_{0}[fn_classes(n_classes)];".format(ntree))
+        decision_functions_list.append("\t\tfor(int j = 0; j < fn_classes(n_classes); j++){{\n\t\t\tscore_t s = tree_{0}[j].decision_function(x);"\
             "\n\t\t\tscore[j] += s;\n\t\t\ttree_scores[{0} * fn_classes(n_classes) + j] = s;\n\t\t}}".format(ntree))
-    nodes.append("\tdefault:return {};".format(2**(ensemble_dict['max_depth'] + 1) - 1))
-    leaves.append("\tdefault:return {};".format(2**(ensemble_dict['max_depth'])))
-    #print(nodes)
-    #print(leaves)
+    nodes_list.append("\tdefault:return {};".format(2**(ensemble_dict['max_depth'] + 1) - 1))
+    leaves_list.append("\tdefault:return {};".format(2**(ensemble_dict['max_depth'])))
     
-    switch_case_nodes="\n".join(nodes)
-    switch_case_leaves="\n".join(leaves)
-    tree_list = "\n".join(trees)
-    decision_functions_list = "\n".join(decision_functions)
+    switch_case_nodes_code = "\nconstexpr int fn_nodes(int tree_idx) {\n\tswitch  (tree_idx) {" + "\n".join(nodes_list) + "\n}\n"
+    switch_case_leaves_code = "\nconstexpr int fn_leaves(int tree_idx){\n\tswitch  (tree_idx) {" + "\n".join(leaves_list) + "\n}\n"
+    trees_code = "\n" + "\n".join(trees_list) + "\n"
+    decision_functions_code = "\n" + "\n".join(decision_functions_list) + "\n"
     #print(switch_case_nodes)
     #print(switch_case_leaves)
     #print(decision_functions_list)
     
-    with open(path, "r") as f:
-        data=f.read()
+#    with open(path, "r") as f:
+#        data=f.read()
+#
+#    data=data.replace("%%SWITCH_CASE_N_NODES%%", switch_case_nodes)
+#    data=data.replace("%%SWITCH_CASE_N_LEAVES%%", switch_case_leaves)
+#    data=data.replace("%%TREE_LIST%%", tree_list)
+#    data=data.replace("%%DECISION_FUNCTION_LIST%%", decision_functions_list)
+#        
+#    with open(path, "w") as f:
+#        f.write(data)
+    return switch_case_nodes_code, switch_case_leaves_code, trees_code, decision_functions_code
 
-    data=data.replace("%%SWITCH_CASE_N_NODES%%", switch_case_nodes)
-    data=data.replace("%%SWITCH_CASE_N_LEAVES%%", switch_case_leaves)
-    data=data.replace("%%TREE_LIST%%", tree_list)
-    data=data.replace("%%DECISION_FUNCTION_LIST%%", decision_functions_list)
-        
-    with open(path, "w") as f:
-        f.write(data)
+def make_bdt_code_replacements():
+
+    fn_nodes_code = "\nconstexpr int fn_nodes(int max_depth){\n\treturn pow2(max_depth + 1) - 1;\n"
+    fn_leaves_code = "\nconstexpr int fn_leaves(int max_depth){\n\treturn pow2(max_depth);\n"
+    trees_code = "\nTree<max_depth, input_t, score_t, threshold_t> trees[n_trees][fn_classes(n_classes)];\n"
+    decision_functions_code = """
+    	for(int i = 0; i < n_trees; i++){
+    		Classes:
+    		for(int j = 0; j < fn_classes(n_classes); j++){
+            score_t s = trees[i][j].decision_function(x);
+    			score[j] += s;
+            tree_scores[i * fn_classes(n_classes) + j] = s;
+    		}
+    	}
+            """
+    return fn_nodes_code, fn_leaves_code, trees_code, decision_functions_code
 
 def write(ensemble_dict, cfg):
     filedir = os.path.dirname(os.path.abspath(__file__))
 
     os.makedirs('{}/firmware'.format(cfg['OutputDir']))
     os.makedirs('{}/tb_data'.format(cfg['OutputDir']))
-    out_bdt_file = '{}/firmware/BDT.h'.format(cfg['OutputDir'])
-    copyfile('{}/firmware/BDT.h'.format(filedir),
-             out_bdt_file)
-    
-    mod_bdt_file(out_bdt_file, ensemble_dict)
+
+    ###################
+    # BDT.h
+    ###################
+
+    if cfg['Optimized']:
+        fn_nodes_code, fn_leaves_code, trees_code, decision_functions_code = \
+                make_optimized_optimized_bdt_code_replacements(ensemble_dict)
+    else:
+        fn_nodes_code, fn_leaves_code, trees_code, decision_functions_code = \
+                make_bdt_code_replacements()
+
+    f = open(os.path.join(filedir, 'hls-template/firmware/BDT.h'), 'r')
+    fout = open('{}/firmware/BDT.h'.format(cfg['OutputDir']), 'w')
+
+    for line in f.readlines():
+        if 'hls-fpga-machine-learning insert switch case nodes' in line:
+            newline = fn_nodes_code 
+        elif 'hls-fpga-machine-learning insert switch case leaves' in line:
+            newline = fn_leaves_code
+        elif 'hls-fpga-machine-learning insert trees' in line:
+            newline = trees_code
+        elif 'hls-fpga-machine-learning insert decision functions' in line:
+            newline = decision_functions_code
+        elif 'hls-fpga-machine-learning insert declarations' in line:
+            if cfg['Optimized']:
+                newline = ""
+            else:
+                newline = "\ntemplate<int max_depth, class input_t, class score_t, class threshold_t>\n"\
+                    "constexpr int Tree<max_depth, input_t, score_t, threshold_t>::n_nodes;\n\n"\
+                    "template<int max_depth, class input_t, class score_t, class threshold_t>\n"\
+                    "constexpr int Tree<max_depth, input_t, score_t, threshold_t>::n_leaves;\n"
+        else:
+            newline = line
+        fout.write(newline)
+
+    f.close()
+    fout.close()
 
     ###################
     # myproject.cpp
@@ -325,7 +373,8 @@ def auto_config():
               'Precision': 'ap_fixed<18,8>',
               'XilinxPart': 'xcvu9p-flgb2104-2L-e',
               'ClockPeriod': '5',
-              'Pipeline' : True}
+              'Pipeline' : True,
+              'Optimized': False}
     return config
 
 

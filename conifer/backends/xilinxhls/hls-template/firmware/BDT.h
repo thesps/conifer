@@ -9,18 +9,10 @@ constexpr int pow2(int x){
   return x == 0 ? 1 : 2 * pow2(x - 1);
 }
 
-constexpr int fn_nodes(int tree_idx){
-//  return pow2(max_depth + 1) - 1;
-   switch (tree_idx) {
-%%SWITCH_CASE_N_NODES%%
-   }
+   //hls-fpga-machine-learning insert switch case nodes
 }
 
-constexpr int fn_leaves(int tree_idx){
-//  return pow2(max_depth);
-  switch  (tree_idx) {
-%%SWITCH_CASE_N_LEAVES%%
-  }
+   //hls-fpga-machine-learning insert switch case leaves
 }
 
 constexpr int fn_classes(int n_classes){
@@ -119,9 +111,7 @@ struct BDT{
 public:
     score_t normalisation;
 	score_t init_predict[fn_classes(n_classes)];
-	//Tree<max_depth, input_t, score_t, threshold_t> trees[n_trees][fn_classes(n_classes)];
-%%TREE_LIST%%
-
+        //hls-fpga-machine-learning insert trees
 	void decision_function(input_t x, score_t score[fn_classes(n_classes)], score_t tree_scores[fn_classes(n_classes) * n_trees]) const{
         if(unroll){
 //    		#pragma HLS ARRAY_PARTITION variable=trees dim=0
@@ -130,15 +120,7 @@ public:
 			score[j] = init_predict[j];
 		}
 		Trees:
-%%DECISION_FUNCTION_LIST%%
-//		for(int i = 0; i < n_trees; i++){
-//			Classes:
-//			for(int j = 0; j < fn_classes(n_classes); j++){
-//                score_t s = trees[i][j].decision_function(x);
-//				score[j] += s;
-//                tree_scores[i * fn_classes(n_classes) + j] = s;
-//			}
-//		}
+        //hls-fpga-machine-learning insert decision functions
         for(int j = 0; j < fn_classes(n_classes); j++){
             score[j] *= normalisation;
         }
@@ -146,11 +128,7 @@ public:
 
 };
 
-//template<int max_depth, class input_t, class score_t, class threshold_t>
-//constexpr int Tree<max_depth, input_t, score_t, threshold_t>::n_nodes;
-//
-//template<int max_depth, class input_t, class score_t, class threshold_t>
-//constexpr int Tree<max_depth, input_t, score_t, threshold_t>::n_leaves;
+//hls-fpga-machine-learning insert declarations
 
 }
 #endif
