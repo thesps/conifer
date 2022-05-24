@@ -18,6 +18,7 @@
 //
 #include <fstream>
 #include <iostream>
+ #include <iomanip>
 #include <algorithm>
 #include <vector>
 #include <stdio.h>
@@ -55,7 +56,7 @@ int main(int argc, char **argv)
       e++;
       char* cstr=const_cast<char*>(iline.c_str());
       char* current;
-      std::vector<float> in;
+      std::vector<double> in;
       current=strtok(cstr," ");
       while(current!=NULL) {
         in.push_back(atof(current));
@@ -67,7 +68,7 @@ int main(int argc, char **argv)
       //hls-fpga-machine-learning insert top-level-function
 
       for(int i = 0; i < BDT::fn_classes(n_classes); i++){
-        fout << score[i] << " ";
+        fout << std::fixed << std::setprecision(20) << score[i] << " ";
       }
       fout << std::endl;
       for(int  i = 0; i < n_trees; i++){

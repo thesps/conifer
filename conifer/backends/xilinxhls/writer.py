@@ -182,8 +182,8 @@ def write(ensemble_dict, cfg):
             newline = line.replace('myproject', cfg['ProjectName'])
         elif '//hls-fpga-machine-learning insert data' in line:
             newline = line
-            newline += '      std::vector<float>::const_iterator in_begin = in.cbegin();\n'
-            newline += '      std::vector<float>::const_iterator in_end;\n'
+            newline += '      std::vector<double>::const_iterator in_begin = in.cbegin();\n'
+            newline += '      std::vector<double>::const_iterator in_end;\n'
             newline += '      input_arr_t x;\n'
             newline += '      in_end = in_begin + ({});\n'.format(
                 ensemble_dict['n_features'])
