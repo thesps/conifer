@@ -33,7 +33,7 @@ def write(ensemble_dict, cfg):
 def sim_compile(cfg):
   curr_dir = os.getcwd()
   os.chdir(cfg['OutputDir'])
-  cmd = "g++ -O3 -shared -std=c++11 -fPIC $(python3 -m pybind11 --includes) -I/cvmfs/cms.cern.ch/slc7_amd64_gcc900/external/hls/2019.08/include/ -I/cvmfs/cms.cern.ch/slc7_amd64_gcc900/external/json/3.10.2-8cd3895745e2546d082bb9980a719047/include/nlohmann -I../../conifer/backends/cpp/include bridge.cpp -o conifer_bridge$(python3-config --extension-suffix)"
+  cmd = "g++ -O3 -shared -std=c++11 -fPIC $(python3 -m pybind11 --includes) -I/cvmfs/cms.cern.ch/slc7_amd64_gcc900/external/hls/2019.08/include/ -I/cvmfs/cms.cern.ch/slc7_amd64_gcc900/external/json/3.10.2-8cd3895745e2546d082bb9980a719047/include/nlohmann -I../../conifer/backends/cpp/include bridge.cpp -o conifer_bridge.so"
   try:
     ret_val = os.system(cmd)
     if ret_val != 0:
@@ -45,7 +45,10 @@ def decision_function(X, cfg, trees=False):
   curr_dir = os.getcwd()
   os.chdir(cfg['OutputDir'])
   try:
-    import conifer_bridge
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('conifer_bridge', './conifer_bridge.so')
+    conifer_bridge = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(conifer_bridge)
   except ImportError:
     os.chdir(curr_dir)
     raise Exception("Can't import pybind11 bridge, is it compiled?")

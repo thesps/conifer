@@ -21,6 +21,7 @@ private:
 public:
 
   U decision_function(std::vector<T> x) const{
+    /* Do the prediction */
     int i = 0;
     while(feature[i] != -2){ // continue until reaching leaf
       bool comparison = x[feature[i]] <= threshold_[i];
@@ -30,15 +31,17 @@ public:
   }
 
   void init_(){
+    /* Since T, U types may not be readable from the JSON, read them to double and the cast them here */
     std::transform(threshold.begin(), threshold.end(), std::back_inserter(threshold_),
                    [](double t) -> T { return (T) t; });
     std::transform(value.begin(), value.end(), std::back_inserter(value_),
                    [](double v) -> U { return (U) v; });
   }
 
+  // Define how to read this class to/from JSON
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(DecisionTree, feature, children_left, children_right, threshold, value);
 
-};
+}; // class DecisionTree
 
 template<class T, class U>
 class BDT{
@@ -55,12 +58,15 @@ private:
 
 public:
 
+  // Define how to read this class to/from JSON
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(BDT, n_classes, n_trees, n_features, init_predict, trees);
 
   BDT(std::string filename){
+    /* Construct the BDT from conifer cpp backend JSON file */
     std::ifstream ifs(filename);
     nlohmann::json j = nlohmann::json::parse(ifs);
     from_json(j, *this);
+    /* Do some transformation to initialise things into the proper emulation T, U types */
     if(n_classes == 2) n_classes = 1;
     std::transform(init_predict.begin(), init_predict.end(), std::back_inserter(init_predict_),
                    [](double ip) -> U { return (U) ip; });
@@ -72,6 +78,7 @@ public:
   }
 
   std::vector<U> decision_function(std::vector<T> x) const{
+    /* Do the prediction */
     assert("Size of feature vector mismatches expected n_features" && x.size() == n_features);
     std::vector<U> values;
     values.resize(n_classes, U(0));
@@ -87,6 +94,7 @@ public:
   }
 
   std::vector<double> _decision_function_double(std::vector<double> x) const{
+    /* Do the prediction with data in/out as double, cast to T, U before prediction */
     std::vector<T> xt;
     std::transform(x.begin(), x.end(), std::back_inserter(xt),
                    [](double xi) -> T { return (T) xi; });
@@ -95,15 +103,6 @@ public:
     std::transform(y.begin(), y.end(), std::back_inserter(yd),
                 [](U yi) -> double { return (double) yi; });
     return yd;
-  }
-
-
-  int get_n_trees(){
-    return n_trees;
-  }
-
-  std::vector<U> get_init_predict(){
-    return init_predict_;
   }
 
 }; // class BDT
