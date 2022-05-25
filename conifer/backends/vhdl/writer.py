@@ -3,6 +3,7 @@ import sys
 from shutil import copyfile
 import numpy as np
 from enum import Enum
+from conifer.utils import FixedPointConverter
 
 class Simulators(Enum):
    modelsim = 0
@@ -60,6 +61,8 @@ def write(ensembleDict, cfg):
   dtype_frac = dtype_n - dtype_int # number of fractional bits
   mult = 2**dtype_frac
 
+  fp = FixedPointConverter(cfg['Precision'])
+
   # binary classification only uses one set of trees
   n_classes = 1 if ensembleDict['n_classes'] == 2 else ensembleDict['n_classes']
 
@@ -69,7 +72,8 @@ def write(ensembleDict, cfg):
   for i in range(n_classes):
     fout[i].write(array_header_text)
     fout[i].write('package Arrays{} is\n\n'.format(i))
-    fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(int(np.round(ensembleDict['init_predict'][i] * mult))))
+    #fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(int(np.round(ensembleDict['init_predict'][i] * mult))))
+    fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(fp.to_int(np.float64(ensembleDict['init_predict'][i]))))
     #fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(int(np.round(ensembleDict['init_predict'][i] * mult))))
 
 
@@ -85,7 +89,8 @@ def write(ensembleDict, cfg):
         fieldName += '_int'
         # Convert the floating point values to integers
         for ii, trees in enumerate(ensembleDict['trees']):
-          ensembleDict['trees'][ii][iclass][field] = np.round(np.array(ensembleDict['trees'][ii][iclass][field]) * mult).astype('int')
+          #ensembleDict['trees'][ii][iclass][field] = np.round(np.array(ensembleDict['trees'][ii][iclass][field]) * mult).astype('int')
+          ensembleDict['trees'][ii][iclass][field] = np.array([fp.to_int(x) for x in ensembleDict['trees'][ii][iclass][field]])
       nElem = 'nLeaves' if field == 'iLeaf' else 'nNodes'
       fout[iclass].write('    constant {} : intArray2D{}(0 to nTrees - 1) := ('.format(fieldName, nElem))
     # Loop over the trees within the class
