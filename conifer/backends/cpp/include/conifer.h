@@ -6,6 +6,45 @@
 
 namespace conifer{
 
+/* ---
+* Balanced tree reduce implementation.
+* Reduces an array of inputs to a single value using the template binary operator 'Op',
+* for example summing all elements with Op_add, or finding the maximum with Op_max
+* Use only when the input array is fully unrolled. Or, slice out a fully unrolled section
+* before applying and accumulate the result over the rolled dimension.
+* Required for emulation to guarantee equality of ordering.
+* --- */
+constexpr int floorlog2(int x) { return (x < 2) ? 0 : 1 + floorlog2(x / 2); }
+
+template <int B>
+constexpr int pow(int x) {
+  return x == 0 ? 1 : B * pow<B>(x - 1);
+}
+
+constexpr int pow2(int x) { return pow<2>(x); }
+
+template <class T, class Op>
+T reduce(std::vector<T> x, Op op) {
+  int N = x.size();
+  int leftN = pow2(floorlog2(N - 1)) > 0 ? pow2(floorlog2(N - 1)) : 0;
+  //static constexpr int rightN = N - leftN > 0 ? N - leftN : 0;
+  if (N == 1) {
+    return x.at(0);
+  } else if (N == 2) {
+    return op(x.at(0), x.at(1));
+  } else {
+    std::vector<T> left(x.begin(), x.begin() + leftN);
+    std::vector<T> right(x.begin() + leftN, x.end());
+    return op(reduce<T, Op>(left, op), reduce<T, Op>(right, op));
+  }
+}
+
+template<class T>
+class OpAdd {
+public:
+  T operator()(T a, T b) { return a + b; }
+};
+
 template<class T, class U>
 class DecisionTree{
 
@@ -43,7 +82,7 @@ public:
 
 }; // class DecisionTree
 
-template<class T, class U>
+template<class T, class U, bool useAddTree>
 class BDT{
 
 private:
@@ -55,6 +94,7 @@ private:
   std::vector<U> init_predict_;
   // vector of decision trees: outer dimension tree, inner dimension class
   std::vector<std::vector<DecisionTree<T,U>>> trees;
+  OpAdd<U> add;
 
 public:
 
@@ -81,15 +121,20 @@ public:
     /* Do the prediction */
     assert("Size of feature vector mismatches expected n_features" && x.size() == n_features);
     std::vector<U> values;
+    std::vector<std::vector<U>> values_trees;
+    values_trees.resize(n_classes);
     values.resize(n_classes, U(0));
     for(int i = 0; i < n_classes; i++){
-      values.at(i) = init_predict_.at(i);
+      std::transform(trees.begin(), trees.end(), std::back_inserter(values_trees.at(i)),
+                     [&i, &x](auto tree_v){ return tree_v.at(i).decision_function(x); });
+      if(useAddTree){
+        values.at(i) = init_predict_.at(i);
+        values.at(i) += reduce<U, OpAdd<U>>(values_trees.at(i), add);
+      }else{
+        values.at(i) = std::accumulate(values_trees.at(i).begin(), values_trees.at(i).end(), U(init_predict_.at(i)));
+      }               
     }
-    for(int i = 0; i < n_trees; i++){
-      for(int j = 0; j < n_classes; j++){
-        values.at(j) += trees.at(i).at(j).decision_function(x);
-      }
-    }
+
     return values;
   }
 

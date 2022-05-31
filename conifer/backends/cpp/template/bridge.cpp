@@ -7,7 +7,7 @@
 
 namespace py = pybind11;
 PYBIND11_MODULE(conifer_bridge, m){
-  py::class_<conifer::BDT<T,U>>(m, "BDT")
+  py::class_<conifer::BDT<T,U,false>>(m, "BDT")
       .def(py::init<const std::string &>())
-      .def("decision_function", &conifer::BDT<T,U>::_decision_function_double);
+      .def("decision_function", &conifer::BDT<T,U,false>::_decision_function_double);
 }

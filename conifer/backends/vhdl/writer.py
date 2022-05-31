@@ -3,12 +3,17 @@ import sys
 from shutil import copyfile
 import numpy as np
 from enum import Enum
+import copy
 
 class Simulators(Enum):
    modelsim = 0
    xsim = 1
 
-def write(ensembleDict, cfg):
+def write(model):
+
+  ensembleDict = copy.deepcopy(model._ensembleDict)
+  cfg = copy.deepcopy(model.config)
+
   array_header_text = """library ieee;
   use ieee.std_logic_1164.all;
   use ieee.std_logic_misc.all;
@@ -175,8 +180,9 @@ def auto_config():
               'ClockPeriod' : '5'}
     return config
 
-def sim_compile(config):
+def sim_compile(model):
   from conifer.backends.vhdl import simulator
+  config = copy.deepcopy(model.config)
   xsim_cmd = 'sh xsim_compile.sh > xsim_compile.log'
   msim_cmd = 'sh modelsim_compile.sh > modelsim_compile.log'
   cmdmap = {Simulators.modelsim : msim_cmd,
@@ -191,8 +197,10 @@ def sim_compile(config):
       sys.exit()
   return
 
-def decision_function(X, config, trees=False):
+def decision_function(X, model, trees=False):
     from conifer.backends.vhdl import simulator
+
+    config = copy.deepcopy(model.config)
     msim_cmd = 'vsim -c -do "vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench; run -all; quit -f" > vsim.log'
     xsim_cmd = 'xsim -R bdt_tb > xsim.log'
     cmdmap = {Simulators.modelsim : msim_cmd,
