@@ -3,6 +3,7 @@ import sys
 from shutil import copyfile
 import numpy as np
 import copy
+from conifer.utils import _ap_include
 
 _TOOLS = {
     'vivadohls': 'vivado_hls',
@@ -330,7 +331,11 @@ def sim_compile(model):
     cfg = model.config
     curr_dir = os.getcwd()
     os.chdir(cfg['OutputDir'])
-    cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) -I/cvmfs/cms.cern.ch/slc7_amd64_gcc900/external/hls/2019.08/include/ bridge.cpp firmware/{cfg['ProjectName']}.cpp -o conifer_bridge_{model._stamp}.so"
+    ap_include = _ap_include()
+    if ap_include is None:
+        os.chdir(curr_dir)
+        raise Exception("Couldn't find Xilinx ap_ headers. Source the Vivado/Vitis HLS toolchain, or set XILINX_AP_INCLUDE environment variable.")
+    cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} bridge.cpp firmware/{cfg['ProjectName']}.cpp -o conifer_bridge_{model._stamp}.so"
     try:
         ret_val = os.system(cmd)
         if ret_val != 0:
