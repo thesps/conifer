@@ -7,6 +7,7 @@ from enum import Enum
 class Simulators(Enum):
    modelsim = 0
    xsim = 1
+   ghdl = 2
 
 def write(ensembleDict, cfg):
   array_header_text = """library ieee;
@@ -179,8 +180,10 @@ def sim_compile(config):
   from conifer.backends.vhdl import simulator
   xsim_cmd = 'sh xsim_compile.sh > xsim_compile.log'
   msim_cmd = 'sh modelsim_compile.sh > modelsim_compile.log'
+  ghdl_cmd = 'sh ghdl_compile.sh > ghdl_compile.log'
   cmdmap = {Simulators.modelsim : msim_cmd,
-            Simulators.xsim : xsim_cmd}
+            Simulators.xsim : xsim_cmd,
+            Simulators.ghdl : ghdl_cmd}
   cmd = cmdmap[simulator]
   cwd = os.getcwd()
   os.chdir(config['OutputDir'])
@@ -195,13 +198,17 @@ def decision_function(X, config, trees=False):
     from conifer.backends.vhdl import simulator
     msim_cmd = 'vsim -c -do "vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench; run -all; quit -f" > vsim.log'
     xsim_cmd = 'xsim -R bdt_tb > xsim.log'
+    ghdl_cmd = 'ghdl -r --std=08 --work=xil_defaultlib testbench > ghdl.log'
     cmdmap = {Simulators.modelsim : msim_cmd,
-              Simulators.xsim : xsim_cmd}
+              Simulators.xsim : xsim_cmd,
+              Simulators.ghdl : ghdl_cmd}
     cmd = cmdmap[simulator]
     msim_log = 'vsim.log'
     xsim_log = 'xsim.log'
+    ghdl_log = 'ghdl.log'
     logmap = {Simulators.modelsim : msim_log,
-              Simulators.xsim : xsim_log}
+              Simulators.xsim : xsim_log,
+              Simulators.ghdl : ghdl_log}
     logfile = logmap[simulator]
 
     dtype = config['Precision']
@@ -243,7 +250,8 @@ def build(config, **kwargs):
 def write_sim_scripts(cfg, filedir, n_classes):
   from conifer.backends.vhdl import simulator
   fmap = {Simulators.modelsim : write_modelsim_scripts,
-          Simulators.xsim : write_xsim_scripts}
+          Simulators.xsim : write_xsim_scripts,
+          Simulators.ghdl : write_ghdl_scripts,}
   fmap[simulator](cfg, filedir, n_classes)
 
 def write_modelsim_scripts(cfg, filedir, n_classes):
@@ -272,6 +280,19 @@ def write_xsim_scripts(cfg, filedir, n_classes):
     if 'insert arrays' in line:
       for i in range(n_classes):
         newline = 'xvhdl -2008 -work BDT ./firmware/Arrays{}.vhd\n'.format(i)
+        fout.write(newline)
+    else:
+      fout.write(line)
+  f.close()
+  fout.close()
+
+def write_ghdl_scripts(cfg, filedir, n_classes):
+  f = open(os.path.join(filedir, './scripts/ghdl_compile.sh'), 'r')
+  fout = open('{}/ghdl_compile.sh'.format(cfg['OutputDir']), 'w')
+  for line in f.readlines():
+    if 'insert arrays' in line:
+      for i in range(n_classes):
+        newline = 'ghdl -a --std=08 --work=BDT ./firmware/Arrays{}.vhd\n'.format(i)
         fout.write(newline)
     else:
       fout.write(line)
