@@ -1,9 +1,13 @@
 import os
 import sys
 from shutil import copyfile
+import warnings
 import numpy as np
 import copy
 from conifer.utils import _ap_include
+import datetime
+import logging
+logger = logging.getLogger(__name__)
 
 _TOOLS = {
     'vivadohls': 'vivado_hls',
@@ -44,6 +48,8 @@ def write(model):
     cfg = copy.deepcopy(model.config)
 
     filedir = os.path.dirname(os.path.abspath(__file__))
+
+    logger.info(f"Writing project to {cfg['OutputDir']}")
 
     os.makedirs('{}/firmware'.format(cfg['OutputDir']))
     os.makedirs('{}/tb_data'.format(cfg['OutputDir']))
@@ -89,12 +95,41 @@ def write(model):
         ensemble_dict['n_classes']))
     fout.write('static const bool unroll = {};\n'.format(
         str(cfg['Pipeline']).lower()))
-    fout.write('typedef {} input_t;\n'.format(cfg['Precision']))
+
+    input_precision = None
+    if 'InputPrecision' in cfg.keys():
+        input_precision = cfg['InputPrecision']
+    elif 'Precision' in cfg.keys():
+        input_precision = cfg['Precision']
+    if input_precision is None:
+        raise ValueError('Neither Precision nor InputPrecision specified in configuration')
+    logger.debug(f"InputPrecision {input_precision}")
+    fout.write('typedef {} input_t;\n'.format(input_precision))
     fout.write('typedef input_t input_arr_t[n_features];\n')
-    fout.write('typedef {} score_t;\n'.format(cfg['Precision']))
+
+    threshold_precision = None
+    if 'ThresholdPrecision' in cfg.keys():
+        threshold_precision = cfg['ThresholdPrecision']
+    elif 'InputPrecision' in cfg.keys():
+        warnings.warn("ThresholdPrecision not specified, but InputPrecision is - using InputPrecision for ThresholdPrecision")
+        threshold_precision = cfg['InputPrecision']
+    elif 'Precision' in cfg.keys():
+        threshold_precision = cfg['Precision']
+    if threshold_precision is None:
+        raise ValueError('None of Precision, ThresholdPrecision, nor InputPrecision specified in configuration')
+    logger.debug(f"ThresholdPrecision {threshold_precision}")
+    fout.write('typedef {} threshold_t;\n'.format(threshold_precision))
+
+    score_precision = None
+    if 'ScorePrecision' in cfg.keys():
+        score_precision = cfg['ScorePrecision']
+    elif 'Precision' in cfg.keys():
+        score_precision = cfg['Precision']
+    if score_precision is None:
+        raise ValueError('Neither Precision nor ScorePrecision specified in configuration')
+    logger.debug(f"ScorePrecision {score_precision}")
+    fout.write('typedef {} score_t;\n'.format(score_precision))
     fout.write('typedef score_t score_arr_t[n_classes];\n')
-    # TODO score_arr_t
-    fout.write('typedef input_t threshold_t;\n\n')
 
     tree_fields = ['feature', 'threshold', 'value',
                    'children_left', 'children_right', 'parent']
@@ -240,19 +275,6 @@ def write(model):
         else:
             newline = line
         fout.write(newline)
-    # fout.write('#include "BDT.h"\n')
-    # fout.write('#include "firmware/parameters.h"\n')
-    # fout.write('#include "firmware/{}.h"\n'.format(cfg['ProjectName']))
-
-    #fout.write('int main(){\n')
-    #fout.write('\tinput_arr_t x = {{{}}};\n'.format(str([0] * ensemble_dict['n_features'])[1:-1]));
-    #fout.write('\tscore_arr_t score;\n')
-    #fout.write('\t{}(x, score);\n'.format(cfg['ProjectName']))
-    #fout.write('\tfor(int i = 0; i < n_classes; i++){\n')
-    #fout.write('\t\tstd::cout << score[i] << ", ";\n\t}\n')
-    #fout.write('\tstd::cout << std::endl;\n')
-    #fout.write('\treturn 0;\n}')
-    # fout.close()
 
     fout.close()
 
@@ -271,8 +293,6 @@ def write(model):
         line = line.replace('nnet_utils', relpath)
         line = line.replace('myproject', cfg['ProjectName'])
 
-        # if 'set_top' in line:
-        #    line = line.replace('myproject', '{}_decision_function'.format(cfg['ProjectName']))
         if 'set_part {xc7vx690tffg1927-2}' in line:
             line = 'set_part {{{}}}\n'.format(cfg['XilinxPart'])
         elif 'create_clock -period 5 -name default' in line:
@@ -305,13 +325,28 @@ def write(model):
     os.remove(f"{cfg['OutputDir']}/bridge_tmp.cpp")
 
 
-def auto_config():
+def auto_config(granularity='simple'):
+    '''
+    Create an initial configuration dictionary to modify
+    Parameters
+    ----------
+    granularity : string, optional
+        Which granularity to fill the template. Can be 'simple' (default) or 'full'
+        If 'simple', only 'Precision' is included. If 'full', 'InputPrecision', 'ThresholdPrecision', and 'ScorePrecision'
+        are included.
+    '''
     config = {'ProjectName': 'my_prj',
               'OutputDir': 'my-conifer-prj',
-              'Precision': 'ap_fixed<18,8>',
               'XilinxPart': 'xcvu9p-flgb2104-2L-e',
               'ClockPeriod': '5',
               'Pipeline' : True}
+    if granularity == 'full':
+        config['InputPrecision'] = 'ap_fixed<18,8>'
+        config['ThresholdPrecision'] = 'ap_fixed<18,8>'
+        config['ScorePrecision'] = 'ap_fixed<18,8>'
+    else:
+        config['Precision'] = 'ap_fixed<18,8>'
+
     return config
 
 def decision_function(X, model, trees=False):
@@ -361,13 +396,19 @@ def build(config, reset=False, csim=False, synth=True, cosim=False, export=False
 
     hls_tool = get_hls()
     if hls_tool == None:
-        print("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
+        logger.error("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
         sys.exit()
 
-    cmd = '{hls_tool} -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}"'\
+    cmd = '{hls_tool} -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}" > build.log'\
         .format(hls_tool=hls_tool, reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
+    start = datetime.datetime.now()
+    logger.info(f'build starting {start:%H:%M:%S}')
+    logger.debug(f'build invoking {hls_tool} with command "{cmd}"')
     success = os.system(cmd)
+    stop = datetime.datetime.now()
+    logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
     if(success > 0):
-        print("'build' failed")
+        logger.error("build failed, check logs")
         sys.exit()
+
     os.chdir(cwd)
