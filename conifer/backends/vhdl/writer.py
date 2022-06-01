@@ -3,6 +3,9 @@ import sys
 from shutil import copyfile
 import numpy as np
 from enum import Enum
+import datetime
+import logging
+logger = logging.getLogger(__name__)
 
 class Simulators(Enum):
    modelsim = 0
@@ -45,6 +48,7 @@ def write(ensembleDict, cfg):
   """
 
   filedir = os.path.dirname(os.path.abspath(__file__))
+  logger.info(f"Writing project to {cfg['OutputDir']}")
   os.makedirs('{}/firmware'.format(cfg['OutputDir']))
   copyfiles = ['AddReduce.vhd', 'BDT.vhd', 'BDTTestbench.vhd', 'SimulationInput.vhd', 'SimulationOutput.vhd',
                'TestUtil.vhd', 'Tree.vhd', 'Types.vhd']
@@ -53,7 +57,7 @@ def write(ensembleDict, cfg):
 
   dtype = cfg['Precision']
   if not 'ap_fixed' in dtype:
-    print("Only ap_fixed is currently supported, exiting")
+    logger.error("Only ap_fixed is currently supported, exiting")
     sys.exit()
   dtype = dtype.replace('ap_fixed<', '').replace('>', '')
   dtype_n = int(dtype.split(',')[0].strip()) # total number of bits
@@ -185,12 +189,14 @@ def sim_compile(config):
             Simulators.xsim : xsim_cmd,
             Simulators.ghdl : ghdl_cmd}
   cmd = cmdmap[simulator]
+  logger.info(f'Compiling simulation for {simulator} simulator')
+  logger.debug(f'Compiling simulation with command "{cmd}"')
   cwd = os.getcwd()
   os.chdir(config['OutputDir'])
   success = os.system(cmd)
   os.chdir(cwd)
   if(success > 0):
-      print("'sim_compile' failed, check {}_compile.log".format(simulator.name))
+      logger.error("'sim_compile' failed, check {}_compile.log".format(simulator.name))
       sys.exit()
   return
 
@@ -211,9 +217,11 @@ def decision_function(X, config, trees=False):
               Simulators.ghdl : ghdl_log}
     logfile = logmap[simulator]
 
+    logger.info(f'Running simulation for {simulator} simulator')
+
     dtype = config['Precision']
     if not 'ap_fixed' in dtype:
-        print("Only ap_fixed is currently supported, exiting")
+        logger.error("Only ap_fixed is currently supported, exiting")
         sys.exit()
     dtype = dtype.replace('ap_fixed<', '').replace('>', '')
     dtype_n = int(dtype.split(',')[0].strip()) # total number of bits
@@ -221,30 +229,35 @@ def decision_function(X, config, trees=False):
     dtype_frac = dtype_n - dtype_int # number of fractional bits
     mult = 2**dtype_frac
     Xint = (X *  mult).astype('int')
+    logger.debug(f'Converting X ({X.dtype}), to integers with scale factor {mult} from {config["Precision"]}')
     np.savetxt('{}/SimulationInput.txt'.format(config['OutputDir']),
                Xint, delimiter=' ', fmt='%d')
-    latency = 20
-    t = 5 * (len(X) + latency)
     cwd = os.getcwd()
     os.chdir(config['OutputDir'])
+    logger.debug(f'Running simulation with command "{cmd}"')
     success = os.system(cmd)
     os.chdir(cwd)
     if(success > 0):
-        print("'decision_function' failed, see {}.log".format(logfile))
+        logger.error("'decision_function' failed, see {}.log".format(logfile))
         sys.exit()
     y = np.loadtxt('{}/SimulationOutput.txt'.format(config['OutputDir'])) * 1. / mult
     if trees:
-        print("Individual tree output (trees=True) not yet implemented for this backend")
+        logger.warn("Individual tree output (trees=True) not yet implemented for this backend")
     return y
 
 def build(config, **kwargs):
-    cmd = 'vivado -mode batch -source synth.tcl'
+    cmd = 'vivado -mode batch -source synth.tcl > build.log'
     cwd = os.getcwd()
     os.chdir(config['OutputDir'])
+    start = datetime.datetime.now()
+    logger.info(f'build starting {start:%H:%M:%S}')
+    logger.debug(f'Running build with command "{cmd}"')
     success = os.system(cmd)
     os.chdir(cwd)
+    stop = datetime.datetime.now()
+    logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
     if(success > 0):
-        print("build failed!")
+        logger.error("build failed, check build.log")
         sys.exit()
             
 def write_sim_scripts(cfg, filedir, n_classes):

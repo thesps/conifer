@@ -4,6 +4,10 @@ from sklearn.datasets import make_hastie_10_2
 from sklearn.ensemble import GradientBoostingClassifier
 import conifer
 import datetime
+import logging
+import sys
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 # Make a random dataset from sklearn 'hastie'
 X, y = make_hastie_10_2(random_state=0)

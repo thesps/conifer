@@ -3,6 +3,9 @@ import sys
 from shutil import copyfile
 import warnings
 import numpy as np
+import datetime
+import logging
+logger = logging.getLogger(__name__)
 
 _TOOLS = {
     'vivadohls': 'vivado_hls',
@@ -40,6 +43,8 @@ def get_hls():
 def write(ensemble_dict, cfg):
 
     filedir = os.path.dirname(os.path.abspath(__file__))
+
+    logger.info(f"Writing project to {cfg['OutputDir']}")
 
     os.makedirs('{}/firmware'.format(cfg['OutputDir']))
     os.makedirs('{}/tb_data'.format(cfg['OutputDir']))
@@ -93,6 +98,7 @@ def write(ensemble_dict, cfg):
         input_precision = cfg['Precision']
     if input_precision is None:
         raise ValueError('Neither Precision nor InputPrecision specified in configuration')
+    logger.debug(f"InputPrecision {input_precision}")
     fout.write('typedef {} input_t;\n'.format(input_precision))
     fout.write('typedef input_t input_arr_t[n_features];\n')
 
@@ -106,6 +112,7 @@ def write(ensemble_dict, cfg):
         threshold_precision = cfg['Precision']
     if threshold_precision is None:
         raise ValueError('None of Precision, ThresholdPrecision, nor InputPrecision specified in configuration')
+    logger.debug(f"ThresholdPrecision {threshold_precision}")
     fout.write('typedef {} threshold_t;\n'.format(threshold_precision))
 
     score_precision = None
@@ -115,6 +122,7 @@ def write(ensemble_dict, cfg):
         score_precision = cfg['Precision']
     if score_precision is None:
         raise ValueError('Neither Precision nor ScorePrecision specified in configuration')
+    logger.debug(f"ScorePrecision {score_precision}")
     fout.write('typedef {} score_t;\n'.format(score_precision))
     fout.write('typedef score_t score_arr_t[n_classes];\n')
 
@@ -327,13 +335,14 @@ def decision_function(X, config, trees=False):
 
     hls_tool = get_hls()
     if hls_tool == None:
-        print("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
-        sys.exit()
+        logger.error("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
+        sys.exit()    
 
     cmd = '{} -f build_prj.tcl "csim=1 synth=0" > predict.log'.format(hls_tool)
+    logger.debug(f'decision_function invoking {hls_tool} with command "{cmd}"')
     success = os.system(cmd)
     if(success > 0):
-        print("'predict' failed, check predict.log")
+        logger.error("'predict' failed, check predict.log")
         sys.exit()
     y = np.loadtxt('tb_data/csim_results.log')
     if trees:
@@ -355,13 +364,19 @@ def build(config, reset=False, csim=False, synth=True, cosim=False, export=False
 
     hls_tool = get_hls()
     if hls_tool == None:
-        print("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
+        logger.error("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
         sys.exit()
 
-    cmd = '{hls_tool} -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}"'\
+    cmd = '{hls_tool} -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}" > build.log'\
         .format(hls_tool=hls_tool, reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
+    start = datetime.datetime.now()
+    logger.info(f'build starting {start:%H:%M:%S}')
+    logger.debug(f'build invoking {hls_tool} with command "{cmd}"')
     success = os.system(cmd)
+    stop = datetime.datetime.now()
+    logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
     if(success > 0):
-        print("'build' failed")
+        logger.error("build failed, check logs")
         sys.exit()
+
     os.chdir(cwd)
