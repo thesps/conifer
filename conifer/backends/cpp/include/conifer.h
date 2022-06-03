@@ -1,6 +1,6 @@
 #ifndef CONIFER_CPP_H__
 #define CONIFER_CPP_H__
-#include "json.hpp"
+#include "nlohmann/json.hpp"
 #include <cassert>
 #include <fstream>
 

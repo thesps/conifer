@@ -25,7 +25,7 @@ def _json_include():
   Get the -I include option for the g++ compile for JSON headers.
   '''
   if os.environ.get("JSON_ROOT") is not None:
-    ret = f'-I{os.environ.get("JSON_ROOT")}/include/nlohmann'
+    ret = f'-I{os.environ.get("JSON_ROOT")}'
     logger.debug(f'Include JSON headers from JSON_ROOT: {ret}')
   else:
     ret = None
