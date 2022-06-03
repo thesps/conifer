@@ -5,6 +5,8 @@ from shutil import copyfile
 import sys
 import copy
 from conifer.utils import _ap_include, _json_include
+import logging
+logger = logging.getLogger(__name__)
 
 def write(model):
   '''
@@ -14,6 +16,7 @@ def write(model):
   ensemble_dict = copy.deepcopy(model._ensembleDict)
   cfg = copy.deepcopy(model.config)
   filedir = os.path.dirname(os.path.abspath(__file__))
+  logger.info(f"Writing project to {cfg['OutputDir']}")
   os.makedirs(f"{cfg['OutputDir']}")
 
   #######################
@@ -70,6 +73,7 @@ def sim_compile(model):
 
   # Do the compile
   cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} {json_include} {conifer_include} bridge.cpp -o conifer_bridge_{model._stamp}.so"
+  logger.debug(f'Compiling with command {cmd}')
   try:
     ret_val = os.system(cmd)
     if ret_val != 0:
@@ -79,6 +83,7 @@ def sim_compile(model):
     raise Exception(f'Failed to compile project {cfg["ProjectName"]}')
 
   try:
+    logger.debug(f'Importing conifer_bridge_{model._stamp} from conifer_bridge_{model._stamp}.so')
     import importlib.util
     spec = importlib.util.spec_from_file_location(f'conifer_bridge_{model._stamp}', f'./conifer_bridge_{model._stamp}.so')
     model.bridge = importlib.util.module_from_spec(spec).BDT(f"{cfg['ProjectName']}.json")

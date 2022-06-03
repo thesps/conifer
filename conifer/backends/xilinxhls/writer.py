@@ -371,6 +371,7 @@ def sim_compile(model):
         os.chdir(curr_dir)
         raise Exception("Couldn't find Xilinx ap_ headers. Source the Vivado/Vitis HLS toolchain, or set XILINX_AP_INCLUDE environment variable.")
     cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} bridge.cpp firmware/{cfg['ProjectName']}.cpp -o conifer_bridge_{model._stamp}.so"
+    logger.debug(f'Compiling with command {cmd}')
     try:
         ret_val = os.system(cmd)
         if ret_val != 0:
@@ -380,6 +381,7 @@ def sim_compile(model):
         raise Exception(f'Failed to compile project {cfg["ProjectName"]}')
 
     try:
+        logger.debug(f'Importing conifer_bridge_{model._stamp} from conifer_bridge_{model._stamp}.so')
         import importlib.util
         spec = importlib.util.spec_from_file_location(f'conifer_bridge_{model._stamp}', f'./conifer_bridge_{model._stamp}.so')
         model.bridge = importlib.util.module_from_spec(spec)
