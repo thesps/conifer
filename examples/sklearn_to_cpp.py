@@ -4,6 +4,10 @@ from sklearn.datasets import make_hastie_10_2
 from sklearn.ensemble import GradientBoostingClassifier
 import conifer
 import datetime
+import logging
+import sys
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 # Make a random dataset from sklearn 'hastie'
 X, y = make_hastie_10_2(random_state=0)
@@ -39,3 +43,11 @@ hls_model.compile()
 y_cpp = cpp_model.decision_function(X)
 y_hls = hls_model.decision_function(X)
 y_skl = clf.decision_function(X)
+
+import numpy as np
+if np.array_equal(y_hls, y_cpp):
+    print(f'HLS and CPP predictions agree 100% ({len(y_cpp)}/{len(y_cpp)})')
+else:
+    abs_diff = np.abs(y_hls - y_cpp)
+    rel_diff = abs_diff / np.abs(y_hls)
+    print(f'HLS and CPP predictions disagree. Biggest absolute difference: {abs_diff.max():.4f}, biggest relative difference: {rel_diff.max():.4f}')
