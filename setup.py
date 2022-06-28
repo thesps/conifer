@@ -6,7 +6,8 @@ with open("README.md", "r") as fh:
 
 setup(
     name="conifer",
-    version="0.0.0",
+    use_scm_version=True,
+    setup_requires=['setuptools_scm'],
     author="Sioni Summers",
     author_email="sioni@cern.ch",
     description="BDT Inference for FPGAs",
@@ -17,6 +18,10 @@ setup(
     classifiers=[
         "Programming Language :: Python :: 3",
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.8',
+    install_requires=[
+        'numpy',
+        'pybind11',
+    ],
     include_package_data=True,
 )
