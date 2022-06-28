@@ -82,7 +82,7 @@ public:
 
 }; // class DecisionTree
 
-template<class T, class U, bool useAddTree>
+template<class T, class U, bool useAddTree = false>
 class BDT{
 
 private:
