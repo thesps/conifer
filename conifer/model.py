@@ -22,6 +22,11 @@ class model:
         subset_dict = {key: self._ensembleDict[key] for key in subset_keys}
         logger.debug(f"Converted BDT with parameters {json.dumps(subset_dict)}")
 
+        def _make_stamp():
+            import datetime
+            return int(datetime.datetime.now().timestamp())
+        self._stamp = _make_stamp()
+
     def set_config(self, config):
         self.config = config
 
@@ -29,14 +34,14 @@ class model:
         return self.config
 
     def write(self):
-        self.backend.write(self._ensembleDict, self.config)
+        self.backend.write(self)
 
     def compile(self):
         self.write()
-        self.backend.sim_compile(self.config)
+        self.backend.sim_compile(self)
 
     def decision_function(self, X, trees=False):
-        return self.backend.decision_function(X, self.config, trees=trees)
+        return self.backend.decision_function(X, self, trees=trees)
 
     def build(self, **kwargs):
         self.backend.build(self.config, **kwargs)

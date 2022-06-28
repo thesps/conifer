@@ -3,6 +3,8 @@ import sys
 from shutil import copyfile
 import warnings
 import numpy as np
+import copy
+from conifer.utils import _ap_include
 import datetime
 import logging
 logger = logging.getLogger(__name__)
@@ -40,7 +42,10 @@ def get_hls():
     return tool_exe
 
 
-def write(ensemble_dict, cfg):
+def write(model):
+
+    ensemble_dict = copy.deepcopy(model._ensembleDict)
+    cfg = copy.deepcopy(model.config)
 
     filedir = os.path.dirname(os.path.abspath(__file__))
 
@@ -217,8 +222,8 @@ def write(ensemble_dict, cfg):
             newline = line.replace('myproject', cfg['ProjectName'])
         elif '//hls-fpga-machine-learning insert data' in line:
             newline = line
-            newline += '      std::vector<float>::const_iterator in_begin = in.cbegin();\n'
-            newline += '      std::vector<float>::const_iterator in_end;\n'
+            newline += '      std::vector<double>::const_iterator in_begin = in.cbegin();\n'
+            newline += '      std::vector<double>::const_iterator in_end;\n'
             newline += '      input_arr_t x;\n'
             newline += '      in_end = in_begin + ({});\n'.format(
                 ensemble_dict['n_features'])
@@ -301,6 +306,24 @@ def write(ensemble_dict, cfg):
     f.close()
     fout.close()
 
+    #######################
+    # bridge.cpp
+    #######################
+
+    copyfile(f'{filedir}/hls-template/bridge.cpp',
+        f"{cfg['OutputDir']}/bridge_tmp.cpp")
+
+    fin = open(f"{cfg['OutputDir']}/bridge_tmp.cpp", 'r')
+    fout = open(f"{cfg['OutputDir']}/bridge.cpp", 'w')
+    for line in fin.readlines():
+        newline = line
+        if 'PYBIND11_MODULE' in line:
+            newline = f'PYBIND11_MODULE(conifer_bridge_{model._stamp}, m){{\n'
+        fout.write(newline)
+    fin.close()
+    fout.close()
+    os.remove(f"{cfg['OutputDir']}/bridge_tmp.cpp")
+
 
 def auto_config(granularity='simple'):
     '''
@@ -326,37 +349,48 @@ def auto_config(granularity='simple'):
 
     return config
 
-
-def decision_function(X, config, trees=False):
-    np.savetxt('{}/tb_data/tb_input_features.dat'.format(config['OutputDir']),
-               X, delimiter=",", fmt='%10f')
-    cwd = os.getcwd()
-    os.chdir(config['OutputDir'])
-
-    hls_tool = get_hls()
-    if hls_tool == None:
-        logger.error("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
-        sys.exit()    
-
-    cmd = '{} -f build_prj.tcl "csim=1 synth=0" > predict.log'.format(hls_tool)
-    logger.debug(f'decision_function invoking {hls_tool} with command "{cmd}"')
-    success = os.system(cmd)
-    if(success > 0):
-        logger.error("'predict' failed, check predict.log")
-        sys.exit()
-    y = np.loadtxt('tb_data/csim_results.log')
-    if trees:
-        tree_scores = np.loadtxt('tb_data/csim_tree_results.log')
-    os.chdir(cwd)
-    if trees:
-        return y, tree_scores
+def decision_function(X, model, trees=False):
+    cfg = model.config
+    curr_dir = os.getcwd()
+    os.chdir(cfg['OutputDir'])
+    if len(X.shape) == 1:
+        y = np.array(model.bridge.decision_function(X))
+    elif len(X.shape) == 2:
+        y = np.array([model.bridge.decision_function(xi) for xi in X])
     else:
-        return y
+        raise Exception(f"Can't handle data shape {X.shape}, expected 1D or 2D shape")
+    os.chdir(curr_dir)
+    return y
 
+def sim_compile(model):
+    cfg = model.config
+    curr_dir = os.getcwd()
+    os.chdir(cfg['OutputDir'])
+    ap_include = _ap_include()
+    if ap_include is None:
+        os.chdir(curr_dir)
+        raise Exception("Couldn't find Xilinx ap_ headers. Source the Vivado/Vitis HLS toolchain, or set XILINX_AP_INCLUDE environment variable.")
+    cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} bridge.cpp firmware/{cfg['ProjectName']}.cpp -o conifer_bridge_{model._stamp}.so"
+    logger.debug(f'Compiling with command {cmd}')
+    try:
+        ret_val = os.system(cmd)
+        if ret_val != 0:
+            raise Exception(f'Failed to compile project {cfg["ProjectName"]}')
+    except:
+        os.chdir(curr_dir)
+        raise Exception(f'Failed to compile project {cfg["ProjectName"]}')
 
-def sim_compile(config):
-    return
-
+    try:
+        logger.debug(f'Importing conifer_bridge_{model._stamp} from conifer_bridge_{model._stamp}.so')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(f'conifer_bridge_{model._stamp}', f'./conifer_bridge_{model._stamp}.so')
+        model.bridge = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(model.bridge)
+    except ImportError:
+        os.chdir(curr_dir)
+        raise Exception("Can't import pybind11 bridge, is it compiled?")
+    finally:
+        os.chdir(curr_dir)
 
 def build(config, reset=False, csim=False, synth=True, cosim=False, export=False):
     cwd = os.getcwd()

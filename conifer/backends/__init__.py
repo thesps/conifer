@@ -16,3 +16,4 @@ SPEC_XILINXHLS.loader.exec_module(vitishls)
 del SPEC_XILINXHLS
 
 from . import vhdl
+from . import cpp
