@@ -13,19 +13,14 @@ def write(model):
   Write BDT for CPP backend
   '''
 
-  ensemble_dict = copy.deepcopy(model._ensembleDict)
-  cfg = copy.deepcopy(model.config)
-  filedir = os.path.dirname(os.path.abspath(__file__))
-  logger.info(f"Writing project to {cfg['OutputDir']}")
-  os.makedirs(f"{cfg['OutputDir']}")
-
   #######################
   # my_project.json
   #######################
+  model.save()
 
-  with open(f"{cfg['OutputDir']}/{cfg['ProjectName']}.json", 'w') as f:
-    json.dump(ensemble_dict, f)
-    f.close()
+  cfg = copy.deepcopy(model.config)
+  filedir = os.path.dirname(os.path.abspath(__file__))
+  logger.info(f"Writing project to {cfg['OutputDir']}")
 
   #######################
   # bridge.cpp
@@ -112,7 +107,8 @@ def build():
   raise NotImplementedError
 
 def auto_config():
-    config = {'ProjectName': 'my_prj',
+    config = {'Backend' : 'cpp',
+              'ProjectName': 'my_prj',
               'OutputDir': 'my-conifer-prj',
               'Precision': 'ap_fixed<18,8>'}
     return config

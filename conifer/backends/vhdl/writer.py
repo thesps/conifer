@@ -15,6 +15,7 @@ class Simulators(Enum):
 
 def write(model):
 
+  model.save()
   ensembleDict = copy.deepcopy(model._ensembleDict)
   cfg = copy.deepcopy(model.config)
 
@@ -178,7 +179,8 @@ def write(model):
   fout.close()
 
 def auto_config():
-    config = {'ProjectName' : 'my-prj',
+    config = {'Backend' : 'vhdl',
+              'ProjectName' : 'my-prj',
               'OutputDir'   : 'my-conifer-prj',
               'Precision'   : 'ap_fixed<18,8>',
               'XilinxPart' : 'xcvu9p-flgb2104-2L-e',

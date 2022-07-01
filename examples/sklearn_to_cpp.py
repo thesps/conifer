@@ -25,8 +25,7 @@ cpp_cfg = conifer.backends.cpp.auto_config()
 cpp_cfg['OutputDir'] = 'prj_cpp_{}'.format(stamp)
 
 # Create and compile the model
-cpp_model = conifer.model(clf, conifer.converters.sklearn,
-                          conifer.backends.cpp, cpp_cfg)
+cpp_model = conifer.converters.convert_from_sklearn(clf, cpp_cfg)
 cpp_model.compile()
 
 # Create a conifer config
@@ -35,8 +34,7 @@ hls_cfg = conifer.backends.xilinxhls.auto_config()
 hls_cfg['OutputDir'] = 'prj_hls_{}'.format(stamp)
 
 # Create and compile the model
-hls_model = conifer.model(clf, conifer.converters.sklearn,
-                          conifer.backends.xilinxhls, hls_cfg)
+hls_model = conifer.converters.convert_from_sklearn(clf, hls_cfg)
 hls_model.compile()
 
 # Run the C++ and get the output

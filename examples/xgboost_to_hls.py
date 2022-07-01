@@ -31,8 +31,7 @@ cfg = conifer.backends.xilinxhls.auto_config()
 cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
 
 # Create and compile the model
-model = conifer.model(bst, conifer.converters.xgboost,
-                      conifer.backends.xilinxhls, cfg)
+model = conifer.converters.convert_from_xgboost(bst, cfg)
 model.compile()
 
 

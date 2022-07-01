@@ -1,7 +1,6 @@
 import numpy as np
 import json
-from .converter import addParentAndDepth, padTree
-from ..model import model
+from conifer.converters.common import addParentAndDepth, padTree
 
 def convert(bdt):
     meta = json.loads(bdt.save_config())

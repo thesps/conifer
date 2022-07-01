@@ -7,6 +7,6 @@ except PackageNotFoundError:
     # package is not installed
     pass
 
-from . import converters
-from . import backends
-from .model import model
+from conifer import converters
+from conifer import backends
+from conifer.model import Model

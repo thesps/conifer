@@ -14,8 +14,7 @@ cfg = conifer.backends.xilinxhls.auto_config()
 # Set the output directory to something unique
 cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
 
-model = conifer.model(clf, conifer.converters.sklearn,
-                      conifer.backends.xilinxhls, cfg)
+model = conifer.converters.convert_from_sklearn(clf, cfg)
 model.compile()
 
 # Run HLS C Simulation and get the output
