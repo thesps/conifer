@@ -1,6 +1,5 @@
 import numpy as np
-from .converter import addParentAndDepth, padTree
-from ..model import model
+from conifer.converters.common import addParentAndDepth, padTree
 
 def convert_bdt(bdt):
   ensembleDict = {'max_depth' : bdt.max_depth, 'n_trees' : bdt.n_estimators,

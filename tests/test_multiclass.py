@@ -34,11 +34,11 @@ models = {'sklearn' : sklearn_model,
 predicts = {'sklearn' : util.predict,
             'onnx'    : util.predict_onnx}
 
-frontends = {'sklearn' : conifer.converters.sklearn,
-            'onnx'    : conifer.converters.onnx}
+#frontends = {'sklearn' : conifer.converters.convert_from_sklearn,
+#            'onnx'    : conifer.converters.convert_from_onnx}
 
-backends = {'xilinxhls' : conifer.backends.xilinxhls,
-            'vhdl'      : conifer.backends.vhdl}
+#backends = {'xilinxhls' : conifer.backends.xilinxhls,
+#            'vhdl'      : conifer.backends.vhdl}
 
 @pytest.mark.parametrize('frontend', ['sklearn', 'onnx'])
 @pytest.mark.parametrize('backend', ['xilinxhls', 'vhdl'])
@@ -46,13 +46,13 @@ def test_multiclass(frontend, backend):
     clf, predictor = models[frontend]()
 
     # Create a conifer config
-    cfg = conifer.backends.xilinxhls.auto_config()
+    backend = conifer.backends.get_backend(backend)
+    cfg = backend.auto_config()
     # Set the output directory to something unique
     cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
     cfg['Precision'] = 'ap_fixed<32,16,AP_RND,AP_SAT>'
     cfg['XilinxPart'] = 'xcu250-figd2104-2L-e'
-    cnf = conifer.model(clf, frontends[frontend],
-                        backends[backend], cfg)
+    cnf = conifer.Model(conifer.converters.get_converter(frontend).convert(clf), cfg)
     cnf.compile()
 
     y_hls, y_skl = predicts[frontend](predictor, X, y, cnf)

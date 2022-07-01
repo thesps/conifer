@@ -1,6 +1,5 @@
 import numpy as np
-from .converter import addParentAndDepth, padTree
-from ..model import model
+from conifer.converters.common import addParentAndDepth, padTree
 import math
 
 #main converter function
@@ -79,7 +78,7 @@ def convert_graph(onnx_clf):
   max_depth=math.ceil(math.log2(max_childern)-1)
 
   #base values and total number of features are found through onnx representation
-  base_values=np.array(node.attribute[attr_dict['base_values']].floats)
+  base_values=list(node.attribute[attr_dict['base_values']].floats)
   no_features=onnx_clf.graph.input[0].type.tensor_type.shape.dim[1].dim_value
   no_features=onnx_clf.graph.input[0].type.tensor_type.shape.dim[1].dim_value
   treelist=np.array(treelist)
