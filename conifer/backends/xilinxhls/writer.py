@@ -52,8 +52,8 @@ def write(model):
 
     logger.info(f"Writing project to {cfg['OutputDir']}")
 
-    os.makedirs('{}/firmware'.format(cfg['OutputDir']))
-    os.makedirs('{}/tb_data'.format(cfg['OutputDir']))
+    os.makedirs('{}/firmware'.format(cfg['OutputDir']), exist_ok=True)
+    os.makedirs('{}/tb_data'.format(cfg['OutputDir']), exist_ok=True)
     copyfile('{}/firmware/BDT.h'.format(filedir),
              '{}/firmware/BDT.h'.format(cfg['OutputDir']))
 
