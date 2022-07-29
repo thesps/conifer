@@ -48,8 +48,7 @@ class Model:
             directory = cfg['OutputDir']
         else:
             directory = filename.split('/')[:-1]
-        if not os.path.exists(directory):
-            os.makedirs(directory)
+        os.makedirs(directory, exist_ok=True)
         logger.info(f"Saving model to {directory}")
         with open(filename, 'w') as f:
             json.dump(ensembleDict, f)

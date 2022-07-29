@@ -55,7 +55,7 @@ def write(model):
 
   filedir = os.path.dirname(os.path.abspath(__file__))
   logger.info(f"Writing project to {cfg['OutputDir']}")
-  os.makedirs('{}/firmware'.format(cfg['OutputDir']))
+  os.makedirs('{}/firmware'.format(cfg['OutputDir']), exist_ok=True)
   copyfiles = ['AddReduce.vhd', 'BDT.vhd', 'BDTTestbench.vhd', 'SimulationInput.vhd', 'SimulationOutput.vhd',
                'TestUtil.vhd', 'Tree.vhd', 'Types.vhd']
   for f in copyfiles:
