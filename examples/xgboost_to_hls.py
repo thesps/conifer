@@ -6,6 +6,10 @@ import xgboost as xgb
 import conifer
 import datetime
 from scipy.special import expit
+import logging
+import sys
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 # Make a random dataset from sklearn 'hastie'
 X, y = make_hastie_10_2(random_state=0)
@@ -27,8 +31,7 @@ cfg = conifer.backends.xilinxhls.auto_config()
 cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
 
 # Create and compile the model
-model = conifer.model(bst, conifer.converters.xgboost,
-                      conifer.backends.xilinxhls, cfg)
+model = conifer.converters.convert_from_xgboost(bst, cfg)
 model.compile()
 
 

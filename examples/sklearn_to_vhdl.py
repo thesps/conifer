@@ -4,6 +4,10 @@ from sklearn.datasets import make_hastie_10_2
 from sklearn.ensemble import GradientBoostingClassifier
 import conifer
 import datetime
+import logging
+import sys
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 # Make a random dataset from sklearn 'hastie'
 X, y = make_hastie_10_2(random_state=0)
@@ -20,7 +24,7 @@ cfg = conifer.backends.vhdl.auto_config()
 cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
 
 # Create and compile the model
-model = conifer.model(clf, conifer.converters.sklearn, conifer.backends.vhdl, cfg)
+model = conifer.converters.convert_from_sklearn(clf, cfg)
 model.compile()
 
 # Run HLS C Simulation and get the output

@@ -1,7 +1,6 @@
 import numpy as np
 import json
-from .converter import addParentAndDepth, padTree
-from ..model import model
+from conifer.converters.common import addParentAndDepth, padTree
 
 def convert(bdt):
     meta = json.loads(bdt.save_config())
@@ -17,19 +16,28 @@ def convert(bdt):
                     'trees' : [],
                     'init_predict' : [0] * n_classes,
                     'norm' : 1}
+    
+    feature_names = {}
+    if bdt.feature_names is None:
+      for i in range(n_features):
+        feature_names[f'f{i}'] = i
+    else:
+      for i, feature_name in enumerate(bdt.feature_names):
+        feature_names[feature_name] = i
+
     trees = bdt.get_dump()
     for i in range(ensembleDict['n_trees']):
         treesl = []
         for j in range(fn_classes):
             tree = trees[fn_classes * i + j]
-            tree = treeToDict(bdt, tree)
+            tree = treeToDict(tree, feature_names)
             tree = addParentAndDepth(tree)
             #tree = padTree(ensembleDict, tree)
             treesl.append(tree)
         ensembleDict['trees'].append(treesl)
     return ensembleDict
 
-def treeToDict(bdt, tree):
+def treeToDict(tree, feature_names):
   # First of all make the tree sklearn-like
   # split by newline, ignore the last line
   nodes = tree.split('\n')[:-1]
@@ -79,7 +87,7 @@ def treeToDict(bdt, tree):
         # Remap node index
       # split around 'feature<threshold'
       data = node.split('<')
-      feature = int(data[0].split('[')[-1].replace('f',''))
+      feature = feature_names[data[0].split('[')[-1]]
       threshold = float(data[1].split(']')[0])
       child_left = int(node.split('yes=')[1].split(',')[0])
       child_right = int(node.split('no=')[1].split(',')[0])

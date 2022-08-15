@@ -1,5 +1,12 @@
 from __future__ import absolute_import
+from importlib.metadata import version, PackageNotFoundError
 
-from . import converters
-from . import backends
-from .model import model
+try:
+    __version__ = version("conifer")
+except PackageNotFoundError:
+    # package is not installed
+    pass
+
+from conifer import converters
+from conifer import backends
+from conifer.model import Model

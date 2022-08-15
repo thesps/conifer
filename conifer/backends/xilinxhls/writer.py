@@ -1,7 +1,13 @@
 import os
 import sys
 from shutil import copyfile
+import warnings
 import numpy as np
+import copy
+from conifer.utils import _ap_include
+import datetime
+import logging
+logger = logging.getLogger(__name__)
 
 _TOOLS = {
     'vivadohls': 'vivado_hls',
@@ -35,7 +41,7 @@ def get_hls():
 
     return tool_exe
 
-def make_optimized_optimized_bdt_code_replacements(ensemble_dict):
+def make_optimized_bdt_code_replacements(ensemble_dict):
     nodes_list=[]
     leaves_list=[]
     trees_list=[]
@@ -86,19 +92,25 @@ def make_bdt_code_replacements():
             """
     return fn_nodes_code, fn_leaves_code, trees_code, decision_functions_code
 
-def write(ensemble_dict, cfg):
+def write(model):
+
+    model.save()
+    ensemble_dict = copy.deepcopy(model._ensembleDict)
+    cfg = copy.deepcopy(model.config)
+
     filedir = os.path.dirname(os.path.abspath(__file__))
 
-    os.makedirs('{}/firmware'.format(cfg['OutputDir']))
-    os.makedirs('{}/tb_data'.format(cfg['OutputDir']))
+    logger.info(f"Writing project to {cfg['OutputDir']}")
 
+    os.makedirs('{}/firmware'.format(cfg['OutputDir']), exist_ok=True)
+    os.makedirs('{}/tb_data'.format(cfg['OutputDir']), exist_ok=True)
     ###################
     # BDT.h
     ###################
 
     if cfg['Optimized']:
         fn_nodes_code, fn_leaves_code, trees_code, decision_functions_code = \
-                make_optimized_optimized_bdt_code_replacements(ensemble_dict)
+                make_optimized_bdt_code_replacements(ensemble_dict)
     else:
         fn_nodes_code, fn_leaves_code, trees_code, decision_functions_code = \
                 make_bdt_code_replacements()
@@ -169,12 +181,41 @@ def write(ensemble_dict, cfg):
         ensemble_dict['n_classes']))
     fout.write('static const bool unroll = {};\n'.format(
         str(cfg['Pipeline']).lower()))
-    fout.write('typedef {} input_t;\n'.format(cfg['Precision']))
+
+    input_precision = None
+    if 'InputPrecision' in cfg.keys():
+        input_precision = cfg['InputPrecision']
+    elif 'Precision' in cfg.keys():
+        input_precision = cfg['Precision']
+    if input_precision is None:
+        raise ValueError('Neither Precision nor InputPrecision specified in configuration')
+    logger.debug(f"InputPrecision {input_precision}")
+    fout.write('typedef {} input_t;\n'.format(input_precision))
     fout.write('typedef input_t input_arr_t[n_features];\n')
-    fout.write('typedef {} score_t;\n'.format(cfg['Precision']))
+
+    threshold_precision = None
+    if 'ThresholdPrecision' in cfg.keys():
+        threshold_precision = cfg['ThresholdPrecision']
+    elif 'InputPrecision' in cfg.keys():
+        warnings.warn("ThresholdPrecision not specified, but InputPrecision is - using InputPrecision for ThresholdPrecision")
+        threshold_precision = cfg['InputPrecision']
+    elif 'Precision' in cfg.keys():
+        threshold_precision = cfg['Precision']
+    if threshold_precision is None:
+        raise ValueError('None of Precision, ThresholdPrecision, nor InputPrecision specified in configuration')
+    logger.debug(f"ThresholdPrecision {threshold_precision}")
+    fout.write('typedef {} threshold_t;\n'.format(threshold_precision))
+
+    score_precision = None
+    if 'ScorePrecision' in cfg.keys():
+        score_precision = cfg['ScorePrecision']
+    elif 'Precision' in cfg.keys():
+        score_precision = cfg['Precision']
+    if score_precision is None:
+        raise ValueError('Neither Precision nor ScorePrecision specified in configuration')
+    logger.debug(f"ScorePrecision {score_precision}")
+    fout.write('typedef {} score_t;\n'.format(score_precision))
     fout.write('typedef score_t score_arr_t[n_classes];\n')
-    # TODO score_arr_t
-    fout.write('typedef input_t threshold_t;\n\n')
 
     tree_fields = ['feature', 'threshold', 'value',
                    'children_left', 'children_right', 'parent']
@@ -267,8 +308,8 @@ def write(ensemble_dict, cfg):
             newline = line.replace('myproject', cfg['ProjectName'])
         elif '//hls-fpga-machine-learning insert data' in line:
             newline = line
-            newline += '      std::vector<float>::const_iterator in_begin = in.cbegin();\n'
-            newline += '      std::vector<float>::const_iterator in_end;\n'
+            newline += '      std::vector<double>::const_iterator in_begin = in.cbegin();\n'
+            newline += '      std::vector<double>::const_iterator in_end;\n'
             newline += '      input_arr_t x;\n'
             newline += '      in_end = in_begin + ({});\n'.format(
                 ensemble_dict['n_features'])
@@ -320,19 +361,6 @@ def write(ensemble_dict, cfg):
         else:
             newline = line
         fout.write(newline)
-    # fout.write('#include "BDT.h"\n')
-    # fout.write('#include "firmware/parameters.h"\n')
-    # fout.write('#include "firmware/{}.h"\n'.format(cfg['ProjectName']))
-
-    #fout.write('int main(){\n')
-    #fout.write('\tinput_arr_t x = {{{}}};\n'.format(str([0] * ensemble_dict['n_features'])[1:-1]));
-    #fout.write('\tscore_arr_t score;\n')
-    #fout.write('\t{}(x, score);\n'.format(cfg['ProjectName']))
-    #fout.write('\tfor(int i = 0; i < n_classes; i++){\n')
-    #fout.write('\t\tstd::cout << score[i] << ", ";\n\t}\n')
-    #fout.write('\tstd::cout << std::endl;\n')
-    #fout.write('\treturn 0;\n}')
-    # fout.close()
 
     fout.close()
 
@@ -351,8 +379,6 @@ def write(ensemble_dict, cfg):
         line = line.replace('nnet_utils', relpath)
         line = line.replace('myproject', cfg['ProjectName'])
 
-        # if 'set_top' in line:
-        #    line = line.replace('myproject', '{}_decision_function'.format(cfg['ProjectName']))
         if 'set_part {xc7vx690tffg1927-2}' in line:
             line = 'set_part {{{}}}\n'.format(cfg['XilinxPart'])
         elif 'create_clock -period 5 -name default' in line:
@@ -366,47 +392,95 @@ def write(ensemble_dict, cfg):
     f.close()
     fout.close()
 
+    #######################
+    # bridge.cpp
+    #######################
 
-def auto_config():
-    config = {'ProjectName': 'my_prj',
+    copyfile(f'{filedir}/hls-template/bridge.cpp',
+        f"{cfg['OutputDir']}/bridge_tmp.cpp")
+
+    fin = open(f"{cfg['OutputDir']}/bridge_tmp.cpp", 'r')
+    fout = open(f"{cfg['OutputDir']}/bridge.cpp", 'w')
+    for line in fin.readlines():
+        newline = line
+        if 'PYBIND11_MODULE' in line:
+            newline = f'PYBIND11_MODULE(conifer_bridge_{model._stamp}, m){{\n'
+        fout.write(newline)
+    fin.close()
+    fout.close()
+    os.remove(f"{cfg['OutputDir']}/bridge_tmp.cpp")
+
+
+def auto_config(granularity='simple'):
+    '''
+    Create an initial configuration dictionary to modify
+    Parameters
+    ----------
+    granularity : string, optional
+        Which granularity to fill the template. Can be 'simple' (default) or 'full'
+        If 'simple', only 'Precision' is included. If 'full', 'InputPrecision', 'ThresholdPrecision', and 'ScorePrecision'
+        are included.
+    '''
+    config = {'Backend' : 'xilinxhls',
+              'ProjectName': 'my_prj',
               'OutputDir': 'my-conifer-prj',
-              'Precision': 'ap_fixed<18,8>',
               'XilinxPart': 'xcvu9p-flgb2104-2L-e',
               'ClockPeriod': '5',
               'Pipeline' : True,
               'Optimized': False}
+
+    if granularity == 'full':
+        config['InputPrecision'] = 'ap_fixed<18,8>'
+        config['ThresholdPrecision'] = 'ap_fixed<18,8>'
+        config['ScorePrecision'] = 'ap_fixed<18,8>'
+    else:
+        config['Precision'] = 'ap_fixed<18,8>'
     return config
 
-
-def decision_function(X, config, trees=False):
-    np.savetxt('{}/tb_data/tb_input_features.dat'.format(config['OutputDir']),
-               X, delimiter=",", fmt='%10f')
-    cwd = os.getcwd()
-    os.chdir(config['OutputDir'])
-
-    hls_tool = get_hls()
-    if hls_tool == None:
-        print("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
-        sys.exit()
-
-    cmd = '{} -f build_prj.tcl "csim=1 synth=0" > predict.log'.format(hls_tool)
-    success = os.system(cmd)
-    if(success > 0):
-        print("'predict' failed, check predict.log")
-        sys.exit()
-    y = np.loadtxt('tb_data/csim_results.log')
-    if trees:
-        tree_scores = np.loadtxt('tb_data/csim_tree_results.log')
-    os.chdir(cwd)
-    if trees:
-        return y, tree_scores
+def decision_function(X, model, trees=False):
+    cfg = model.config
+    curr_dir = os.getcwd()
+    os.chdir(cfg['OutputDir'])
+    if len(X.shape) == 1:
+        y = np.array(model.bridge.decision_function(X))
+    elif len(X.shape) == 2:
+        y = np.array([model.bridge.decision_function(xi) for xi in X])
     else:
-        return y
+        raise Exception(f"Can't handle data shape {X.shape}, expected 1D or 2D shape")
+    os.chdir(curr_dir)
+    if len(y.shape) == 2 and y.shape[1] == 1:
+        y = y.reshape(y.shape[0])
+    return y
 
+def sim_compile(model):
+    cfg = model.config
+    curr_dir = os.getcwd()
+    os.chdir(cfg['OutputDir'])
+    ap_include = _ap_include()
+    if ap_include is None:
+        os.chdir(curr_dir)
+        raise Exception("Couldn't find Xilinx ap_ headers. Source the Vivado/Vitis HLS toolchain, or set XILINX_AP_INCLUDE environment variable.")
+    cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} bridge.cpp firmware/{cfg['ProjectName']}.cpp -o conifer_bridge_{model._stamp}.so"
+    logger.debug(f'Compiling with command {cmd}')
+    try:
+        ret_val = os.system(cmd)
+        if ret_val != 0:
+            raise Exception(f'Failed to compile project {cfg["ProjectName"]}')
+    except:
+        os.chdir(curr_dir)
+        raise Exception(f'Failed to compile project {cfg["ProjectName"]}')
 
-def sim_compile(config):
-    return
-
+    try:
+        logger.debug(f'Importing conifer_bridge_{model._stamp} from conifer_bridge_{model._stamp}.so')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(f'conifer_bridge_{model._stamp}', f'./conifer_bridge_{model._stamp}.so')
+        model.bridge = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(model.bridge)
+    except ImportError:
+        os.chdir(curr_dir)
+        raise Exception("Can't import pybind11 bridge, is it compiled?")
+    finally:
+        os.chdir(curr_dir)
 
 def build(config, reset=False, csim=False, synth=True, cosim=False, export=False):
     cwd = os.getcwd()
@@ -414,13 +488,19 @@ def build(config, reset=False, csim=False, synth=True, cosim=False, export=False
 
     hls_tool = get_hls()
     if hls_tool == None:
-        print("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
+        logger.error("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
         sys.exit()
 
-    cmd = '{hls_tool} -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}"'\
+    cmd = '{hls_tool} -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}" > build.log'\
         .format(hls_tool=hls_tool, reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
+    start = datetime.datetime.now()
+    logger.info(f'build starting {start:%H:%M:%S}')
+    logger.debug(f'build invoking {hls_tool} with command "{cmd}"')
     success = os.system(cmd)
+    stop = datetime.datetime.now()
+    logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
     if(success > 0):
-        print("'build' failed")
+        logger.error("build failed, check logs")
         sys.exit()
+
     os.chdir(cwd)

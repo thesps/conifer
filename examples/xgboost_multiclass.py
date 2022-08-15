@@ -24,8 +24,7 @@ cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
 # Create and compile the model
 # We need to pass the Booster object to conifer, so from xgboost's scikit-learn API,
 # we call bst.get_booster()
-model = conifer.model(
-    bst.get_booster(), conifer.converters.xgboost, conifer.backends.xilinxhls, cfg)
+model = conifer.converters.convert_from_xgboost(bst.get_booster(), cfg)
 model.compile()
 
 # Run HLS C Simulation and get the output

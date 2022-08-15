@@ -27,8 +27,7 @@ cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
 cfg['Precision'] = 'ap_fixed<64,32>'
 
 # Create and compile the model
-model = conifer.model(clf, conifer.converters.sklearn,
-                      conifer.backends.vhdl, cfg)
+model = conifer.converters.convert_from_sklearn(clf, cfg)
 model.compile()
 
 # Run HLS C Simulation and get the output

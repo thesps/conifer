@@ -34,14 +34,14 @@ def hls_convert(train_onnx):
     clf, X, y, name = train_onnx
 
     # Create a conifer config
-    cfg = conifer.backends.vivadohls.auto_config()
+    cfg = conifer.backends.xilinxhls.auto_config()
     cfg['Precision'] = 'ap_fixed<32,16,AP_RND,AP_SAT>'
     # Set the output directory to something unique
     cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
     cfg['XilinxPart'] = 'xcu250-figd2104-2L-e'
 
     # Create and compile the model
-    model = conifer.model(clf, conifer.converters.onnx, conifer.backends.vivadohls, cfg)
+    model = conifer.converters.convert_from_onnx(clf, cfg)
     model.compile()
     return model
 
@@ -53,14 +53,14 @@ def vhdl_convert(train_onnx):
     clf, X, y, name = train_onnx
 
     # Create a conifer config
-    cfg = conifer.backends.vivadohls.auto_config()
+    cfg = conifer.backends.vhdl.auto_config()
     cfg['Precision'] = 'ap_fixed<32,16>'
     # Set the output directory to something unique
     cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
     cfg['XilinxPart'] = 'xcu250-figd2104-2L-e'
 
     # Create and compile the model
-    model = conifer.model(clf, conifer.converters.onnx, conifer.backends.vhdl, cfg)
+    model = conifer.converters.convert_from_onnx(clf, cfg)
     model.compile()
     return model
 
