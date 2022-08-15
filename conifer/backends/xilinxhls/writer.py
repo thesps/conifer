@@ -235,13 +235,16 @@ def write(model):
     else:
         newline += str(ensemble_dict['init_predict'][0]) + '},\n'
     fout.write(newline)
-    fout.write("\t// The trees\n")
+    if cfg['Optimized']:
+        fout.write("\t// The trees\n")
+    else:
+        fout.write("\t{ // The trees\n")
     # loop over trees
     for itree, trees in enumerate(ensemble_dict['trees']):
-        fout.write('\t\t// trees[' + str(itree) + ']\n')
+        fout.write('\t\t{ // trees[' + str(itree) + ']\n')
         # loop over classes
         for iclass, tree in enumerate(trees):
-            fout.write('\t\t\t{{ // [' + str(iclass) + ']\n')
+            fout.write('\t\t\t{ // [' + str(iclass) + ']\n')
             # loop over fields
             for ifield, field in enumerate(tree_fields):
                 newline = '\t\t\t\t{'
@@ -261,7 +264,10 @@ def write(model):
             newline += ','
         newline += '\n'
         fout.write(newline)
-    fout.write('\n};')
+    if cfg['Optimized']:
+        fout.write('\n};')
+    else:
+        fout.write('\t}\n};')
 
     fout.write('\n#endif')
     fout.close()

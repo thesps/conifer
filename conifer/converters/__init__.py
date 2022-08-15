@@ -1,9 +1,9 @@
-from conifer.converters import common
-from conifer.converters import sklearn
-from conifer.converters import tmva
-from conifer.converters import xgboost
-from conifer.converters import onnx
-from conifer.model import Model
+from . import common
+from . import sklearn
+from . import tmva
+from . import xgboost
+from . import onnx
+from ..model import Model
 import logging
 logger = logging.getLogger(__name__)
 
