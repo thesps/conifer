@@ -18,7 +18,25 @@ def train_xgb():
     clf = xgb.XGBClassifier(max_depth = 3, n_estimators = 20, use_label_encoder=False)
     clf.fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=10)
     return clf.get_booster(), X_test, y_test
-    
+
+@pytest.fixture
+def train_xgb_pruned():
+    # Example BDT creation from: https://scikit-learn.org/stable/modules/ensemble.html
+    from sklearn.datasets import make_hastie_10_2
+    import xgboost as xgb
+
+    # Make a random dataset from sklearn 'hastie'
+    X, y = make_hastie_10_2(random_state=0)
+    # Convert y from -1,1 to 0,1 to suppress XGBoost warnings
+    y=((y+1)/2).astype(int) 
+    X_train, X_val, X_test = X[:1800], X[1800:2000], X[2000:]
+    y_train, y_val, y_test = y[:1800], y[1800:2000], y[2000:]
+
+    # Train XGBoost model
+    clf = xgb.XGBClassifier(max_depth = 5, n_estimators = 20, gamma=15, use_label_encoder=False)
+    clf.fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=10)
+    return clf.get_booster(), X_test, y_test
+ 
 @pytest.fixture
 def hls_convert(train_xgb):
     import conifer
@@ -32,6 +50,26 @@ def hls_convert(train_xgb):
     # Set the output directory to something unique
     cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
     cfg['XilinxPart'] = 'xcu250-figd2104-2L-e'
+
+    # Create and compile the model
+    model = conifer.converters.convert_from_xgboost(clf, cfg)
+    model.compile()
+    return model
+
+@pytest.fixture
+def hls_convert_pruned_optimized(train_xgb_pruned):
+    import conifer
+    import datetime
+
+    clf, X, y = train_xgb_pruned
+
+    # Create a conifer config
+    cfg = conifer.backends.xilinxhls.auto_config()
+    cfg['Precision'] = 'ap_fixed<32,16,AP_RND,AP_SAT>'
+    # Set the output directory to something unique
+    cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
+    cfg['XilinxPart'] = 'xcu250-figd2104-2L-e'
+    cfg['Optimized'] = True
 
     # Create and compile the model
     model = conifer.converters.convert_from_xgboost(clf, cfg)
@@ -63,6 +101,12 @@ def predict(train_xgb, hls_convert):
     model = hls_convert
     return util.predict_xgb(clf, X, y, model)
 
+@pytest.fixture
+def predict_optimized(train_xgb_pruned, hls_convert_pruned_optimized):
+    clf, X, y = train_xgb_pruned
+    model = hls_convert_pruned_optimized
+    return util.predict_xgb(clf, X, y, model)
+
 def test_xgb_hls_predict(predict):
     import numpy as np
     y_hls, y_xgb = predict
@@ -70,6 +114,16 @@ def test_xgb_hls_predict(predict):
 
 def test_xgb_build(hls_convert):
     model = hls_convert
+    model.build()
+    assert True
+
+def test_xgb_hls_predict_optimized(predict_optimized):
+    import numpy as np
+    y_hls, y_xgb = predict_optimized
+    assert np.all(np.isclose(y_hls, y_xgb, rtol=1e-2, atol=1e-2))
+
+def test_xgb_build_optimized(hls_convert_pruned_optimized):
+    model = hls_convert_pruned_optimized
     model.build()
     assert True
 
