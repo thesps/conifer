@@ -2,7 +2,7 @@ import numpy as np
 import json
 from conifer.converters.common import addParentAndDepth, padTree
 
-def convert(bdt):
+def convert(bdt, config):
     meta = json.loads(bdt.save_config())
     max_depth = int(meta['learner']['gradient_booster']['updater']['grow_colmaker']['train_param']['max_depth'])
     n_classes = int(meta['learner']['learner_model_param']['num_class'])
@@ -32,7 +32,8 @@ def convert(bdt):
             tree = trees[fn_classes * i + j]
             tree = treeToDict(tree, feature_names)
             tree = addParentAndDepth(tree)
-            #tree = padTree(ensembleDict, tree)
+            if ('Optimized' not in config) or (config['Optimized']==False):
+                tree = padTree(ensembleDict, tree)
             treesl.append(tree)
         ensembleDict['trees'].append(treesl)
     return ensembleDict

@@ -17,6 +17,7 @@ def write(model):
 
   model.save()
   ensembleDict = copy.deepcopy(model._ensembleDict)
+
   cfg = copy.deepcopy(model.config)
 
   array_header_text = """library ieee;
@@ -73,6 +74,14 @@ def write(model):
 
   # binary classification only uses one set of trees
   n_classes = 1 if ensembleDict['n_classes'] == 2 else ensembleDict['n_classes']
+
+  if 'iLeaf' not in ensembleDict['trees'][0][0].keys():
+      # ensembleDict of XGBoost doesn't contain the 'iLeaf' field, add it.
+      for ii in range(len(ensembleDict['trees'])):
+          for iclass in range(n_classes):
+              tree_dict = ensembleDict['trees'][ii][iclass]
+              leaf_mask = ((np.array(tree_dict['children_right'])==-1) & (np.array(tree_dict['children_left']) == -1))
+              ensembleDict['trees'][ii][iclass]['iLeaf'] = list(np.arange(len(tree_dict['children_right']))[leaf_mask])
 
   # Make a file for all the trees for each class
   fout = [open('{}/firmware/Arrays{}.vhd'.format(cfg['OutputDir'], i), 'w') for i in range(n_classes)]

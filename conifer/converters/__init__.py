@@ -34,7 +34,7 @@ def convert_from_tmva(model, config):
 
 def convert_from_xgboost(model, config):
   '''Convert a BDT from an xgboost model and configuration'''
-  ensembleDict = xgboost.convert(model)
+  ensembleDict = xgboost.convert(model, config)
   return Model(ensembleDict, config)
 
 def convert_from_onnx(model, config):
