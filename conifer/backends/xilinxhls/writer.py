@@ -1,5 +1,4 @@
 import os
-import sys
 from shutil import copyfile
 import warnings
 import numpy as np
@@ -399,22 +398,23 @@ def sim_compile(model):
 def build(config, reset=False, csim=False, synth=True, cosim=False, export=False):
     cwd = os.getcwd()
     os.chdir(config['OutputDir'])
-
+    
+    rval = True
     hls_tool = get_hls()
-    if hls_tool == None:
+    if hls_tool is None:
         logger.error("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
-        sys.exit()
-
-    cmd = '{hls_tool} -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}" > build.log'\
-        .format(hls_tool=hls_tool, reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
-    start = datetime.datetime.now()
-    logger.info(f'build starting {start:%H:%M:%S}')
-    logger.debug(f'build invoking {hls_tool} with command "{cmd}"')
-    success = os.system(cmd)
-    stop = datetime.datetime.now()
-    logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
-    if(success > 0):
-        logger.error("build failed, check logs")
-        sys.exit()
-
+        rval = False
+    else:
+        cmd = '{hls_tool} -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}" > build.log'\
+            .format(hls_tool=hls_tool, reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
+        start = datetime.datetime.now()
+        logger.info(f'build starting {start:%H:%M:%S}')
+        logger.debug(f'build invoking {hls_tool} with command "{cmd}"')
+        success = os.system(cmd)
+        stop = datetime.datetime.now()
+        logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
+        if(success > 0):
+            logger.error("build failed, check logs")
+            rval = False
     os.chdir(cwd)
+    return rval
