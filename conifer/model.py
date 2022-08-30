@@ -89,8 +89,17 @@ class Model:
     def build(self, **kwargs):
         '''
         Build the project, running the build function of the backend.
+
+        Parameters
+        ----------
+        kwargs: keyword arguments of backend build method
+        
+        Returns
+        ----------    
+        success: bool
+                 True if the build completed successfuly, otherwise False  
         '''
-        self.backend.build(self.config, **kwargs)
+        return self.backend.build(self.config, **kwargs)
 
     def profile(self, bins=50, return_data=False, return_figure=True):
         try:
