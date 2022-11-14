@@ -1,8 +1,12 @@
 from conifer import backends
+from conifer import __version__ as version
 import numpy as np
 import os
 import json
+import jsonpickle
 import copy
+import datetime
+import platform
 import logging
 logger = logging.getLogger(__name__)
 
@@ -13,8 +17,15 @@ class Model:
     Primary interface to write, compile, execute, and synthesize conifer projects
     '''
 
-    def __init__(self, ensembleDict, config):
-        self.backend = backends.get_backend(config.get('Backend', None))
+    _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm', 'trees']
+    _tree_fields = ['feature', 'value', 'children_left', 'children_right']
+
+    def __init__(self, ensembleDict, config, metadata=None):
+        self.backend = backends.get_backend(config.get('Backend', 'cpp'))
+        for key in Model._ensemble_fields:
+            val = ensembleDict.get(key, None)
+            assert val is not None, f'Missing expected key {key} in ensembleDict'
+            setattr(self, key, val)
         self._ensembleDict = ensembleDict
         self.config = config
         subset_keys = ['max_depth', 'n_trees', 'n_features', 'n_classes']
@@ -24,6 +35,14 @@ class Model:
             import datetime
             return int(datetime.datetime.now().timestamp())
         self._stamp = _make_stamp()
+        if metadata is None:
+            self._metadata = [ModelMetaData()]
+        else:
+            if isinstance(metadata, list):
+                self._metadata = metadata
+                self._metadata.append(ModelMetaData())
+            else:
+                self._metadata = [metadata]
 
     def set_config(self, config):
         self.config = config
@@ -40,19 +59,16 @@ class Model:
         filename: string
             filename to save to
         '''
-        ensembleDict = copy.deepcopy(self._ensembleDict)
-        cfg = copy.deepcopy(self.config)
-        ensembleDict['Config'] = cfg
+        json = jsonpickle.encode(self)
+        cfg = self.config
         if filename is None:
             filename = f"{cfg['OutputDir']}/{cfg['ProjectName']}.json"
             directory = cfg['OutputDir']
         else:
             directory = filename.split('/')[:-1]
         os.makedirs(directory, exist_ok=True)
-        logger.info(f"Saving model to {directory}")
         with open(filename, 'w') as f:
-            json.dump(ensembleDict, f)
-            f.close()
+            f.write(json)
 
     def write(self):
         '''
@@ -128,6 +144,13 @@ class Model:
         elif return_figure:
             return (figure)
 
+class ModelMetaData:
+    def __init__(self):
+        self.version = version
+        self.time = datetime.datetime.now()
+        self.host = platform.node()
+        self.user = os.getlogin()
+
 def load_model(filename):
     '''
     Load a Model from JSON file
@@ -137,9 +160,7 @@ def load_model(filename):
     filename: string
         filename to load from
     '''
-    logger.info(f'Loading Model from {filename}')
-    dictionary = json.load(open(filename, 'r'))
-    config = dictionary.get('Config')
-    if config is not None:
-        del dictionary['Config']
-    return Model(dictionary, config)
+    json = open(filename, 'r').read()
+    model = jsonpickle.decode(json)
+    model._metadata.append(ModelMetaData())
+    return model
