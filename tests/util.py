@@ -15,7 +15,7 @@ def predict_onnx(name, X, y, model):
     label_name = sess.get_outputs()[0].name
     y_onnx = sess.run([label_name], {input_name: X.astype(np.float32)})[0]
     y_hls_df = model.decision_function(X)
-    if len(y_hls_df.shape) == 1:
+    if len(y_hls_df.shape) == 1 or (len(y_hls_df.shape) == 2 and y_hls_df.shape[1]==1):
         y_hls = np.where(expit(y_hls_df) > 0.5, 1, -1)
     else:
         y_hls = np.argmax(expit(y_hls_df), axis=1)

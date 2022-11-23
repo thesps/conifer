@@ -1,5 +1,4 @@
 import os
-import sys
 from shutil import copyfile
 import warnings
 import numpy as np
@@ -44,6 +43,7 @@ def get_hls():
 
 def write(model):
 
+    model.save()
     ensemble_dict = copy.deepcopy(model._ensembleDict)
     cfg = copy.deepcopy(model.config)
 
@@ -51,8 +51,8 @@ def write(model):
 
     logger.info(f"Writing project to {cfg['OutputDir']}")
 
-    os.makedirs('{}/firmware'.format(cfg['OutputDir']))
-    os.makedirs('{}/tb_data'.format(cfg['OutputDir']))
+    os.makedirs('{}/firmware'.format(cfg['OutputDir']), exist_ok=True)
+    os.makedirs('{}/tb_data'.format(cfg['OutputDir']), exist_ok=True)
     copyfile('{}/firmware/BDT.h'.format(filedir),
              '{}/firmware/BDT.h'.format(cfg['OutputDir']))
 
@@ -335,7 +335,8 @@ def auto_config(granularity='simple'):
         If 'simple', only 'Precision' is included. If 'full', 'InputPrecision', 'ThresholdPrecision', and 'ScorePrecision'
         are included.
     '''
-    config = {'ProjectName': 'my_prj',
+    config = {'Backend' : 'xilinxhls',
+              'ProjectName': 'my_prj',
               'OutputDir': 'my-conifer-prj',
               'XilinxPart': 'xcvu9p-flgb2104-2L-e',
               'ClockPeriod': '5',
@@ -360,6 +361,8 @@ def decision_function(X, model, trees=False):
     else:
         raise Exception(f"Can't handle data shape {X.shape}, expected 1D or 2D shape")
     os.chdir(curr_dir)
+    if len(y.shape) == 2 and y.shape[1] == 1:
+        y = y.reshape(y.shape[0])
     return y
 
 def sim_compile(model):
@@ -395,22 +398,23 @@ def sim_compile(model):
 def build(config, reset=False, csim=False, synth=True, cosim=False, export=False):
     cwd = os.getcwd()
     os.chdir(config['OutputDir'])
-
+    
+    rval = True
     hls_tool = get_hls()
-    if hls_tool == None:
+    if hls_tool is None:
         logger.error("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
-        sys.exit()
-
-    cmd = '{hls_tool} -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}" > build.log'\
-        .format(hls_tool=hls_tool, reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
-    start = datetime.datetime.now()
-    logger.info(f'build starting {start:%H:%M:%S}')
-    logger.debug(f'build invoking {hls_tool} with command "{cmd}"')
-    success = os.system(cmd)
-    stop = datetime.datetime.now()
-    logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
-    if(success > 0):
-        logger.error("build failed, check logs")
-        sys.exit()
-
+        rval = False
+    else:
+        cmd = '{hls_tool} -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}" > build.log'\
+            .format(hls_tool=hls_tool, reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
+        start = datetime.datetime.now()
+        logger.info(f'build starting {start:%H:%M:%S}')
+        logger.debug(f'build invoking {hls_tool} with command "{cmd}"')
+        success = os.system(cmd)
+        stop = datetime.datetime.now()
+        logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
+        if(success > 0):
+            logger.error("build failed, check logs")
+            rval = False
     os.chdir(cwd)
+    return rval

@@ -1,5 +1,4 @@
 import os
-import sys
 from shutil import copyfile
 import numpy as np
 from enum import Enum
@@ -16,6 +15,7 @@ class Simulators(Enum):
 
 def write(model):
 
+  model.save()
   ensembleDict = copy.deepcopy(model._ensembleDict)
   cfg = copy.deepcopy(model.config)
 
@@ -55,7 +55,7 @@ def write(model):
 
   filedir = os.path.dirname(os.path.abspath(__file__))
   logger.info(f"Writing project to {cfg['OutputDir']}")
-  os.makedirs('{}/firmware'.format(cfg['OutputDir']))
+  os.makedirs('{}/firmware'.format(cfg['OutputDir']), exist_ok=True)
   copyfiles = ['AddReduce.vhd', 'BDT.vhd', 'BDTTestbench.vhd', 'SimulationInput.vhd', 'SimulationOutput.vhd',
                'TestUtil.vhd', 'Tree.vhd', 'Types.vhd']
   for f in copyfiles:
@@ -64,7 +64,7 @@ def write(model):
   dtype = cfg['Precision']
   if not 'ap_fixed' in dtype:
     logger.error("Only ap_fixed is currently supported, exiting")
-    sys.exit()
+    return
   dtype = dtype.replace('ap_fixed<', '').replace('>', '')
   dtype_n = int(dtype.split(',')[0].strip()) # total number of bits
   dtype_int = int(dtype.split(',')[1].strip()) # number of integer bits
@@ -183,7 +183,8 @@ def write(model):
   fout.close()
 
 def auto_config():
-    config = {'ProjectName' : 'my-prj',
+    config = {'Backend' : 'vhdl',
+              'ProjectName' : 'my-prj',
               'OutputDir'   : 'my-conifer-prj',
               'Precision'   : 'ap_fixed<18,8>',
               'XilinxPart' : 'xcvu9p-flgb2104-2L-e',
@@ -208,7 +209,6 @@ def sim_compile(model):
   os.chdir(cwd)
   if(success > 0):
       logger.error("'sim_compile' failed, check {}_compile.log".format(simulator.name))
-      sys.exit()
   return
 
 def decision_function(X, model, trees=False):
@@ -235,7 +235,7 @@ def decision_function(X, model, trees=False):
     dtype = config['Precision']
     if not 'ap_fixed' in dtype:
         logger.error("Only ap_fixed is currently supported, exiting")
-        sys.exit()
+        return
     dtype = dtype.replace('ap_fixed<', '').replace('>', '')
     dtype_n = int(dtype.split(',')[0].strip()) # total number of bits
     dtype_int = int(dtype.split(',')[1].strip()) # number of integer bits
@@ -252,7 +252,7 @@ def decision_function(X, model, trees=False):
     os.chdir(cwd)
     if(success > 0):
         logger.error("'decision_function' failed, see {}.log".format(logfile))
-        sys.exit()
+        return
     y = np.loadtxt('{}/SimulationOutput.txt'.format(config['OutputDir'])) * 1. / mult
     if trees:
         logger.warn("Individual tree output (trees=True) not yet implemented for this backend")
@@ -271,7 +271,8 @@ def build(config, **kwargs):
     logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
     if(success > 0):
         logger.error("build failed, check build.log")
-        sys.exit()
+        return False
+    return True
             
 def write_sim_scripts(cfg, filedir, n_classes):
   from conifer.backends.vhdl import simulator

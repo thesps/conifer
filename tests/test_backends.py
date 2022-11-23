@@ -27,7 +27,7 @@ def all_backends_predict(model, X, y_shape, precision):
   hls_cfg = conifer.backends.xilinxhls.auto_config()
   hls_cfg['Precision'] = precision
   hls_cfg['OutputDir'] = f'prj_backend_equality_hls_{precision}'
-  hls_model = conifer.model(model, conifer.converters.sklearn, conifer.backends.xilinxhls, hls_cfg)
+  hls_model = conifer.converters.convert_from_sklearn(model, hls_cfg)
   hls_model.compile()
   y_hls = hls_model.decision_function(X).reshape(y_shape)
 
@@ -36,7 +36,7 @@ def all_backends_predict(model, X, y_shape, precision):
   hdl_cfg = conifer.backends.vhdl.auto_config()
   hdl_cfg['Precision'] = precision
   hdl_cfg['OutputDir'] = f'prj_backend_equality_hdl_{precision}'
-  hdl_model = conifer.model(model, conifer.converters.sklearn, conifer.backends.vhdl, hdl_cfg)
+  hdl_model = conifer.converters.convert_from_sklearn(model, hdl_cfg)
   hdl_model.compile()
   y_hdl = hdl_model.decision_function(X).reshape(y_shape)
   """
@@ -44,7 +44,7 @@ def all_backends_predict(model, X, y_shape, precision):
   cpp_cfg = conifer.backends.cpp.auto_config()
   cpp_cfg['Precision'] = precision
   cpp_cfg['OutputDir'] = f'prj_backend_equality_cpp_{precision}'
-  cpp_model = conifer.model(model, conifer.converters.sklearn, conifer.backends.cpp, cpp_cfg)
+  cpp_model = conifer.converters.convert_from_sklearn(model, cpp_cfg)
   cpp_model.compile()
   y_cpp = cpp_model.decision_function(X).reshape(y_shape)
 
