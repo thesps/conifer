@@ -2,15 +2,11 @@ import os
 from shutil import copyfile
 import numpy as np
 from enum import Enum
+from conifer.utils import FixedPointConverter
 import copy
 import datetime
 import logging
 logger = logging.getLogger(__name__)
-
-class Simulators(Enum):
-   modelsim = 0
-   xsim = 1
-   ghdl = 2
 
 def write(model):
 
@@ -70,6 +66,10 @@ def write(model):
   dtype_frac = dtype_n - dtype_int # number of fractional bits
   mult = 2**dtype_frac
 
+  fp = FixedPointConverter(cfg['Precision'])
+  # TODO this should be attached to the model differently
+  model._fp_converter = fp
+
   # binary classification only uses one set of trees
   n_classes = 1 if ensembleDict['n_classes'] == 2 else ensembleDict['n_classes']
 
@@ -79,15 +79,12 @@ def write(model):
   for i in range(n_classes):
     fout[i].write(array_header_text)
     fout[i].write('package Arrays{} is\n\n'.format(i))
-    fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(int(np.round(ensembleDict['init_predict'][i] * mult))))
-    #fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(int(np.round(ensembleDict['init_predict'][i] * mult))))
-
+    fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(fp.to_int(np.float64(ensembleDict['init_predict'][i]))))
 
   # Loop over fields (childrenLeft, childrenRight, threshold...)
   for field in ensembleDict['trees'][0][0].keys():
     # Write the type for this field to each classes' file
     for iclass in range(n_classes):
-      #dtype = 'txArray2D' if field == 'threshold' else 'tyArray2D' if field == 'value' else 'intArray2D'
       fieldName = field
       # The threshold and value arrays are declared as integers, then cast
       # So need a separate constant
@@ -95,7 +92,7 @@ def write(model):
         fieldName += '_int'
         # Convert the floating point values to integers
         for ii, trees in enumerate(ensembleDict['trees']):
-          ensembleDict['trees'][ii][iclass][field] = np.round(np.array(ensembleDict['trees'][ii][iclass][field]) * mult).astype('int')
+          ensembleDict['trees'][ii][iclass][field] = np.array([fp.to_int(x) for x in ensembleDict['trees'][ii][iclass][field]])
       nElem = 'nLeaves' if field == 'iLeaf' else 'nNodes'
       fout[iclass].write('    constant {} : intArray2D{}(0 to nTrees - 1) := ('.format(fieldName, nElem))
     # Loop over the trees within the class
@@ -112,7 +109,8 @@ def write(model):
     fout[i].write('end Arrays{};'.format(i))
     fout[i].close()
 
-  write_sim_scripts(cfg, filedir, n_classes)
+  from conifer.backends.vhdl import simulator
+  simulator.write_scripts(cfg['OutputDir'], filedir, n_classes)
 
   f = open('{}/SimulationInput.txt'.format(cfg['OutputDir']), 'w')
   f.write(' '.join(map(str, [0] * ensembleDict['n_features'])))
@@ -188,67 +186,24 @@ def auto_config():
 
 def sim_compile(model):
   from conifer.backends.vhdl import simulator
-  config = copy.deepcopy(model.config)
-  xsim_cmd = 'sh xsim_compile.sh > xsim_compile.log'
-  msim_cmd = 'sh modelsim_compile.sh > modelsim_compile.log'
-  ghdl_cmd = 'sh ghdl_compile.sh > ghdl_compile.log'
-  cmdmap = {Simulators.modelsim : msim_cmd,
-            Simulators.xsim : xsim_cmd,
-            Simulators.ghdl : ghdl_cmd}
-  cmd = cmdmap[simulator]
-  logger.info(f'Compiling simulation for {simulator} simulator')
-  logger.debug(f'Compiling simulation with command "{cmd}"')
-  cwd = os.getcwd()
-  os.chdir(config['OutputDir'])
-  success = os.system(cmd)
-  os.chdir(cwd)
-  if(success > 0):
-      logger.error("'sim_compile' failed, check {}_compile.log".format(simulator.name))
-  return
+  return simulator.compile(model.config['OutputDir'])
 
 def decision_function(X, model, trees=False):
     from conifer.backends.vhdl import simulator
 
     config = copy.deepcopy(model.config)
-    msim_cmd = 'vsim -c -do "vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench; run -all; quit -f" > vsim.log'
-    xsim_cmd = 'xsim -R bdt_tb > xsim.log'
-    ghdl_cmd = 'ghdl -r --std=08 --work=xil_defaultlib testbench > ghdl.log'
-    cmdmap = {Simulators.modelsim : msim_cmd,
-              Simulators.xsim : xsim_cmd,
-              Simulators.ghdl : ghdl_cmd}
-    cmd = cmdmap[simulator]
-    msim_log = 'vsim.log'
-    xsim_log = 'xsim.log'
-    ghdl_log = 'ghdl.log'
-    logmap = {Simulators.modelsim : msim_log,
-              Simulators.xsim : xsim_log,
-              Simulators.ghdl : ghdl_log}
-    logfile = logmap[simulator]
 
-    logger.info(f'Running simulation for {simulator} simulator')
-
-    dtype = config['Precision']
-    if not 'ap_fixed' in dtype:
-        logger.error("Only ap_fixed is currently supported, exiting")
-        return
-    dtype = dtype.replace('ap_fixed<', '').replace('>', '')
-    dtype_n = int(dtype.split(',')[0].strip()) # total number of bits
-    dtype_int = int(dtype.split(',')[1].strip()) # number of integer bits
-    dtype_frac = dtype_n - dtype_int # number of fractional bits
-    mult = 2**dtype_frac
-    Xint = (X *  mult).astype('int')
-    logger.debug(f'Converting X ({X.dtype}), to integers with scale factor {mult} from {config["Precision"]}')
+    Xint = np.array([model._fp_converter.to_int(x) for x in X.ravel()]).reshape(X.shape)
     np.savetxt('{}/SimulationInput.txt'.format(config['OutputDir']),
                Xint, delimiter=' ', fmt='%d')
-    cwd = os.getcwd()
-    os.chdir(config['OutputDir'])
-    logger.debug(f'Running simulation with command "{cmd}"')
-    success = os.system(cmd)
-    os.chdir(cwd)
-    if(success > 0):
-        logger.error("'decision_function' failed, see {}.log".format(logfile))
-        return
-    y = np.loadtxt('{}/SimulationOutput.txt'.format(config['OutputDir'])) * 1. / mult
+    success = simulator.run_sim(config['OutputDir'])
+    if not success:
+      return 
+    y = np.loadtxt('{}/SimulationOutput.txt'.format(config['OutputDir'])).astype(np.int32)
+    y = np.array([model._fp_converter.from_int(yi) for yi in y.ravel()]).reshape(y.shape)
+    if np.ndim(y) == 1:
+      y = np.expand_dims(y, 1)
+
     if trees:
         logger.warn("Individual tree output (trees=True) not yet implemented for this backend")
     return y
@@ -269,54 +224,3 @@ def build(config, **kwargs):
         return False
     return True
             
-def write_sim_scripts(cfg, filedir, n_classes):
-  from conifer.backends.vhdl import simulator
-  fmap = {Simulators.modelsim : write_modelsim_scripts,
-          Simulators.xsim : write_xsim_scripts,
-          Simulators.ghdl : write_ghdl_scripts,}
-  fmap[simulator](cfg, filedir, n_classes)
-
-def write_modelsim_scripts(cfg, filedir, n_classes):
-  f = open(os.path.join(filedir,'./scripts/modelsim_compile.sh'),'r')
-  fout = open('{}/modelsim_compile.sh'.format(cfg['OutputDir']),'w')
-  for line in f.readlines():
-    if 'insert arrays' in line:
-      for i in range(n_classes):
-        newline = 'vcom -2008 -work BDT ./firmware/Arrays{}.vhd\n'.format(i)
-        fout.write(newline)
-    else:
-      fout.write(line)
-  f.close()
-  fout.close()
-
-  f = open('{}/test.tcl'.format(cfg['OutputDir']), 'w')
-  f.write('vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench\n')
-  f.write('run 100 ns\n')
-  f.write('quit -f\n')
-  f.close()
-
-def write_xsim_scripts(cfg, filedir, n_classes):
-  f = open(os.path.join(filedir, './scripts/xsim_compile.sh'), 'r')
-  fout = open('{}/xsim_compile.sh'.format(cfg['OutputDir']), 'w')
-  for line in f.readlines():
-    if 'insert arrays' in line:
-      for i in range(n_classes):
-        newline = 'xvhdl -2008 -work BDT ./firmware/Arrays{}.vhd\n'.format(i)
-        fout.write(newline)
-    else:
-      fout.write(line)
-  f.close()
-  fout.close()
-
-def write_ghdl_scripts(cfg, filedir, n_classes):
-  f = open(os.path.join(filedir, './scripts/ghdl_compile.sh'), 'r')
-  fout = open('{}/ghdl_compile.sh'.format(cfg['OutputDir']), 'w')
-  for line in f.readlines():
-    if 'insert arrays' in line:
-      for i in range(n_classes):
-        newline = 'ghdl -a --std=08 --work=BDT ./firmware/Arrays{}.vhd\n'.format(i)
-        fout.write(newline)
-    else:
-      fout.write(line)
-  f.close()
-  fout.close()
