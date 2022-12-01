@@ -1,6 +1,5 @@
 import numpy as np
 import json
-from conifer.converters.common import addParentAndDepth, padTree
 
 def convert(bdt):
     meta = json.loads(bdt.save_config())
@@ -31,8 +30,6 @@ def convert(bdt):
         for j in range(fn_classes):
             tree = trees[fn_classes * i + j]
             tree = treeToDict(tree, feature_names)
-            tree = addParentAndDepth(tree)
-            tree = padTree(ensembleDict, tree)
             treesl.append(tree)
         ensembleDict['trees'].append(treesl)
     return ensembleDict

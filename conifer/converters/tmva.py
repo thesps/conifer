@@ -1,6 +1,5 @@
 import xml.etree.ElementTree as ET
 import numpy as np
-from conifer.converters.common import addParentAndDepth, padTree
 
 def getOptionValue(bdt, optionName):
     for option in bdt.getroot().find('Options') :
@@ -25,7 +24,6 @@ def convert(bdt):
     tree = trees
     weight = float(tree.attrib['boostWeight'])
     tree = treeToDict(bdt, tree)
-    tree = padTree(ensembleDict, tree)
     treesl.append(tree)
     ensembleDict['trees'].append(treesl)
     ensembleDict['norm'] += weight
@@ -88,6 +86,5 @@ def treeToDict(bdt, tree):
 
   treeDict = {'feature' : feature, 'threshold' : threshold, 'value' : value, 'children_left' : children_left, 'children_right' : children_right}
 
-  treeDict = addParentAndDepth(treeDict)
   return treeDict
 

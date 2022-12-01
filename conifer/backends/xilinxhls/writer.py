@@ -4,6 +4,7 @@ import warnings
 import numpy as np
 import copy
 from conifer.utils import _ap_include
+from conifer.backends.tree_padding import padTree, addParentAndDepth
 import datetime
 import logging
 logger = logging.getLogger(__name__)
@@ -44,7 +45,6 @@ def get_hls():
 def write(model):
 
     model.save()
-    ensemble_dict = copy.deepcopy(model._ensembleDict)
     cfg = copy.deepcopy(model.config)
 
     filedir = os.path.dirname(os.path.abspath(__file__))
@@ -86,13 +86,13 @@ def write(model):
     fout.write('#include  "BDT.h"\n')
     fout.write('#include "ap_fixed.h"\n\n')
     fout.write('static const int n_trees = {};\n'.format(
-        ensemble_dict['n_trees']))
+        model.n_trees))
     fout.write('static const int max_depth = {};\n'.format(
-        ensemble_dict['max_depth']))
+        model.max_depth))
     fout.write('static const int n_features = {};\n'.format(
-        ensemble_dict['n_features']))
+        model.n_features))
     fout.write('static const int n_classes = {};\n'.format(
-        ensemble_dict['n_classes']))
+        model.n_classes))
     fout.write('static const bool unroll = {};\n'.format(
         str(cfg['Pipeline']).lower()))
 
@@ -137,21 +137,21 @@ def write(model):
     fout.write(
         "static const BDT::BDT<n_trees, max_depth, n_classes, input_arr_t, score_t, threshold_t, unroll> bdt = \n")
     fout.write("{ // The struct\n")
-    newline = "\t" + str(ensemble_dict['norm']) + ", // The normalisation\n"
+    newline = "\t" + str(model.norm) + ", // The normalisation\n"
     fout.write(newline)
     newline = "\t{"
-    if ensemble_dict['n_classes'] > 2:
-        for iip, ip in enumerate(ensemble_dict['init_predict']):
-            if iip < len(ensemble_dict['init_predict']) - 1:
+    if model.n_classes > 2:
+        for iip, ip in enumerate(model.init_predict):
+            if iip < len(model.init_predict) - 1:
                 newline += '{},'.format(ip)
             else:
                 newline += '{}}}, // The init_predict\n'.format(ip)
     else:
-        newline += str(ensemble_dict['init_predict'][0]) + '},\n'
+        newline += str(model.init_predict[0]) + '},\n'
     fout.write(newline)
     fout.write("\t{ // The array of trees\n")
     # loop over trees
-    for itree, trees in enumerate(ensemble_dict['trees']):
+    for itree, trees in enumerate(model.trees):
         fout.write('\t\t{ // trees[' + str(itree) + ']\n')
         # loop over classes
         for iclass, tree in enumerate(trees):
@@ -171,7 +171,7 @@ def write(model):
             newline += '\n'
             fout.write(newline)
         newline = '\t\t}'
-        if itree < ensemble_dict['n_trees'] - 1:
+        if itree < model.n_trees - 1:
             newline += ','
         newline += '\n'
         fout.write(newline)
@@ -226,7 +226,7 @@ def write(model):
             newline += '      std::vector<double>::const_iterator in_end;\n'
             newline += '      input_arr_t x;\n'
             newline += '      in_end = in_begin + ({});\n'.format(
-                ensemble_dict['n_features'])
+                model.n_features)
             newline += '      std::copy(in_begin, in_end, x);\n'
             newline += '      in_begin = in_end;\n'
             # brace-init zeros the array out because we use std=c++0x
@@ -234,16 +234,16 @@ def write(model):
             newline += '      score_t tree_scores[BDT::fn_classes(n_classes) * n_trees]{};\n'
             # but we can still explicitly zero out if you want
             newline += '      std::fill_n(score, {}, 0.);\n'.format(
-                ensemble_dict['n_classes'])
+                model.n_classes)
         elif '//hls-fpga-machine-learning insert zero' in line:
             newline = line
             newline += '    input_arr_t x;\n'
             newline += '    std::fill_n(x, {}, 0.);\n'.format(
-                ensemble_dict['n_features'])
+                model.n_features)
             newline += '    score_arr_t score{};\n'
             newline += '    score_t tree_scores[BDT::fn_classes(n_classes) * n_trees]{};\n'
             newline += '    std::fill_n(score, {}, 0.);\n'.format(
-                ensemble_dict['n_classes'])
+                model.n_classes)
         elif '//hls-fpga-machine-learning insert top-level-function' in line:
             newline = line
             top_level = indent + \
@@ -253,7 +253,7 @@ def write(model):
             newline = line
             newline += indent + \
                 'for(int i = 0; i < {}; i++) {{\n'.format(
-                    ensemble_dict['n_classes'])
+                    model.n_classes)
             newline += indent + '  std::cout << pr[i] << " ";\n'
             newline += indent + '}\n'
             newline += indent + 'std::cout << std::endl;\n'
@@ -261,14 +261,14 @@ def write(model):
             newline = line
             newline += indent + \
                 'for(int i = 0; i < {}; i++) {{\n'.format(
-                    ensemble_dict['n_classes'])
+                    model.n_classes)
             newline += indent + '  fout << score[i] << " ";\n'
             newline += indent + '}\n'
         elif '//hls-fpga-machine-learning insert output' in line or '//hls-fpga-machine-learning insert quantized' in line:
             newline = line
             newline += indent + \
                 'for(int i = 0; i < {}; i++) {{\n'.format(
-                    ensemble_dict['n_classes'])
+                    model.n_classes)
             newline += indent + '  std::cout << score[i] << " ";\n'
             newline += indent + '}\n'
             newline += indent + 'std::cout << std::endl;\n'
@@ -418,3 +418,9 @@ def build(config, reset=False, csim=False, synth=True, cosim=False, export=False
             rval = False
     os.chdir(cwd)
     return rval
+
+def _init_model(model):
+  for trees in model.trees:
+    for tree in trees:
+      tree = addParentAndDepth(tree)
+      tree = padTree(tree, model.max_depth)

@@ -26,10 +26,11 @@ class Model:
             val = ensembleDict.get(key, None)
             assert val is not None, f'Missing expected key {key} in ensembleDict'
             setattr(self, key, val)
-        self._ensembleDict = ensembleDict
         self.config = config
+        self.backend._init_model(self)
+
         subset_keys = ['max_depth', 'n_trees', 'n_features', 'n_classes']
-        subset_dict = {key: self._ensembleDict[key] for key in subset_keys}
+        subset_dict = {key: getattr(self, key) for key in subset_keys}
         logger.debug(f"Converted BDT with parameters {json.dumps(subset_dict)}")
         def _make_stamp():
             import datetime

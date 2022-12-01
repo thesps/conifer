@@ -1,5 +1,4 @@
 import numpy as np
-from conifer.converters.common import addParentAndDepth, padTree
 
 def convert_bdt(bdt):
   ensembleDict = {'max_depth' : bdt.max_depth, 'n_trees' : bdt.n_estimators,
@@ -11,7 +10,6 @@ def convert_bdt(bdt):
     treesl = []
     for tree in trees:
       tree = treeToDict(bdt, tree.tree_)
-      tree = padTree(ensembleDict, tree)
       # NB node values are multiplied by the learning rate here, saving work in the FPGA
       tree['value'] = (np.array(tree['value'])[:,0,0] * bdt.learning_rate).tolist()
       treesl.append(tree)
@@ -28,7 +26,6 @@ def convert_random_forest(bdt):
   for tree in bdt.estimators_:
     treesl = []
     tree = treeToDict(bdt, tree.tree_)
-    tree = padTree(ensembleDict, tree)
     # Random forest takes the mean prediction, do that here
     # Also need to scale the values by their sum
     v = np.array(tree['value'])
@@ -49,6 +46,5 @@ def treeToDict(bdt, tree):
   treeDict = {'feature' : tree.feature.tolist(), 'threshold' : tree.threshold.tolist(), 'value' : tree.value.tolist()}
   treeDict['children_left'] = tree.children_left.tolist()
   treeDict['children_right'] = tree.children_right.tolist()
-  treeDict = addParentAndDepth(treeDict)
   return treeDict
 

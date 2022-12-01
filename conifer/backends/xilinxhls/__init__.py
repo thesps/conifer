@@ -13,5 +13,6 @@ auto_config = writer.auto_config
 decision_function = writer.decision_function
 sim_compile = writer.sim_compile
 build = writer.build
+_init_model = writer._init_model
 
 del SPEC_WRITER

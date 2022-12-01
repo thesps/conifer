@@ -110,3 +110,6 @@ def auto_config():
               'OutputDir': 'my-conifer-prj',
               'Precision': 'ap_fixed<18,8>'}
     return config
+
+def _init_model(model):
+  pass

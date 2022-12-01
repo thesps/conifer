@@ -1,4 +1,3 @@
-from conifer.converters import common
 from conifer.converters import sklearn
 from conifer.converters import tmva
 from conifer.converters import xgboost

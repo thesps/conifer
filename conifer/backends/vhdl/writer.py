@@ -3,6 +3,7 @@ from shutil import copyfile
 import numpy as np
 from enum import Enum
 from conifer.utils import FixedPointConverter
+from conifer.backends.tree_padding import padTree, addParentAndDepth
 import copy
 import datetime
 import logging
@@ -11,7 +12,6 @@ logger = logging.getLogger(__name__)
 def write(model):
 
   model.save()
-  ensembleDict = copy.deepcopy(model._ensembleDict)
   cfg = copy.deepcopy(model.config)
 
   array_header_text = """library ieee;
@@ -71,7 +71,7 @@ def write(model):
   model._fp_converter = fp
 
   # binary classification only uses one set of trees
-  n_classes = 1 if ensembleDict['n_classes'] == 2 else ensembleDict['n_classes']
+  n_classes = 1 if model.n_classes == 2 else model.n_classes
 
   # Make a file for all the trees for each class
   fout = [open('{}/firmware/Arrays{}.vhd'.format(cfg['OutputDir'], i), 'w') for i in range(n_classes)]
@@ -79,10 +79,10 @@ def write(model):
   for i in range(n_classes):
     fout[i].write(array_header_text)
     fout[i].write('package Arrays{} is\n\n'.format(i))
-    fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(fp.to_int(np.float64(ensembleDict['init_predict'][i]))))
+    fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(fp.to_int(np.float64(model.init_predict[i]))))
 
   # Loop over fields (childrenLeft, childrenRight, threshold...)
-  for field in ensembleDict['trees'][0][0].keys():
+  for field in model.trees[0][0].keys():
     # Write the type for this field to each classes' file
     for iclass in range(n_classes):
       fieldName = field
@@ -91,15 +91,15 @@ def write(model):
       if field == 'threshold' or field == 'value':
         fieldName += '_int'
         # Convert the floating point values to integers
-        for ii, trees in enumerate(ensembleDict['trees']):
-          ensembleDict['trees'][ii][iclass][field] = np.array([fp.to_int(x) for x in ensembleDict['trees'][ii][iclass][field]])
+        for ii, trees in enumerate(model.trees):
+          model.trees[ii][iclass][field] = np.array([fp.to_int(x) for x in model.trees[ii][iclass][field]])
       nElem = 'nLeaves' if field == 'iLeaf' else 'nNodes'
       fout[iclass].write('    constant {} : intArray2D{}(0 to nTrees - 1) := ('.format(fieldName, nElem))
     # Loop over the trees within the class
-    for itree, trees in enumerate(ensembleDict['trees']):
+    for itree, trees in enumerate(model.trees):
       for iclass, tree in enumerate(trees):
         fout[iclass].write('({})'.format(', '.join(map(str, tree[field]))))
-        if itree < ensembleDict['n_trees'] - 1:
+        if itree < model.n_trees - 1:
           fout[iclass].write(',')
         fout[iclass].write('\n{}'.format(' ' * 16))    
     for iclass in range(n_classes):
@@ -113,7 +113,7 @@ def write(model):
   simulator.write_scripts(cfg['OutputDir'], filedir, n_classes)
 
   f = open('{}/SimulationInput.txt'.format(cfg['OutputDir']), 'w')
-  f.write(' '.join(map(str, [0] * ensembleDict['n_features'])))
+  f.write(' '.join(map(str, [0] * model.n_features)))
   f.close()
 
   f = open(os.path.join(filedir,'./scripts/synth.tcl'),'r')
@@ -161,11 +161,11 @@ def write(model):
   fout = open('{}/firmware/Constants.vhd'.format(cfg['OutputDir']), 'w')
   for line in f.readlines():
     if 'hls4ml' in line:
-      newline = "  constant nTrees : integer := {};\n".format(ensembleDict['n_trees'])
-      newline += "  constant maxDepth : integer := {};\n".format(ensembleDict['max_depth'])
-      newline +=  "  constant nNodes : integer := {};\n".format(2 ** (ensembleDict['max_depth'] + 1) - 1)
-      newline += "  constant nLeaves : integer := {};\n".format(2 ** ensembleDict['max_depth'])
-      newline += "  constant nFeatures : integer := {};\n".format(ensembleDict['n_features'])
+      newline = "  constant nTrees : integer := {};\n".format(model.n_trees)
+      newline += "  constant maxDepth : integer := {};\n".format(model.max_depth)
+      newline +=  "  constant nNodes : integer := {};\n".format(2 ** (model.max_depth + 1) - 1)
+      newline += "  constant nLeaves : integer := {};\n".format(2 ** model.max_depth)
+      newline += "  constant nFeatures : integer := {};\n".format(model.n_features)
       newline += "  constant nClasses : integer := {};\n\n".format(n_classes)
       newline += "  subtype tx is signed({} downto 0);\n".format(dtype_n - 1)
       newline += "  subtype ty is signed({} downto 0);\n".format(dtype_n - 1)
@@ -224,3 +224,8 @@ def build(config, **kwargs):
         return False
     return True
             
+def _init_model(model):
+  for trees in model.trees:
+    for tree in trees:
+      tree = addParentAndDepth(tree)
+      tree = padTree(tree, model.max_depth)
