@@ -10,6 +10,17 @@ import platform
 import logging
 logger = logging.getLogger(__name__)
 
+class DecisionTree:
+  '''
+  Conifer DecisionTreeBase representation class
+  '''
+  _tree_fields = ['feature', 'threshold', 'value', 'children_left', 'children_right']
+  def __init__(self, treeDict):
+    for key in DecisionTree._tree_fields:
+      val = treeDict.get(key, None)
+      assert val is not None, f"Missing expected key {key} in treeDict"
+      setattr(self, key, val)
+
 class Model:
 
     '''
@@ -17,8 +28,7 @@ class Model:
     Primary interface to write, compile, execute, and synthesize conifer projects
     '''
 
-    _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm', 'trees']
-    _tree_fields = ['feature', 'value', 'children_left', 'children_right']
+    _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm']
 
     def __init__(self, ensembleDict, config, metadata=None):
         self.backend = backends.get_backend(config.get('Backend', 'cpp'))
@@ -26,6 +36,9 @@ class Model:
             val = ensembleDict.get(key, None)
             assert val is not None, f'Missing expected key {key} in ensembleDict'
             setattr(self, key, val)
+        trees = ensembleDict.get('trees', None)
+        assert trees is not None, f'Missing expected key {key} in ensembleDict'
+        self.trees = [[DecisionTree(treeDict) for treeDict in trees_class] for trees_class in trees]
         self.config = config
         self.backend._init_model(self)
 

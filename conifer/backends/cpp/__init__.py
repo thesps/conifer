@@ -1,1 +1,1 @@
-from .writer import write, sim_compile, decision_function, build, auto_config
+from .writer import write, sim_compile, decision_function, build, auto_config, _init_model
