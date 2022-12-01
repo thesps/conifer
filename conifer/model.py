@@ -162,5 +162,12 @@ def load_model(filename):
     '''
     json = open(filename, 'r').read()
     model = jsonpickle.decode(json)
-    model._metadata.append(ModelMetaData())
+    if isinstance(model, dict):
+        logger.warn(f'Attempting to load Model from {filename} interpreted as originating from conifer <= 0.4')
+        model = _load_old_model(model)
+    else:
+        model._metadata.append(ModelMetaData())
     return model
+
+def _load_old_model(model_dict):
+    return Model(model_dict, model_dict.get('Config'))
