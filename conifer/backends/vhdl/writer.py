@@ -22,8 +22,8 @@ class VHDLModel(Model):
       for tree in trees_class:
         tree.padTree(self.max_depth)
         # Convert the floating point values to integers
-        tree.threshold = np.array([self._fp_converter.to_int(x) for x in tree.threshold])
-        tree.value = np.array([self._fp_converter.to_int(x) for x in tree.value])
+        tree.threshold_int = np.array([self._fp_converter.to_int(x) for x in tree.threshold])
+        tree.value_int = np.array([self._fp_converter.to_int(x) for x in tree.value])
 
   @copydocstring(Model.write)
   def write(self):
@@ -85,16 +85,14 @@ class VHDLModel(Model):
       fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(self._fp_converter.to_int(np.float64(self.init_predict[i]))))
 
     # Loop over fields (childrenLeft, childrenRight, threshold...)
-    for field in BottomUpDecisionTree._tree_fields:
+    tree_fields = ['feature', 'threshold_int', 'value_int',
+                   'children_left', 'children_right', 'parent',
+                   'iLeaf', 'depth']
+    for field in tree_fields:
       # Write the type for this field to each classes' file
       for iclass in range(n_classes):
-        fieldName = field
-        # The threshold and value arrays are declared as integers, then cast
-        # So need a separate constant
-        if field == 'threshold' or field == 'value':
-          fieldName += '_int'
         nElem = 'nLeaves' if field == 'iLeaf' else 'nNodes'
-        fout[iclass].write('    constant {} : intArray2D{}(0 to nTrees - 1) := ('.format(fieldName, nElem))
+        fout[iclass].write('    constant {} : intArray2D{}(0 to nTrees - 1) := ('.format(field, nElem))
       # Loop over the trees within the class
       for itree, trees in enumerate(self.trees):
         for iclass, tree in enumerate(trees):
@@ -224,7 +222,7 @@ def make_model(ensembleDict, config):
     
 def auto_config():
     config = {'Backend' : 'vhdl',
-              'ProjectName' : 'my-prj',
+              'ProjectName' : 'my_prj',
               'OutputDir'   : 'my-conifer-prj',
               'Precision'   : 'ap_fixed<18,8>',
               'XilinxPart' : 'xcvu9p-flgb2104-2L-e',

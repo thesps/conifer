@@ -31,7 +31,7 @@ def onnx_model():
 models = {'sklearn' : sklearn_model,
           'onnx'    : onnx_model}
 
-predicts = {'sklearn' : util.predict,
+predicts = {'sklearn' : util.predict_skl,
             'onnx'    : util.predict_onnx}
 
 #frontends = {'sklearn' : conifer.converters.convert_from_sklearn,

@@ -2,8 +2,6 @@ from conifer import __version__ as version
 import numpy as np
 import os
 import json
-import jsonpickle
-import copy
 import datetime
 import platform
 import logging
@@ -70,7 +68,12 @@ class Model:
         filename: string
             filename to save to
         '''
-        json = jsonpickle.encode(self)
+        dictionary = {key : getattr(self, key) for key in Model._ensemble_fields}
+        dictionary['trees'] = [[{key : getattr(tree, key) for key in DecisionTree._tree_fields} for tree in trees_i] for trees_i in self.trees]
+        dictionary['config'] = self.config
+        dictionary['metadata'] = [md._to_dict() for md in self._metadata]
+        js = json.dumps(dictionary, indent=1)
+
         cfg = self.config
         if filename is None:
             filename = f"{cfg['OutputDir']}/{cfg['ProjectName']}.json"
@@ -79,7 +82,7 @@ class Model:
             directory = filename.split('/')[:-1]
         os.makedirs(directory, exist_ok=True)
         with open(filename, 'w') as f:
-            f.write(json)
+            f.write(js)
 
     def write(self):
         '''
@@ -161,6 +164,20 @@ class ModelMetaData:
         self.host = platform.node()
         self.user = os.getlogin()
 
+    def _to_dict(self):
+        return {'version' : self.version,
+                'host'    : self.host,
+                'user'    : self.user,
+                'time'    : self.time.timestamp()}
+
+    def _from_dict(d):
+        mmd = ModelMetaData()
+        mmd.version = d.get('version', None)
+        mmd.host = d.get('host', None)
+        mmd.user = d.get('user', None)
+        mmd.time = datetime.datetime.fromtimestamp(d.get('time', 0))
+        return mmd
+
 def make_model(ensembleDict, config):
     from conifer.backends import get_backend
     if config.get('Backend', None) is None:
@@ -168,7 +185,7 @@ def make_model(ensembleDict, config):
     backend = get_backend(config.get('Backend', 'cpp'))
     return backend.make_model(ensembleDict, config)
 
-def load_model(filename):
+def load_model(filename, new_config=None):
     '''
     Load a Model from JSON file
 
@@ -176,15 +193,23 @@ def load_model(filename):
     ----------
     filename: string
         filename to load from
+    new_config: dictionary (optional)
+        if provided, override the configuration specified in the JSON file
     '''
-    json = open(filename, 'r').read()
-    model = jsonpickle.decode(json)
-    if isinstance(model, dict):
-        logger.warn(f'Attempting to load Model from {filename} interpreted as originating from conifer <= 0.4')
-        model = _load_old_model(model)
-    else:
-        model._metadata.append(ModelMetaData())
-    return model
+    with open(filename, 'r') as json_file:
+        js = json.load(json_file)
 
-def _load_old_model(model_dict):
-    return Model(model_dict, model_dict.get('Config'))
+    if new_config is not None:
+        config = new_config
+    else:
+        config = js.get('config', None)
+        if config is None:
+            logger.warn('No config found in JSON. The model may be loaded incorrectly')
+
+    metadata = js.get('metadata', None)
+    if metadata is not None:
+        metadata = [ModelMetaData._from_dict(mmd) for mmd in metadata]
+
+    model = make_model(js, config)
+    model._metadata = metadata + model._metadata
+    return model
