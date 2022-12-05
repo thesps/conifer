@@ -3,18 +3,42 @@ from shutil import copyfile
 import numpy as np
 from enum import Enum
 from conifer.utils import FixedPointConverter, copydocstring
-from conifer.backends.common import BottomUpDecisionTree
-from conifer.model import Model
+from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig
+from conifer.model import ModelBase
 import copy
 import datetime
 import logging
 logger = logging.getLogger(__name__)
 
-class VHDLModel(Model):
+class VHDLConfig(MultiPrecisionConfig):
+  backend = 'vhdl'
+  _config_fields = MultiPrecisionConfig._config_fields + ['xilinx_part']
+  _vhdl_alts = {'xilinx_part'  : ['XilinxPart']}
+  _alternates = {**MultiPrecisionConfig._alternates, **_vhdl_alts}
+  _vhdl_defaults = {'precision'    : 'ap_fixed<18,8>',
+                    'xilinx_part'  : 'xcvu9p-flgb2104-2L-e',
+                    }
+  _defaults = {**MultiPrecisionConfig._defaults, **_vhdl_defaults}
+  def __init__(self, configDict, validate=True):
+    super(VHDLConfig, self).__init__(configDict, validate=False)
+    if validate:
+      self._validate()
+
+  def default_config():
+    return copy.deepcopy(VHDLConfig._defaults)
+
+  def _extra_validate(self):
+    # TODO: proagate different precisions properly through backend
+    # for now enforce that all the precisions are equal
+    assert self.input_precision == self.threshold_precision, f'input & threshold precision must be equal, got: {self.input_precision} & {self.threshold_precision}'
+    assert self.threshold_precision == self.score_precision, f'threshold & score precision must be equal, got: {self.threshold_precision} & {self.score_precision}'
+
+class VHDLModel(ModelBase):
 
   def __init__(self, ensembleDict, config, metadata=None):
     super(VHDLModel, self).__init__(ensembleDict, config, metadata)
-    self._fp_converter = FixedPointConverter(config['Precision'])
+    self.config = VHDLConfig(config)
+    self._fp_converter = FixedPointConverter(self.config.input_precision)
     trees = ensembleDict.get('trees', None)
     assert trees is not None, f'Missing expected key trees in ensembleDict'
     self.trees = [[BottomUpDecisionTree(treeDict) for treeDict in trees_class] for trees_class in trees]
@@ -25,11 +49,11 @@ class VHDLModel(Model):
         tree.threshold_int = np.array([self._fp_converter.to_int(x) for x in tree.threshold])
         tree.value_int = np.array([self._fp_converter.to_int(x) for x in tree.value])
 
-  @copydocstring(Model.write)
+  @copydocstring(ModelBase.write)
   def write(self):
 
     self.save()
-    cfg = copy.deepcopy(self.config)
+    cfg = self.config
 
     array_header_text = """library ieee;
     use ieee.std_logic_1164.all;
@@ -66,18 +90,18 @@ class VHDLModel(Model):
     """
 
     filedir = os.path.dirname(os.path.abspath(__file__))
-    logger.info(f"Writing project to {cfg['OutputDir']}")
-    os.makedirs('{}/firmware'.format(cfg['OutputDir']), exist_ok=True)
+    logger.info(f"Writing project to {cfg.output_dir}")
+    os.makedirs('{}/firmware'.format(cfg.output_dir), exist_ok=True)
     copyfiles = ['AddReduce.vhd', 'BDT.vhd', 'BDTTestbench.vhd', 'SimulationInput.vhd', 'SimulationOutput.vhd',
                 'TestUtil.vhd', 'Tree.vhd', 'Types.vhd']
     for f in copyfiles:
-        copyfile('{}/firmware/{}'.format(filedir, f), '{}/firmware/{}'.format(cfg['OutputDir'], f))
+        copyfile('{}/firmware/{}'.format(filedir, f), '{}/firmware/{}'.format(cfg.output_dir, f))
 
     # binary classification only uses one set of trees
     n_classes = 1 if self.n_classes == 2 else self.n_classes
 
     # Make a file for all the trees for each class
-    fout = [open('{}/firmware/Arrays{}.vhd'.format(cfg['OutputDir'], i), 'w') for i in range(n_classes)]
+    fout = [open('{}/firmware/Arrays{}.vhd'.format(cfg.output_dir, i), 'w') for i in range(n_classes)]
     # Write the includes and package header for each file
     for i in range(n_classes):
       fout[i].write(array_header_text)
@@ -108,26 +132,26 @@ class VHDLModel(Model):
       fout[i].close()
 
     from conifer.backends.vhdl import simulator
-    simulator.write_scripts(cfg['OutputDir'], filedir, n_classes)
+    simulator.write_scripts(cfg.output_dir, filedir, n_classes)
 
-    f = open('{}/SimulationInput.txt'.format(cfg['OutputDir']), 'w')
+    f = open('{}/SimulationInput.txt'.format(cfg.output_dir), 'w')
     f.write(' '.join(map(str, [0] * self.n_features)))
     f.close()
 
     f = open(os.path.join(filedir,'./scripts/synth.tcl'),'r')
-    fout = open('{}/synth.tcl'.format(cfg['OutputDir']), 'w')
+    fout = open('{}/synth.tcl'.format(cfg.output_dir), 'w')
     for line in f.readlines():
       if 'hls4ml' in line:
-        newline = "synth_design -top BDTTop -part {}\n".format(cfg['XilinxPart'])
+        newline = "synth_design -top BDTTop -part {}\n".format(cfg.xilinx_part)
         fout.write(newline)
       else:
         fout.write(line)
-    fout.write('write_edif -file {}'.format(cfg['ProjectName']))
+    fout.write('write_edif -file {}'.format(cfg.project_name))
     f.close()
     fout.close()
 
     f = open(os.path.join(filedir,'./firmware/BDTTop.vhd'),'r')
-    fout = open('{}/firmware/BDTTop.vhd'.format(cfg['OutputDir']),'w')
+    fout = open('{}/firmware/BDTTop.vhd'.format(cfg.output_dir),'w')
     for line in f.readlines():
       if 'include arrays' in line:
           for i in range(n_classes):
@@ -156,7 +180,7 @@ class VHDLModel(Model):
     fout.close()
 
     f = open(os.path.join(filedir, './firmware/Constants.vhd'), 'r')
-    fout = open('{}/firmware/Constants.vhd'.format(cfg['OutputDir']), 'w')
+    fout = open('{}/firmware/Constants.vhd'.format(cfg.output_dir), 'w')
     for line in f.readlines():
       if 'hls4ml' in line:
         newline = "  constant nTrees : integer := {};\n".format(self.n_trees)
@@ -173,25 +197,25 @@ class VHDLModel(Model):
     f.close()
     fout.close()
 
-  @copydocstring(Model.compile)
+  @copydocstring(ModelBase.compile)
   def compile(self):
     self.write()
     from conifer.backends.vhdl import simulator
-    return simulator.compile(self.config['OutputDir'])
+    return simulator.compile(self.config.output_dir)
 
-  @copydocstring(Model.decision_function)
+  @copydocstring(ModelBase.decision_function)
   def decision_function(self, X, trees=False):
       from conifer.backends.vhdl import simulator
 
       config = copy.deepcopy(self.config)
 
       Xint = np.array([self._fp_converter.to_int(x) for x in X.ravel()]).reshape(X.shape)
-      np.savetxt('{}/SimulationInput.txt'.format(config['OutputDir']),
+      np.savetxt('{}/SimulationInput.txt'.format(config.output_dir),
                 Xint, delimiter=' ', fmt='%d')
-      success = simulator.run_sim(config['OutputDir'])
+      success = simulator.run_sim(config.output_dir)
       if not success:
         return 
-      y = np.loadtxt('{}/SimulationOutput.txt'.format(config['OutputDir'])).astype(np.int32)
+      y = np.loadtxt('{}/SimulationOutput.txt'.format(config.output_dir)).astype(np.int32)
       y = np.array([self._fp_converter.from_int(yi) for yi in y.ravel()]).reshape(y.shape)
       if np.ndim(y) == 1:
         y = np.expand_dims(y, 1)
@@ -200,11 +224,11 @@ class VHDLModel(Model):
           logger.warn("Individual tree output (trees=True) not yet implemented for this backend")
       return y
 
-  @copydocstring(Model.build)
+  @copydocstring(ModelBase.build)
   def build(self, **kwargs):
       cmd = 'vivado -mode batch -source synth.tcl > build.log'
       cwd = os.getcwd()
-      os.chdir(self.config['OutputDir'])
+      os.chdir(self.config.output_dir)
       start = datetime.datetime.now()
       logger.info(f'build starting {start:%H:%M:%S}')
       logger.debug(f'Running build with command "{cmd}"')
@@ -226,5 +250,5 @@ def auto_config():
               'OutputDir'   : 'my-conifer-prj',
               'Precision'   : 'ap_fixed<18,8>',
               'XilinxPart' : 'xcvu9p-flgb2104-2L-e',
-              'ClockPeriod' : '5'}
+             }
     return config

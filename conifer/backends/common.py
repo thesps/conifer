@@ -1,9 +1,10 @@
-from conifer.model import DecisionTree
+from conifer.model import DecisionTreeBase, ConfigBase
+import numpy as np
 
-class BottomUpDecisionTree(DecisionTree):
-  _tree_fields = DecisionTree._tree_fields + ['parent', 'depth', 'iLeaf']
+class BottomUpDecisionTree(DecisionTreeBase):
+  _tree_fields = DecisionTreeBase._tree_fields + ['parent', 'depth', 'iLeaf']
   def __init__(self, treeDict):
-    for key in DecisionTree._tree_fields:
+    for key in DecisionTreeBase._tree_fields:
         val = treeDict.get(key, None)
         assert val is not None, f"Missing expected key {key} in treeDict"
         setattr(self, key, val)
@@ -56,3 +57,40 @@ class BottomUpDecisionTree(DecisionTree):
         depth += 1
         parent = tree.parent[parent]
       tree.depth[i] = depth
+
+class MultiPrecisionConfig(ConfigBase):
+  '''
+  Class representing configuration with fields for separate input, threshold, and score precisions
+  Precisions fall back on 'precision' if not specified
+  '''
+  _config_fields = ConfigBase._config_fields + ['input_precision', 'threshold_precision', 'score_precision']
+  _mp_alts = {'input_precision'     : ['InputPrecision'],
+              'threshold_precision' : ['ThresholdPrecision'],
+              'score_precision'     : ['ScorePrecision']
+              }
+  _alternates = {**ConfigBase._alternates, **_mp_alts}
+  _mp_defaults = {'precision'     : 'float'}
+  _defaults = {**ConfigBase._defaults, **_mp_defaults}
+
+  def __init__(self, configDict, validate=True):
+    super(MultiPrecisionConfig, self).__init__(configDict, validate=False)
+    precision = None
+    for k in ['precision', 'Precision']:
+      val = configDict.get(k, None)
+      if val is not None:
+          precision = val
+
+    if getattr(self, 'input_precision', None) is None:
+      self.input_precision = precision
+    if getattr(self, 'threshold_precision', None) is None:
+      if self.input_precision is not None:
+        self.threshold_precision = self.input_precision
+      else:
+        self.threshold_precision = precision
+    if getattr(self, 'score_precision', None) is None:
+      self.score_precision = precision
+    if validate:
+      self._validate()
+
+  def any_ap_types(self):
+    return np.any(['ap_' in t for t in [self.input_precision, self.threshold_precision, self.score_precision]])

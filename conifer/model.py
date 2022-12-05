@@ -2,23 +2,65 @@ from conifer import __version__ as version
 import numpy as np
 import os
 import json
+import copy
 import datetime
 import platform
 import logging
 logger = logging.getLogger(__name__)
 
-class DecisionTree:
+class DecisionTreeBase:
   '''
   Conifer DecisionTreeBase representation class
   '''
   _tree_fields = ['feature', 'threshold', 'value', 'children_left', 'children_right']
   def __init__(self, treeDict):
-    for key in DecisionTree._tree_fields:
+    for key in DecisionTreeBase._tree_fields:
       val = treeDict.get(key, None)
       assert val is not None, f"Missing expected key {key} in treeDict"
       setattr(self, key, val)
 
-class Model:
+class ConfigBase:
+    '''
+    Conifer Config representation class
+    '''
+    _config_fields = ['output_dir', 'project_name', 'backend']
+    _alternates = {'output_dir'   : ['OutputDir'],
+                   'project_name' : ['ProjectName'],
+                   'backend'      : ['Backend']
+                   }
+    _defaults = {'output_dir'   : 'my-conifer-prj',
+                 'project_name' : 'my_prj',
+                 'backend'      : 'cpp'
+                }
+
+    def __init__(self, configDict, validate=True):
+        for key in self._config_fields:
+            for k in [key, *self._alternates[key]]:
+                val = configDict.get(k, None)
+                if val is not None:
+                    setattr(self, key, val)
+        if validate:
+            self._validate()
+
+    def _validate(self):
+        from conifer.backends import get_backend
+        vals = {}
+        for key in self._config_fields:
+            vals[key] = getattr(self, key, None)
+        assert not (None in vals.values()), f'Missing some required configuration, have: {vals}'
+        assert get_backend(self.backend) is not None, f'Backend {self.backend} not found'
+
+    def _to_dict(self):
+        dictionary = {k : getattr(self, k) for k in self._config_fields}
+        return dictionary
+
+    def _log(self, logger):
+        logger.info(f'Configuration: {self._to_dict()}')
+
+    def default_config():
+        return copy.deepcopy(ConfigBase._defaults)
+
+class ModelBase:
 
     '''
     Conifer BDT representation class
@@ -27,15 +69,15 @@ class Model:
 
     _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm']
 
-    def __init__(self, ensembleDict, config, metadata=None):
-        for key in Model._ensemble_fields:
+    def __init__(self, ensembleDict, configDict, metadata=None):
+        for key in ModelBase._ensemble_fields:
             val = ensembleDict.get(key, None)
             assert val is not None, f'Missing expected key {key} in ensembleDict'
             setattr(self, key, val)
         trees = ensembleDict.get('trees', None)
         assert trees is not None, f'Missing expected key {key} in ensembleDict'
-        self.trees = [[DecisionTree(treeDict) for treeDict in trees_class] for trees_class in trees]
-        self.config = config
+        self.trees = [[DecisionTreeBase(treeDict) for treeDict in trees_class] for trees_class in trees]
+        self.config = ConfigBase(configDict)
 
         subset_keys = ['max_depth', 'n_trees', 'n_features', 'n_classes']
         subset_dict = {key: getattr(self, key) for key in subset_keys}
@@ -68,16 +110,16 @@ class Model:
         filename: string
             filename to save to
         '''
-        dictionary = {key : getattr(self, key) for key in Model._ensemble_fields}
-        dictionary['trees'] = [[{key : getattr(tree, key) for key in DecisionTree._tree_fields} for tree in trees_i] for trees_i in self.trees]
-        dictionary['config'] = self.config
+        dictionary = {key : getattr(self, key) for key in ModelBase._ensemble_fields}
+        dictionary['trees'] = [[{key : getattr(tree, key) for key in DecisionTreeBase._tree_fields} for tree in trees_i] for trees_i in self.trees]
+        dictionary['config'] = self.config._to_dict()
         dictionary['metadata'] = [md._to_dict() for md in self._metadata]
         js = json.dumps(dictionary, indent=1)
 
         cfg = self.config
         if filename is None:
-            filename = f"{cfg['OutputDir']}/{cfg['ProjectName']}.json"
-            directory = cfg['OutputDir']
+            filename = f"{cfg.output_dir}/{cfg.project_name}.json"
+            directory = cfg.output_dir
         else:
             directory = filename.split('/')[:-1]
         os.makedirs(directory, exist_ok=True)
@@ -180,9 +222,15 @@ class ModelMetaData:
 
 def make_model(ensembleDict, config):
     from conifer.backends import get_backend
-    if config.get('Backend', None) is None:
-        logger.warn('Backend not specified in configuration, defaulting to "cpp"')
-    backend = get_backend(config.get('Backend', 'cpp'))
+    backend = None
+    for k in ['backend', 'Backend']:
+        b = config.get(k, None)
+        if b is not None:
+            backend = b
+    if backend is None:
+        logger.warn('Backend not specified in configuration, loading as ModelBase. It will not be possible to write out.')
+        return ModelBase(ensembleDict, config)
+    backend = get_backend(backend)
     return backend.make_model(ensembleDict, config)
 
 def load_model(filename, new_config=None):

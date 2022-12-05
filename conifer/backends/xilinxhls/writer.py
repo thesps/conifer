@@ -4,8 +4,8 @@ import warnings
 import numpy as np
 import copy
 from conifer.utils import _ap_include, copydocstring
-from conifer.backends.common import BottomUpDecisionTree
-from conifer.model import Model
+from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig
+from conifer.model import ModelBase
 import datetime
 import logging
 logger = logging.getLogger(__name__)
@@ -42,10 +42,33 @@ def get_hls():
 
     return tool_exe
 
-class XilinxHLSModel(Model):
+class XilinxHLSConfig(MultiPrecisionConfig):
+    backend = 'xilinxhls'
+    _config_fields = MultiPrecisionConfig._config_fields + ['xilinx_part', 'clock_period', 'pipeline']
+    _xhls_alts = {'xilinx_part'  : ['XilinxPart'],
+                  'clock_period' : ['ClockPeriod'],
+                  'pipeline'     : ['Pipeline']
+                  }
+    _alternates = {**MultiPrecisionConfig._alternates, **_xhls_alts}
+    _xhls_defaults = {'precision'    : 'ap_fixed<18,8>',
+                      'xilinx_part'  : 'xcvu9p-flgb2104-2L-e',
+                      'clock_period' : 5,
+                      'pipeline'     : True
+                      }
+    _defaults = {**MultiPrecisionConfig._defaults, **_xhls_defaults}
+    def __init__(self, configDict, validate=True):
+        super(XilinxHLSConfig, self).__init__(configDict, validate=False)
+        if validate:
+            self._validate()
+
+    def default_config():
+        return copy.deepcopy(XilinxHLSConfig._defaults)
+
+class XilinxHLSModel(ModelBase):
 
     def __init__(self, ensembleDict, config, metadata=None):
         super(XilinxHLSModel, self).__init__(ensembleDict, config, metadata)
+        self.config = XilinxHLSConfig(config)
         trees = ensembleDict.get('trees', None)
         assert trees is not None, f'Missing expected key trees in ensembleDict'
         self.trees = [[BottomUpDecisionTree(treeDict) for treeDict in trees_class] for trees_class in trees]
@@ -53,37 +76,37 @@ class XilinxHLSModel(Model):
             for tree in trees_class:
                 tree.padTree(self.max_depth)
 
-    @copydocstring(Model.write)
+    @copydocstring(ModelBase.write)
     def write(self):
 
         self.save()
-        cfg = copy.deepcopy(self.config)
+        cfg = self.config
 
         filedir = os.path.dirname(os.path.abspath(__file__))
 
-        logger.info(f"Writing project to {cfg['OutputDir']}")
+        logger.info(f"Writing project to {cfg.output_dir}")
 
-        os.makedirs('{}/firmware'.format(cfg['OutputDir']), exist_ok=True)
-        os.makedirs('{}/tb_data'.format(cfg['OutputDir']), exist_ok=True)
+        os.makedirs('{}/firmware'.format(cfg.output_dir), exist_ok=True)
+        os.makedirs('{}/tb_data'.format(cfg.output_dir), exist_ok=True)
         copyfile('{}/firmware/BDT.h'.format(filedir),
-                '{}/firmware/BDT.h'.format(cfg['OutputDir']))
+                '{}/firmware/BDT.h'.format(cfg.output_dir))
 
         ###################
         # myproject.cpp
         ###################
 
         fout = open(
-            '{}/firmware/{}.cpp'.format(cfg['OutputDir'], cfg['ProjectName']), 'w')
+            '{}/firmware/{}.cpp'.format(cfg.output_dir, cfg.project_name), 'w')
         fout.write('#include "BDT.h"\n')
         fout.write('#include "parameters.h"\n')
-        fout.write('#include "{}.h"\n'.format(cfg['ProjectName']))
+        fout.write('#include "{}.h"\n'.format(cfg.project_name))
 
         fout.write(
-            'void {}(input_arr_t x, score_arr_t score, score_t tree_scores[BDT::fn_classes(n_classes) * n_trees]){{\n'.format(cfg['ProjectName']))
+            'void {}(input_arr_t x, score_arr_t score, score_t tree_scores[BDT::fn_classes(n_classes) * n_trees]){{\n'.format(cfg.project_name))
         fout.write('\t#pragma HLS array_partition variable=x\n')
         fout.write('\t#pragma HLS array_partition variable=score\n')
         fout.write('\t#pragma HLS array_partition variable=tree_scores\n')
-        if(cfg['Pipeline']):
+        if(cfg.pipeline):
             fout.write('\t#pragma HLS pipeline\n')
             fout.write('\t#pragma HLS unroll\n')
         fout.write('\tbdt.decision_function(x, score, tree_scores);\n}')
@@ -93,7 +116,7 @@ class XilinxHLSModel(Model):
         # parameters.h
         ###################
 
-        fout = open('{}/firmware/parameters.h'.format(cfg['OutputDir']), 'w')
+        fout = open('{}/firmware/parameters.h'.format(cfg.output_dir), 'w')
         fout.write('#ifndef BDT_PARAMS_H__\n#define BDT_PARAMS_H__\n\n')
         fout.write('#include  "BDT.h"\n')
         fout.write('#include "ap_fixed.h"\n\n')
@@ -106,40 +129,16 @@ class XilinxHLSModel(Model):
         fout.write('static const int n_classes = {};\n'.format(
             self.n_classes))
         fout.write('static const bool unroll = {};\n'.format(
-            str(cfg['Pipeline']).lower()))
+            str(cfg.pipeline).lower()))
 
-        input_precision = None
-        if 'InputPrecision' in cfg.keys():
-            input_precision = cfg['InputPrecision']
-        elif 'Precision' in cfg.keys():
-            input_precision = cfg['Precision']
-        if input_precision is None:
-            raise ValueError('Neither Precision nor InputPrecision specified in configuration')
-        logger.debug(f"InputPrecision {input_precision}")
+        input_precision = cfg.input_precision
         fout.write('typedef {} input_t;\n'.format(input_precision))
         fout.write('typedef input_t input_arr_t[n_features];\n')
 
-        threshold_precision = None
-        if 'ThresholdPrecision' in cfg.keys():
-            threshold_precision = cfg['ThresholdPrecision']
-        elif 'InputPrecision' in cfg.keys():
-            warnings.warn("ThresholdPrecision not specified, but InputPrecision is - using InputPrecision for ThresholdPrecision")
-            threshold_precision = cfg['InputPrecision']
-        elif 'Precision' in cfg.keys():
-            threshold_precision = cfg['Precision']
-        if threshold_precision is None:
-            raise ValueError('None of Precision, ThresholdPrecision, nor InputPrecision specified in configuration')
-        logger.debug(f"ThresholdPrecision {threshold_precision}")
+        threshold_precision = cfg.threshold_precision
         fout.write('typedef {} threshold_t;\n'.format(threshold_precision))
 
-        score_precision = None
-        if 'ScorePrecision' in cfg.keys():
-            score_precision = cfg['ScorePrecision']
-        elif 'Precision' in cfg.keys():
-            score_precision = cfg['Precision']
-        if score_precision is None:
-            raise ValueError('Neither Precision nor ScorePrecision specified in configuration')
-        logger.debug(f"ScorePrecision {score_precision}")
+        score_precision = cfg.score_precision
         fout.write('typedef {} score_t;\n'.format(score_precision))
         fout.write('typedef score_t score_arr_t[n_classes];\n')
 
@@ -198,15 +197,15 @@ class XilinxHLSModel(Model):
 
         f = open(os.path.join(filedir, 'hls-template/firmware/myproject.h'), 'r')
         fout = open(
-            '{}/firmware/{}.h'.format(cfg['OutputDir'], cfg['ProjectName']), 'w')
+            '{}/firmware/{}.h'.format(cfg.output_dir, cfg.project_name), 'w')
 
         for line in f.readlines():
 
             if 'MYPROJECT' in line:
                 newline = line.replace(
-                    'MYPROJECT', format(cfg['ProjectName'].upper()))
+                    'MYPROJECT', format(cfg.project_name.upper()))
             elif 'void myproject(' in line:
-                newline = 'void {}(\n'.format(cfg['ProjectName'])
+                newline = 'void {}(\n'.format(cfg.project_name)
             elif 'hls-fpga-machine-learning insert args' in line:
                 newline = '\tinput_arr_t data,\n\tscore_arr_t score,\n\tscore_t tree_scores[BDT::fn_classes(n_classes) * n_trees]);'
             # Remove some lines
@@ -224,14 +223,14 @@ class XilinxHLSModel(Model):
 
         f = open(os.path.join(filedir, 'hls-template/myproject_test.cpp'))
         fout = open(
-            '{}/{}_test.cpp'.format(cfg['OutputDir'], cfg['ProjectName']), 'w')
+            '{}/{}_test.cpp'.format(cfg.output_dir, cfg.project_name), 'w')
 
         for line in f.readlines():
             indent = ' ' * (len(line) - len(line.lstrip(' ')))
 
             # Insert numbers
             if 'myproject' in line:
-                newline = line.replace('myproject', cfg['ProjectName'])
+                newline = line.replace('myproject', cfg.project_name)
             elif '//hls-fpga-machine-learning insert data' in line:
                 newline = line
                 newline += '      std::vector<double>::const_iterator in_begin = in.cbegin();\n'
@@ -259,7 +258,7 @@ class XilinxHLSModel(Model):
             elif '//hls-fpga-machine-learning insert top-level-function' in line:
                 newline = line
                 top_level = indent + \
-                    '{}(x, score, tree_scores);\n'.format(cfg['ProjectName'])
+                    '{}(x, score, tree_scores);\n'.format(cfg.project_name)
                 newline += top_level
             elif '//hls-fpga-machine-learning insert predictions' in line:
                 newline = line
@@ -295,21 +294,21 @@ class XilinxHLSModel(Model):
         #######################
 
         bdtdir = os.path.abspath(os.path.join(filedir, "../bdt_utils"))
-        relpath = os.path.relpath(bdtdir, start=cfg['OutputDir'])
+        relpath = os.path.relpath(bdtdir, start=cfg.output_dir)
 
         f = open(os.path.join(filedir, 'hls-template/build_prj.tcl'), 'r')
-        fout = open('{}/build_prj.tcl'.format(cfg['OutputDir']), 'w')
+        fout = open('{}/build_prj.tcl'.format(cfg.output_dir), 'w')
 
         for line in f.readlines():
 
             line = line.replace('nnet_utils', relpath)
-            line = line.replace('myproject', cfg['ProjectName'])
+            line = line.replace('myproject', cfg.project_name)
 
             if 'set_part {xc7vx690tffg1927-2}' in line:
-                line = 'set_part {{{}}}\n'.format(cfg['XilinxPart'])
+                line = 'set_part {{{}}}\n'.format(cfg.xilinx_part)
             elif 'create_clock -period 5 -name default' in line:
                 line = 'create_clock -period {} -name default\n'.format(
-                    cfg['ClockPeriod'])
+                    cfg.clock_period)
             # Remove some lines
             elif ('weights' in line) or ('-tb firmware/weights' in line):
                 line = ''
@@ -323,10 +322,10 @@ class XilinxHLSModel(Model):
         #######################
 
         copyfile(f'{filedir}/hls-template/bridge.cpp',
-            f"{cfg['OutputDir']}/bridge_tmp.cpp")
+            f"{cfg.output_dir}/bridge_tmp.cpp")
 
-        fin = open(f"{cfg['OutputDir']}/bridge_tmp.cpp", 'r')
-        fout = open(f"{cfg['OutputDir']}/bridge.cpp", 'w')
+        fin = open(f"{cfg.output_dir}/bridge_tmp.cpp", 'r')
+        fout = open(f"{cfg.output_dir}/bridge.cpp", 'w')
         for line in fin.readlines():
             newline = line
             if 'PYBIND11_MODULE' in line:
@@ -334,13 +333,13 @@ class XilinxHLSModel(Model):
             fout.write(newline)
         fin.close()
         fout.close()
-        os.remove(f"{cfg['OutputDir']}/bridge_tmp.cpp")
+        os.remove(f"{cfg.output_dir}/bridge_tmp.cpp")
 
-    @copydocstring(Model.decision_function)
+    @copydocstring(ModelBase.decision_function)
     def decision_function(self, X, trees=False):
         cfg = self.config
         curr_dir = os.getcwd()
-        os.chdir(cfg['OutputDir'])
+        os.chdir(cfg.output_dir)
         if len(X.shape) == 1:
             y = np.array(self.bridge.decision_function(X))
         elif len(X.shape) == 2:
@@ -352,25 +351,25 @@ class XilinxHLSModel(Model):
             y = y.reshape(y.shape[0])
         return y
     
-    @copydocstring(Model.compile)
+    @copydocstring(ModelBase.compile)
     def compile(self):
         self.write()
         cfg = self.config
         curr_dir = os.getcwd()
-        os.chdir(cfg['OutputDir'])
+        os.chdir(cfg.output_dir)
         ap_include = _ap_include()
         if ap_include is None:
             os.chdir(curr_dir)
             raise Exception("Couldn't find Xilinx ap_ headers. Source the Vivado/Vitis HLS toolchain, or set XILINX_AP_INCLUDE environment variable.")
-        cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} bridge.cpp firmware/{cfg['ProjectName']}.cpp -o conifer_bridge_{self._stamp}.so"
+        cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} bridge.cpp firmware/{cfg.project_name}.cpp -o conifer_bridge_{self._stamp}.so"
         logger.debug(f'Compiling with command {cmd}')
         try:
             ret_val = os.system(cmd)
             if ret_val != 0:
-                raise Exception(f'Failed to compile project {cfg["ProjectName"]}')
+                raise Exception(f'Failed to compile project {cfg.project_name}')
         except:
             os.chdir(curr_dir)
-            raise Exception(f'Failed to compile project {cfg["ProjectName"]}')
+            raise Exception(f'Failed to compile project {cfg.project_name}')
 
         try:
             logger.debug(f'Importing conifer_bridge_{self._stamp} from conifer_bridge_{self._stamp}.so')
@@ -384,10 +383,10 @@ class XilinxHLSModel(Model):
         finally:
             os.chdir(curr_dir)
 
-    @copydocstring(Model.build)
+    @copydocstring(ModelBase.build)
     def build(self, reset=False, csim=False, synth=True, cosim=False, export=False):
         cwd = os.getcwd()
-        os.chdir(self.config['OutputDir'])
+        os.chdir(self.config.output_dir)
         
         rval = True
         hls_tool = get_hls()
