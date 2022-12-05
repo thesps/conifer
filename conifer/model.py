@@ -1,4 +1,3 @@
-from conifer import backends
 from conifer import __version__ as version
 import numpy as np
 import os
@@ -31,7 +30,6 @@ class Model:
     _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm']
 
     def __init__(self, ensembleDict, config, metadata=None):
-        self.backend = backends.get_backend(config.get('Backend', 'cpp'))
         for key in Model._ensemble_fields:
             val = ensembleDict.get(key, None)
             assert val is not None, f'Missing expected key {key} in ensembleDict'
@@ -40,7 +38,6 @@ class Model:
         assert trees is not None, f'Missing expected key {key} in ensembleDict'
         self.trees = [[DecisionTree(treeDict) for treeDict in trees_class] for trees_class in trees]
         self.config = config
-        self.backend._init_model(self)
 
         subset_keys = ['max_depth', 'n_trees', 'n_features', 'n_classes']
         subset_dict = {key: getattr(self, key) for key in subset_keys}
@@ -88,7 +85,7 @@ class Model:
         '''
         Write the model files to the output directory specified in configuration
         '''
-        self.backend.write(self)
+        raise NotImplementedError
 
     def compile(self):
         '''
@@ -96,8 +93,7 @@ class Model:
         Writes the project files first.
         Compilation is carried out by the model backend
         '''
-        self.write()
-        self.backend.sim_compile(self)
+        raise NotImplementedError
 
     def decision_function(self, X, trees=False):
         '''
@@ -114,7 +110,7 @@ class Model:
         score: ndarray of shape (n_samples, n_classes) or (n_samples,)   
 
         '''
-        return self.backend.decision_function(X, self, trees=trees)
+        raise NotImplementedError
 
     def build(self, **kwargs):
         '''
@@ -129,7 +125,7 @@ class Model:
         success: bool
                  True if the build completed successfuly, otherwise False  
         '''
-        return self.backend.build(self.config, **kwargs)
+        raise NotImplementedError
 
     def profile(self, bins=50, return_data=False, return_figure=True):
         try:
@@ -164,6 +160,13 @@ class ModelMetaData:
         self.time = datetime.datetime.now()
         self.host = platform.node()
         self.user = os.getlogin()
+
+def make_model(ensembleDict, config):
+    from conifer.backends import get_backend
+    if config.get('Backend', None) is None:
+        logger.warn('Backend not specified in configuration, defaulting to "cpp"')
+    backend = get_backend(config.get('Backend', 'cpp'))
+    return backend.make_model(ensembleDict, config)
 
 def load_model(filename):
     '''
