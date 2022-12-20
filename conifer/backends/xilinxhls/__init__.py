@@ -8,10 +8,7 @@ if '_tool' in locals() != None:
     writer._tool = _tool
 SPEC_WRITER.loader.exec_module(writer)
 
-write = writer.write
+make_model = writer.make_model
 auto_config = writer.auto_config
-decision_function = writer.decision_function
-sim_compile = writer.sim_compile
-build = writer.build
 
 del SPEC_WRITER

@@ -1,2 +1,3 @@
-from .writer import write, auto_config, sim_compile, decision_function, build, Simulators
-simulator = Simulators.xsim
+from conifer.backends.vhdl.writer import make_model, auto_config
+from conifer.backends.vhdl.simulators import Modelsim, GHDL, Xsim
+simulator = Xsim

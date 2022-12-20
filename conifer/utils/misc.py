@@ -17,7 +17,7 @@ def _ap_include():
       logger.debug(f'Including ap_ headers from {var}: {ret}')
       break
   if ret is None:
-    logger.warn(f'Could not find ap_ headers. None of {", ".join([var[0] for var in variables])} are defined')
+    logger.warn(f'Could not find ap_ headers (e.g., ap_fixed.h). None of {", ".join([var[0] for var in variables])} are defined')
   return ret
 
 def _json_include():
@@ -31,3 +31,16 @@ def _json_include():
     ret = None
     logger.warn('Could not find JSON headers. JSON_ROOT not defined')
   return ret
+
+def copydocstring(fromfunc, sep="\n"):
+  """
+  Decorator: Copy the docstring of `fromfunc`
+  """
+  def _decorator(func):
+      sourcedoc = fromfunc.__doc__
+      if func.__doc__ == None:
+          func.__doc__ = sourcedoc
+      else:
+          func.__doc__ = sep.join([sourcedoc, func.__doc__])
+      return func
+  return _decorator
