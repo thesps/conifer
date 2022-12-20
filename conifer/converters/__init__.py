@@ -11,7 +11,6 @@ except ImportError:
     print("Warning: The python package tensorflow_decision_forests is not available. Conversions "
           "from TensorFlow Decision Forests models is not possible.")
 
-from conifer.model import Model
 import logging
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,6 @@
 """Convertion from TensorFlow Decision Forests format."""
 
 from typing import List, Any, Dict
-from conifer.converters.common import addParentAndDepth, padTree
 import tensorflow_decision_forests as tfdf
 
 FeatureMapping = Dict[int, int]
@@ -55,10 +54,7 @@ def _convert_gbt(inspector: tfdf.inspector.AbstractInspector):
             dst_tree.set_tree(src_trees[src_tree_idx],
                               column_idx_to_feature_idx)
 
-            # Pad / normalize the trees.
-            dst_tree_dict = padTree(
-                base_conifer_dict, addParentAndDepth(dst_tree.to_dict()))
-            dst_trees_per_iter.append(dst_tree_dict)
+            dst_trees_per_iter.append(dst_tree.to_dict())
 
         dst_trees.append(dst_trees_per_iter)
 
