@@ -17,7 +17,7 @@ def _ap_include():
       logger.debug(f'Including ap_ headers from {var}: {ret}')
       break
   if ret is None:
-    logger.warn(f'Could not find ap_ headers. None of {", ".join([var[0] for var in variables])} are defined')
+    logger.warn(f'Could not find ap_ headers (e.g., ap_fixed.h). None of {", ".join([var[0] for var in variables])} are defined')
   return ret
 
 def _json_include():
