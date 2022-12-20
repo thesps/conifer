@@ -125,14 +125,11 @@ def test_toy_model(tmp_path):
                              "n_features": 2,
                              "init_predict": [1.0],
                              "norm": 1,
-                             "trees": [[{"feature": [0, -2, 1, -2, -2, -2, -2],
-                                         "threshold": pytest.approx([1.5, -2.0, 2.5, -2.0, -2.0, -2.0, -2.0]),
-                                         "children_left": [1, 5, 3, -1, -1, -1, -1],
-                                         "children_right": [2, 6, 4, -1, -1, -1, -1],
-                                         "value": pytest.approx([0, 0.1, 0, 0.6, 0.8, 0.1, 0.1]),
-                                         "parent": [-1, 0, 0, 2, 2, 1, 1],
-                                         "depth": [0, 1, 1, 2, 2, 2, 2],
-                                         "iLeaf": [3, 4, 5, 6]}
+                             "trees": [[{"feature": [0, -2, 1, -2, -2],
+                                         "threshold": pytest.approx([1.5, -2.0, 2.5, -2.0, -2.0]),
+                                         "children_left": [1, -1, 3, -1, -1],
+                                         "children_right": [2, -1, 4, -1, -1],
+                                         "value": pytest.approx([0, 0.1, 0, 0.6, 0.8])}
                                         ]]
                              }
 

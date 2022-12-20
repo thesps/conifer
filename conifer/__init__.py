@@ -9,5 +9,4 @@ except PackageNotFoundError:
 
 from conifer import converters
 from conifer import backends
-from conifer.model import Model
 from conifer import utils

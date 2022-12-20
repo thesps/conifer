@@ -1,8 +1,8 @@
-from conifer.converters import common
 from conifer.converters import sklearn
 from conifer.converters import tmva
 from conifer.converters import xgboost
 from conifer.converters import onnx
+from conifer.model import make_model
 
 try:
     from conifer.converters import tf_df
@@ -11,7 +11,6 @@ except ImportError:
     print("Warning: The python package tensorflow_decision_forests is not available. Conversions "
           "from TensorFlow Decision Forests models is not possible.")
 
-from conifer.model import Model
 import logging
 logger = logging.getLogger(__name__)
 
@@ -34,24 +33,24 @@ def get_available_converters():
 def convert_from_sklearn(model, config):
   '''Convert a BDT from a scikit-learn model and configuration'''
   ensembleDict = sklearn.convert(model)
-  return Model(ensembleDict, config)
+  return make_model(ensembleDict, config)
 
 def convert_from_tmva(model, config):
   '''Convert a BDT from a TMVA model and configuration'''
   ensembleDict = tmva.convert(model)
-  return Model(ensembleDict, config)
+  return make_model(ensembleDict, config)
 
 def convert_from_xgboost(model, config):
   '''Convert a BDT from an xgboost model and configuration'''
   ensembleDict = xgboost.convert(model)
-  return Model(ensembleDict, config)
+  return make_model(ensembleDict, config)
 
 def convert_from_onnx(model, config):
   '''Convert a BDT from an ONNX model and configuration'''
   ensembleDict = onnx.convert(model)
-  return Model(ensembleDict, config)
+  return make_model(ensembleDict, config)
 
 def convert_from_tf_df(model, config):
   '''Convert a BDT from an TF-DF model and configuration'''
   ensembleDict = tf_df.convert(model)
-  return Model(ensembleDict, config)
+  return make_model(ensembleDict, config)

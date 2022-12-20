@@ -31,7 +31,7 @@ def onnx_model():
 models = {'sklearn' : sklearn_model,
           'onnx'    : onnx_model}
 
-predicts = {'sklearn' : util.predict,
+predicts = {'sklearn' : util.predict_skl,
             'onnx'    : util.predict_onnx}
 
 #frontends = {'sklearn' : conifer.converters.convert_from_sklearn,
@@ -52,7 +52,7 @@ def test_multiclass(frontend, backend):
     cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
     cfg['Precision'] = 'ap_fixed<32,16,AP_RND,AP_SAT>'
     cfg['XilinxPart'] = 'xcu250-figd2104-2L-e'
-    cnf = conifer.Model(conifer.converters.get_converter(frontend).convert(clf), cfg)
+    cnf = conifer.model.make_model(conifer.converters.get_converter(frontend).convert(clf), cfg)
     cnf.compile()
 
     y_hls, y_skl = predicts[frontend](predictor, X, y, cnf)

@@ -1,5 +1,4 @@
 import numpy as np
-from conifer.converters.common import addParentAndDepth, padTree
 import math
 
 #main converter function
@@ -15,8 +14,7 @@ def convert_bdt(onnx_clf):
     for treeDict in trees:
       for key in treeDict.keys():
         treeDict[key]=treeDict[key].tolist()
-      treeDict = addParentAndDepth(treeDict)
-      tree = padTree(ensembleDict, treeDict)
+      tree = treeDict
       # NB node values are multiplied by the learning rate here, saving work in the FPGA
       tree['value'] = (np.array(tree['value']) * 1.0).tolist()
       treesl.append(tree)
