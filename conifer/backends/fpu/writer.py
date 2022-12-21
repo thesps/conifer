@@ -263,8 +263,9 @@ class FPUBuilder:
       f.write(f'static const bool SCALER={"true" if self.dynamic_scaler else "false"};\n')
       f.write(f'typedef DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> DN;\n')
       info = {'configuration' : self.cfg._to_dict(), 'metadata' : self._metadata._to_dict()}
-      info = json.dumps(info).replace('"', r'\"')
-      f.write(f'static const char* theInfo = "{info}";\n')
+      info = json.dumps(info)
+      info_fmt = info.replace('"', r'\"')
+      f.write(f'static const char* theInfo = "{info_fmt}";\n')
       f.write(f'static const int theInfoLength = {len(info)};\n')
       f.write('#endif\n')
 

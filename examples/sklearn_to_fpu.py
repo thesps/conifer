@@ -46,8 +46,7 @@ model.write()
 # import json
 # from fpu_driver import ZynqDriver
 # import numpy as np
-# config = json.load(open('fpu.json'))
-# fpu = ZynqDriver('fpu.bit', config, (16), (1))
+# fpu = ZynqDriver('fpu.bit')
 # print(fpu.get_info())
 # model = json.load(open('prj_fpu_.../nodes.json'))
 # fpu.load(model['nodes'], model['scales'])
@@ -67,6 +66,6 @@ cpp_cfg['output_dir'] += '_cpp'
 
 model = conifer.model.load_model(f'prj_fpu_{stamp}/my-prj.json', new_config=cpp_cfg)
 model.compile()
-y_cpp = model.decision_function(X_test)
+y_cpp = model.decision_function(X)
 y_cpp_scaled = y_cpp * 1024 # <- this should match the values returned by fpu.predict(X) (on the same inputs, also scaled by 1024)
 
