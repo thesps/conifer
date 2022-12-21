@@ -30,7 +30,7 @@ class ZynqDriver:
     self.fpu = self.overlay.FPU_0
     self.config = config
 
-    self.interfaceNodes = pynq.buffer.allocate(np.product([config['tree_engines'], config['nodes'], 7]), dtype='int32')
+    self.interfaceNodes = pynq.buffer.allocate((config['tree_engines'], config['nodes'], 7), dtype='int32')
     self.scales = pynq.buffer.allocate(config['features'], dtype='float')
 
     self.Xbuf = pynq.buffer.allocate(X_shape, dtype='int')
@@ -40,12 +40,12 @@ class ZynqDriver:
 
   def get_info(self):
     self.fpu.write(self.fpu.register_map.CTRL.address, 1)
-    infoLen = self.read(self.fpu.register_map.infoLength.address)
+    infoLen = self.fpu.read(self.fpu.register_map.infoLength.address)
     info = pynq.buffer.allocate(infoLen, dtype='byte')
     self.fpu.write(self.fpu.register_map.info.address, info.physical_address)
     self.fpu.write(self.fpu.register_map.instruction.address, 0)
     self.fpu.write(self.fpu.register_map.CTRL.address, 1)
-    return info
+    return "".join([chr(i) for i in info])
 
   def load(self, nodes, scales):
     self.interfaceNodes[:] = nodes

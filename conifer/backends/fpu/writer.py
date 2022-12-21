@@ -8,9 +8,9 @@ import zipfile
 from typing import List
 import logging
 logger = logging.getLogger(__name__)
-from conifer.model import ModelBase, ConfigBase
+from conifer.model import ModelBase, ConfigBase, ModelMetaData
 try:
-    from conifer.backends.fpu.driver import ZynqDriver
+    from conifer.backends.fpu.fpu_driver import ZynqDriver
 except ImportError:
     FPUDriver = None
 
@@ -102,7 +102,7 @@ class FPUInterfaceTree:
 
   def _null_tree(n: int):
     nodes = [FPUInterfaceNode._null_node()] * n
-    return FPUInterfaceTree
+    return FPUInterfaceTree(nodes)
 
 class FPUConfig(ConfigBase):
   backend = 'fpu'
@@ -237,11 +237,12 @@ def _resolve_type(t):
 
 class FPUBuilder:
 
-  def __init__(self, cfg):
+  def __init__(self, cfg,):
     self.cfg = FPUBuilderConfig(cfg)
-    for key, value in FPUBuilderConfig.default_config():
+    for key, value in FPUBuilderConfig.default_config().items():
       setattr(self, key, getattr(self.cfg, key, value))
     self.output_dir = os.path.abspath(self.output_dir)
+    self._metadata = ModelMetaData()
 
   def default_cfg():
     return FPUBuilderConfig.default_config()
@@ -261,8 +262,7 @@ class FPUBuilder:
       f.write(f'static const int CLASSBITS={1};\n')
       f.write(f'static const bool SCALER={"true" if self.dynamic_scaler else "false"};\n')
       f.write(f'typedef DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> DN;\n')
-      info = copy.deepcopy(self.cfg)
-      info['version'] = conifer.__version__
+      info = {'configuration' : self.cfg._to_dict(), 'metadata' : self._metadata._to_dict()}
       info = json.dumps(info).replace('"', r'\"')
       f.write(f'static const char* theInfo = "{info}";\n')
       f.write(f'static const int theInfoLength = {len(info)};\n')
@@ -281,7 +281,7 @@ class FPUBuilder:
     shutil.copyfile(f'{filedir}/src/build_hls.tcl', f'{self.output_dir}/build_hls.tcl')
     shutil.copyfile(f'{filedir}/src/build_bit.tcl', f'{self.output_dir}/build_bit.tcl')
     with open(f'{self.output_dir}/{self.project_name}.json', 'w') as f:
-      json.dump(self.cfg, f)
+      json.dump(self.cfg._to_dict(), f)
     self.write_params()
 
   def build(self, csynth=True, bitfile=True):

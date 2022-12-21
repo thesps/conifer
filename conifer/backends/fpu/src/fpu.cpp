@@ -12,7 +12,7 @@ void FPU(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NTE][NN
   #pragma HLS INTERFACE mode=m_axi port=nodes_out offset=slave bundle=gmem0
   #pragma HLS INTERFACE mode=m_axi port=scales_in offset=slave bundle=gmem0
   #pragma HLS INTERFACE mode=m_axi port=scales_out offset=slave bundle=gmem0
-  #pragma HLS INTERFACE mode=m_axis port=info offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=info offset=slave bundle=gmem0
 
   #pragma HLS INTERFACE mode=s_axilite port=instruction bundle=control
   #pragma HLS INTERFACE mode=s_axilite port=X bundle=control

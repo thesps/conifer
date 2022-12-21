@@ -13,13 +13,13 @@ logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 # Create an FPUBuilder config
 cfg = FPUBuilder.default_cfg()
-cfg['tree_engines'] = 2
-cfg['nodes'] = 16
+cfg['tree_engines'] = 100
+cfg['nodes'] = 512
 cfg['dynamic_scaler'] = False
 
 stamp = int(datetime.datetime.now().timestamp())
 # Set the output directory to some code name
-cfg['output_dir'] = 'fpu-07_2TE16N_NDS'
+cfg['output_dir'] = 'fpu-07_100TE_512N_NDS'
 
 builder = FPUBuilder(cfg)
 
