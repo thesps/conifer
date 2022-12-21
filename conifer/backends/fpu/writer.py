@@ -5,52 +5,213 @@ import json
 import shutil
 import os
 import zipfile
+from typing import List
 import logging
 logger = logging.getLogger(__name__)
+from conifer.model import ModelBase, ConfigBase
+try:
+    from conifer.backends.fpu.driver import ZynqDriver
+except ImportError:
+    FPUDriver = None
 
-def _pack_node(tree, inode, cfg, scale):
-  fields = np.zeros(7, dtype='int')
-  t = tree['threshold'][inode] * scale
-  fields[0] = t
-  v = tree['value'][inode] * scale
-  fields[1] = v
-  fields[2] = tree['feature'][inode]
-  fields[3] = tree['children_left'][inode]
-  fields[4] = tree['children_right'][inode]
-  fields[5] = 0 # class ID
-  fields[6] = tree['feature'][inode] == -2
-  return fields
+class FPUInterfaceNode:
+  '''
+  Python representation of the Node sent to/from the FPU
+  '''
+  def __init__(self,
+               threshold: int, 
+               score: int,
+               feature: int,
+               child_left: int,
+               child_right: int,
+               iclass: int,
+               is_leaf: int):
+    self.threshold = threshold
+    self.score = score
+    self.feature = feature
+    self.child_left = child_left
+    self.child_right = child_right
+    self.iclass = iclass
+    self.is_leaf = is_leaf
 
-def write(model):
+  def scale(self, threshold, score):
+    self.threshold *= threshold
+    self.score *= score
 
-  model.save()
-  ensembleDict = copy.deepcopy(model._ensembleDict)
-  cfg = copy.deepcopy(model.config)
-  logger.info(f"Writing project to {cfg['OutputDir']}")
-  fpu_cfg = cfg['FPU']
+  def pack(self) -> List[int] :
+    '''
+    Pack the fields as expected by the FPU
+    '''
+    fields = np.zeros(7, dtype='int')
+    fields[0] = self.threshold
+    fields[1] = self.score
+    fields[2] = self.feature
+    fields[3] = self.child_left
+    fields[4] = self.child_right
+    fields[5] = self.iclass
+    fields[6] = self.is_leaf
+    return fields
 
-  dtype = cfg['Precision']
-  dtype = dtype.replace('ap_fixed<', '').replace('>', '')
-  dtype_n = int(dtype.split(',')[0].strip()) # total number of bits
-  dtype_int = int(dtype.split(',')[1].strip()) # number of integer bits
-  dtype_frac = dtype_n - dtype_int # number of fractional bits
-  scale = 2**dtype_frac
+  def unpack(fields: List[int]) :
+    return FPUInterfaceNode(*fields)
 
-  assert ensembleDict['n_trees'] <= fpu_cfg['tree_engines']
-  assert ensembleDict['n_classes'] == 2
+  def _null_node():
+    return FPUInterfaceNode(0, 0, -2, -1, -1, 0, 1)
 
-  # TODO: '7' is the number of fields of each tree, remove the magic number
-  nodes = np.zeros(shape=(fpu_cfg['tree_engines'], fpu_cfg['nodes'], 7), dtype='int')
-  for it, trees_c in enumerate(ensembleDict['trees']):
-    for tree in trees_c:
-      for inode in range(len(tree['threshold'])):
-        nodes[it][inode] = _pack_node(tree, inode, fpu_cfg, scale)
+class FPUInterfaceTree:
+  def __init__(self, nodes: List[FPUInterfaceNode]):
+    self.nodes = nodes
+
+  def n_nodes(self):
+    return len(self.nodes)
+
+  def pad_to(self, n: int):
+    '''Pad the tree up to n nodes with null nodes'''
+    self.nodes = self.nodes + [FPUInterfaceNode._null_node()] * (n - self.n_nodes())
+
+  def scale(self, threshold: float, score: float):
+    for node in self.nodes:
+      node.scale(threshold, score)
+
+  def pack(self):
+    '''Pack the tree for sending to the FPU'''
+    data = np.zeros((self.n_nodes(), 7), dtype='int')
+    for i, node in enumerate(self.nodes):
+      data[i] = node.pack()
+    return data
+
+  def unpack(data):
+    nodes = []
+    n_nodes = data.ravel().shape[0] // 7
+    for d in data.reshape((n_nodes, 7)):
+      nodes.append(FPUInterfaceNode(*d))
+    return FPUInterfaceTree(nodes)
+
+  def from_flat_tree_dictionary(tree, iclass):
+    n_nodes = len(tree['feature'])
+    nodes = []
+    for i in range(n_nodes):
+      nodes.append(FPUInterfaceNode(tree['threshold'][i],
+                                    tree['value'][i],
+                                    tree['feature'][i],
+                                    tree['children_left'][i],
+                                    tree['children_right'][i],
+                                    iclass,
+                                    tree['feature'][i] == -2))
+    return FPUInterfaceTree(nodes)
+
+  def _null_tree(n: int):
+    nodes = [FPUInterfaceNode._null_node()] * n
+    return FPUInterfaceTree
+
+class FPUConfig(ConfigBase):
+  backend = 'fpu'
+  _config_fields = ConfigBase._config_fields + ['nodes', 'tree_engines', 'features', 'threshold_type', 'score_type', 'dynamic_scaler']
+  _config_fields.remove('output_dir')
+  _config_fields.remove('project_name')
+  _fpu_alts = {'nodes'          : ['Nodes'],
+               'tree_engines'   : ['TreeEngines'],
+               'features'       : ['Features'],
+               'threshold_type' : ['ThresholdType'],
+               'score_type'     : ['ScoreType'],
+               'dynamic_scaler' : ['DynamicScaler']
+               }
+  _alternates = {**ConfigBase._alternates, **_fpu_alts}
+  _fpu_defaults = {'nodes'          : 512,
+                   'tree_engines'   : 100,
+                   'features'       : 16,
+                   'threshold_type' : 16,
+                   'score_type'     : 16,
+                   'dynamic_scaler' : True
+                    }
+  _defaults = {**ConfigBase._defaults, **_fpu_defaults}
+  def __init__(self, configDict, validate=True):
+    super(FPUConfig, self).__init__(configDict, validate=False)
+    if validate:
+      self._validate()
+
+  def default_config():
+    return copy.deepcopy(FPUConfig._defaults)
+
+class FPUBuilderConfig(FPUConfig):
+  backend = 'fpu_builder'
+  _config_fields = ConfigBase._config_fields + FPUConfig._config_fields + ['part']
+  _fpu_builder_alts = {'part' : ['Part']}
+  _alternates = {**ConfigBase._alternates, **FPUConfig._alternates, **_fpu_builder_alts}
+  _fpu_builder_defaults = {'part' : 'xc7z020clg400-1'}
+  _defaults = {**ConfigBase._defaults, **FPUConfig._defaults, **_fpu_builder_defaults}
+  def __init__(self, configDict, validate=True):
+    super(FPUBuilderConfig, self).__init__(configDict, validate=False)
+    if validate:
+      self._validate()
+
+  def default_config():
+    return copy.deepcopy(FPUBuilderConfig._defaults) 
   
-  scales = np.ones(shape=(fpu_cfg['features'])) * 1024
 
-  outcfg = {'nodes' : nodes.flatten().tolist(), 'scales' : scales.flatten().tolist()}
-  with open(f'{cfg["OutputDir"]}/fpu_settings.json','w') as f:
-    json.dump(outcfg, f)
+class FPUModelConfig(ConfigBase):
+  backend = 'fpu'
+  _config_fields = ConfigBase._config_fields + ['fpu']
+  _fpu_alts = {'fpu' : ['FPU']}
+  _alternates = {**ConfigBase._alternates, **_fpu_alts}
+  _fpu_defaults = {'fpu' : FPUConfig.default_config()}
+  _defaults = {**ConfigBase._defaults, **_fpu_defaults}
+  def __init__(self, configDict, validate=True):
+    super(FPUModelConfig, self).__init__(configDict, validate=False)
+    self.fpu = FPUConfig(self.fpu)
+    if validate:
+      self._validate()
+
+  def default_config():
+    return copy.deepcopy(FPUModelConfig._defaults)
+
+class FPUModel(ModelBase):
+
+  def __init__(self, ensembleDict, config, metadata=None):
+    super(FPUModel, self).__init__(ensembleDict, config, metadata)
+    self.config = FPUModelConfig(config)
+    #assert len(ensembleDict['trees']) == 1, 'Only binary classification models are currently supported'
+    interface_trees = []
+    for ic, tree_class in enumerate(ensembleDict['trees']):
+      for tree in tree_class:
+        interface_trees.append(FPUInterfaceTree.from_flat_tree_dictionary(tree, ic))
+    self.interface_trees = interface_trees
+
+    fpu_cfg = self.config.fpu
+    self.pad_to(fpu_cfg.tree_engines, fpu_cfg.nodes)
+
+  def attach_device(self, bitfile):
+    self.driver = ZynqDriver(bitfile, self.config, self.config.features, 1)
+    
+  def pad_to(self, n_trees, n_nodes):
+    for tree in self.interface_trees:
+      tree.pad_to(n_nodes)
+    self.interface_trees += [FPUInterfaceTree._null_tree(n_nodes)] * (n_trees - self.n_trees)
+
+  def scale(self, threshold: float, score: float):
+    for tree in self.interface_trees:
+      tree.scale(threshold, score)
+
+  def pack(self):
+    data = np.zeros((self.config.fpu.tree_engines, self.config.fpu.nodes, 7), dtype='int32')
+    for i, tree in enumerate(self.interface_trees):
+      data[i] = tree.pack()
+    return data
+
+  def load(self):
+    self.driver.load(self.pack(), np.ones(self.config.fpu.features, dtype='float'))
+
+  def decision_function(self, X):
+    return self.driver.predict(X)
+
+  def write(self):
+    self.save()
+    with open(f'{self.config.output_dir}/nodes.json', 'w') as f:
+      d = {'nodes' : self.pack().tolist(), 'scales' : np.ones(self.config.fpu.features, dtype='float').tolist()}
+      json.dump(d, f)
+
+def make_model(ensembleDict, config):
+    return FPUModel(ensembleDict, config)
 
 def auto_config():
     config = {'Backend'     : 'fpu',
@@ -76,29 +237,14 @@ def _resolve_type(t):
 
 class FPUBuilder:
 
-  _cfg_defaults = {
-    'part' : 'xc7z020clg400-1',
-    'project_name' : 'conifer_fpu',
-    'output_dir' : 'conifer_fpu_prj',
-    'nodes' : 512,
-    'tree_engines' : 64,
-    'features' : 16,
-    'threshold_type' : 16,
-    'score_type' : 16,
-    'dynamic_scaler' : True
-  }
-
   def __init__(self, cfg):
-    self.cfg = cfg
-    for key, value in FPUBuilder._cfg_defaults.items():
-      setattr(self, key, cfg.get(key, value))
+    self.cfg = FPUBuilderConfig(cfg)
+    for key, value in FPUBuilderConfig.default_config():
+      setattr(self, key, getattr(self.cfg, key, value))
     self.output_dir = os.path.abspath(self.output_dir)
 
   def default_cfg():
-    cfg = {}
-    for key, value in FPUBuilder._cfg_defaults.items():
-      cfg[key] = value
-    return cfg
+    return FPUBuilderConfig.default_config()
 
   def write_params(self):
     import conifer

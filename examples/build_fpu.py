@@ -1,3 +1,10 @@
+'''
+Build a conifer Forest Processing Unit (FPU)
+You can specify the target device (default pynq-z2), and parameters of the FPU
+Once the FPU is built, you can use it to run inference for multiple BDTs without rebuilding
+Note: this is work in progress and probably buggy
+'''
+
 from conifer.backends.fpu import FPUBuilder
 import datetime
 import sys

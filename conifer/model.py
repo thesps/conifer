@@ -51,7 +51,13 @@ class ConfigBase:
         assert get_backend(self.backend) is not None, f'Backend {self.backend} not found'
 
     def _to_dict(self):
-        dictionary = {k : getattr(self, k) for k in self._config_fields}
+        dictionary = {}
+        for k in self._config_fields:
+            if hasattr(getattr(self, k), '_to_dict'):
+                v = getattr(self, k)._to_dict()
+            else:
+                v = getattr(self, k)
+            dictionary[k] = v
         return dictionary
 
     def _log(self, logger):
