@@ -19,6 +19,12 @@ class DecisionTreeBase:
       assert val is not None, f"Missing expected key {key} in treeDict"
       setattr(self, key, val)
 
+  def n_nodes(self):
+    return len(self.feature)
+
+  def n_leaves(self):
+    return len([n for n in self.feature if n == -2])
+
 class ConfigBase:
     '''
     Conifer Config representation class

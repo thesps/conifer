@@ -13,9 +13,8 @@ std::vector<double> decision_function(std::vector<double> x){
   std::copy(xtv.begin(), xtv.end(), xt);
 
   score_t yt[BDT::fn_classes(n_classes)];
-  score_t tree_scores[BDT::fn_classes(n_classes) * n_trees];
 
-  bdt.decision_function(xt, yt, tree_scores);
+  bdt.decision_function(xt, yt);
   std::vector<score_t> ytv(yt, yt + BDT::fn_classes(n_classes));
   std::vector<double> yd;
   std::transform(ytv.begin(), ytv.end(), std::back_inserter(yd),

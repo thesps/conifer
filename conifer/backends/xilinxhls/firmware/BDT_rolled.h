@@ -111,29 +111,33 @@ template<int n_trees, int max_depth, int n_classes, class input_t, class score_t
 struct BDT{
 
 public:
-    score_t normalisation;
+  score_t normalisation;
 	score_t init_predict[fn_classes(n_classes)];
 	Tree<max_depth, input_t, score_t, threshold_t> trees[n_trees][fn_classes(n_classes)];
 
-	void decision_function(input_t x, score_t score[fn_classes(n_classes)], score_t tree_scores[fn_classes(n_classes) * n_trees]) const{
-        if(unroll){
-    		#pragma HLS ARRAY_PARTITION variable=trees dim=0
-        }
+	void tree_scores(input_t x, score_t scores[n_trees][fn_classes(n_classes)]) const;
+
+	void decision_function(input_t x, score_t score[fn_classes(n_classes)]) const{
+		score_t scores[n_trees][fn_classes(n_classes)];
+		if(unroll){
+			#pragma HLS ARRAY_PARTITION variable=trees dim=0
+			#pragma HLS ARRAY_PARTITION variable=scores dim=0
+			#pragma HLS PIPELINE
+		}
 		for(int j = 0; j < fn_classes(n_classes); j++){
 			score[j] = init_predict[j];
 		}
+		tree_scores(x, scores);
 		Trees:
 		for(int i = 0; i < n_trees; i++){
 			Classes:
 			for(int j = 0; j < fn_classes(n_classes); j++){
-                score_t s = trees[i][j].decision_function(x);
-				score[j] += s;
-                tree_scores[i * fn_classes(n_classes) + j] = s;
+				score[j] += scores[i][j];
 			}
 		}
-        for(int j = 0; j < fn_classes(n_classes); j++){
-            score[j] *= normalisation;
-        }
+		for(int j = 0; j < fn_classes(n_classes); j++){
+			score[j] *= normalisation;
+		}
 	}
 
 };
