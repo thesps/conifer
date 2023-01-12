@@ -3,19 +3,6 @@
 
 #include "ap_fixed.h"
 
-struct FPUInfo{
-  char v[32];
-  char T[32];
-  char U[32];
-  int NFEATURES;
-  int NTE;
-  int NNODES;
-  int ADDRBITS;
-  int FEATBITS;
-  int CLASSBITS;
-  int SCALER; 
-};
-
 struct InterfaceDecisionNode{
   int threshold;
   int score;

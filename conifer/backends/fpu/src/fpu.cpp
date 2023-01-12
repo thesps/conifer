@@ -5,30 +5,11 @@
 #include "fpu.h"
 #include "parameters.h"
 
-void FPU(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES], float scales_out[NFEATURES], char* info, int& infoLength){
-  #pragma HLS INTERFACE mode=m_axi port=X offset=slave bundle=gmem0
-  #pragma HLS INTERFACE mode=m_axi port=y offset=slave bundle=gmem0
-  #pragma HLS INTERFACE mode=m_axi port=nodes_in offset=slave bundle=gmem0
-  #pragma HLS INTERFACE mode=m_axi port=nodes_out offset=slave bundle=gmem0
-  #pragma HLS INTERFACE mode=m_axi port=scales_in offset=slave bundle=gmem0
-  #pragma HLS INTERFACE mode=m_axi port=scales_out offset=slave bundle=gmem0
-  #pragma HLS INTERFACE mode=m_axi port=info offset=slave bundle=gmem0
-
-  #pragma HLS INTERFACE mode=s_axilite port=instruction bundle=control
-  #pragma HLS INTERFACE mode=s_axilite port=X bundle=control
-	#pragma HLS INTERFACE mode=s_axilite port=y bundle=control
-  #pragma HLS INTERFACE mode=s_axilite port=nodes_in bundle=control
-  #pragma HLS INTERFACE mode=s_axilite port=nodes_out bundle=control
-  #pragma HLS INTERFACE mode=s_axilite port=scales_in bundle=control
-  #pragma HLS INTERFACE mode=s_axilite port=scales_out bundle=control
-  #pragma HLS INTERFACE mode=s_axilite port=info bundle=control
-  #pragma HLS INTERFACE mode=s_axilite port=infoLength bundle=control
-	#pragma HLS INTERFACE mode=s_axilite port=return bundle=control
-
+void FPU_internal(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
   static DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes_int[NTE][NNODES];
   #pragma HLS array_partition variable=nodes_int dim=1
   #pragma HLS aggregate variable=nodes_int compact=bit  
-  static float scales_int[NFEATURES];
+  static float scales_int[NFEATURES+NCLASSES];
 
   infoLength = theInfoLength;
 
@@ -43,7 +24,7 @@ void FPU(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NTE][NN
         nodes_int[i][j].fromInterfaceNode(nodes_in[i][j]);
       }
     }
-    LoadScales: for(int i = 0; i < NFEATURES; i++){
+    LoadScales: for(int i = 0; i < NFEATURES + NCLASSES; i++){
       scales_int[i] = scales_in[i];
     }
   }
@@ -53,7 +34,7 @@ void FPU(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NTE][NN
         nodes_out[i][j] = nodes_int[i][j].toInterfaceNode();
       }
     }
-    ReadScales: for(int i = 0; i < NFEATURES; i++){
+    ReadScales: for(int i = 0; i < NFEATURES + NCLASSES; i++){
       scales_out[i] = scales_int[i];
     }    
   }
@@ -75,4 +56,37 @@ void FPU(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NTE][NN
     FPU_df<T, U, FEATBITS, ADDRBITS, CLASSBITS, NFEATURES, NNODES, NTE>(X_int, y_int, nodes_int);
     y[0] = y_int;
   }
+}
+
+void FPU_Zynq(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
+  #pragma HLS INTERFACE mode=m_axi port=X offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=y offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=nodes_in offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=nodes_out offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=scales_in offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=scales_out offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=info offset=slave bundle=gmem0
+
+  #pragma HLS INTERFACE mode=s_axilite port=instruction bundle=control
+  #pragma HLS INTERFACE mode=s_axilite port=X bundle=control
+	#pragma HLS INTERFACE mode=s_axilite port=y bundle=control
+  #pragma HLS INTERFACE mode=s_axilite port=nodes_in bundle=control
+  #pragma HLS INTERFACE mode=s_axilite port=nodes_out bundle=control
+  #pragma HLS INTERFACE mode=s_axilite port=scales_in bundle=control
+  #pragma HLS INTERFACE mode=s_axilite port=scales_out bundle=control
+  #pragma HLS INTERFACE mode=s_axilite port=info bundle=control
+  #pragma HLS INTERFACE mode=s_axilite port=infoLength bundle=control
+	#pragma HLS INTERFACE mode=s_axilite port=return bundle=control
+  FPU_internal(X, y, instruction, nodes_in, nodes_out, scales_in, scales_out, info, infoLength);
+}
+
+void FPU_Alveo(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
+  #pragma HLS INTERFACE mode=m_axi port=X offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=y offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=nodes_in offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=nodes_out offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=scales_in offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=scales_out offset=slave bundle=gmem0
+  #pragma HLS INTERFACE mode=m_axi port=info offset=slave bundle=gmem0
+  FPU_internal(X, y, instruction, nodes_in, nodes_out, scales_in, scales_out, info, infoLength);
 }

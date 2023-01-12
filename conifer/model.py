@@ -1,4 +1,5 @@
 from conifer import __version__ as version
+from packaging.version import Version
 import numpy as np
 import os
 import json
@@ -213,14 +214,14 @@ class ModelMetaData:
         self.user = os.getlogin()
 
     def _to_dict(self):
-        return {'version' : self.version,
+        return {'version' : str(self.version),
                 'host'    : self.host,
                 'user'    : self.user,
                 'time'    : self.time.timestamp()}
 
     def _from_dict(d):
         mmd = ModelMetaData()
-        mmd.version = d.get('version', None)
+        mmd.version = Version(d.get('version', None))
         mmd.host = d.get('host', None)
         mmd.user = d.get('user', None)
         mmd.time = datetime.datetime.fromtimestamp(d.get('time', 0))
