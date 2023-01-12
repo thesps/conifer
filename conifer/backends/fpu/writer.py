@@ -419,7 +419,7 @@ class AlveoFPUBuilder(FPUBuilder):
       f.write(f'set prj_name {self.project_name}\n')
       f.write(f'set part {self.part}\n')
       f.write(f'set clock_period {self.clock_period}\n')
-      f.write(f'set m_axi_addr64 false\n')
+      f.write(f'set m_axi_addr64 true\n')
       f.write(f'set top FPU_Alveo\n')
       f.write(f'set flow_target vitis\n')
       f.write(f'set version {conifer.__version__.major}.{conifer.__version__.minor}\n')
