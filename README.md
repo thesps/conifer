@@ -1,4 +1,4 @@
-<img src="conifer_v1.png" width="250" alt="conifer">
+<img src="https://github.com/thesps/conifer/raw/master/conifer_v1.png" width="250" alt="conifer">
 
 Conifer translates trained Boosted Decision Trees to FPGA firmware for extreme low latency inference. 
 
@@ -15,6 +15,7 @@ Available converters:
 - xgboost
 - ONNX - giving access to other training libraries such as lightGBM and CatBoost with ONNXMLTools
 - TMVA
+- Tensorflow Decision Forest (tf_df)
 
 Available backends:
 - Xilinx HLS - for best results use latest Vitis HLS, but Vivado HLS is also supported (conifer uses whichever is on your `$PATH`)
@@ -26,6 +27,9 @@ See our paper in JINST: "[Fast inference of Boosted Decision Trees in FPGAs for 
 Conifer originated as a development for [hls4ml](https://fastmachinelearning.org/hls4ml/), and borrows heavily from the code and ideas developed for it.
 
 # Usage
+
+View the API reference at the [conifer homepage](https://ssummers.web.cern.ch/conifer/)
+
 ```
 from sklearn.ensemble import GradientBoostingClassifier
 # Train a BDT
