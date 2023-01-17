@@ -58,7 +58,7 @@ class ZynqDriver:
     return self.ybuf[:]
 
 class AlveoDriver:
-  def __init__(self, bitfile, fpu_name=None):
+  def __init__(self, bitfile, fpu_name=None, batch_size=1):
     self.overlay = pynq.Overlay(bitfile)
     self.fpus = [getattr(self.overlay, at) for at in dir(self.overlay) if 'FPU' in at]
     fpu_name = 'FPU_Alveo_1' if fpu_name is None else fpu_name
@@ -67,42 +67,53 @@ class AlveoDriver:
     info = json.loads(self.get_info())
     self.config = info['configuration']
     self.metadata = info['metadata']
-    self._init_buffers()
+    self._init_buffers(batch_size=batch_size)
 
   def get_info(self):
     self.fpu.write(self.fpu.register_map.CTRL.address, 1)
     infoLen =self. fpu.read(self.fpu.register_map.infoLength.address)
     info = pynq.allocate(infoLen, dtype='byte')
     dummy = pynq.allocate(1)
-    self.fpu.call(dummy, dummy, 0, dummy, dummy, dummy, dummy, info, dummy)
+    self.fpu.call(dummy, dummy, 0, 0, 0, dummy, dummy, dummy, dummy, info, dummy)
     info.sync_from_device()
     return "".join([chr(i) for i in info])
 
-  def _init_buffers(self):
+  def _init_Xy_buffers(self, X_shape, y_shape):
+    self.Xbuf = pynq.allocate(X_shape, dtype='int32')
+    self.ybuf = pynq.allocate(y_shape, dtype='int32')
+
+  def _init_buffers(self, batch_size=1):
     cfg = getattr(self, 'config', None)
     assert cfg is not None, 'Configuration not loaded'
-    self.Xbuf = pynq.allocate(cfg['features'], dtype='int32')
-    self.ybuf = pynq.allocate(1, dtype='int32')
+    self._init_Xy_buffers((batch_size, cfg['features']), (batch_size, 1))
     self.interfaceNodes = pynq.allocate((self.config['tree_engines'], self.config['nodes'], 7), dtype='int32')
     self.scales = pynq.allocate(self.config['features'], dtype='float')
     self._dummy_buf = pynq.allocate(1)
 
-  def load(self, nodes, scales):
+  def load(self, nodes, scales, n_features=1, n_classes=2):
+    assert n_classes == 2, "Only binary classification is currently supported"
     self.interfaceNodes[:] = nodes
     self.scales[:] = scales
     self.interfaceNodes.sync_to_device()
     self.scales.sync_to_device()
     dummy = self._dummy_buf
-    self.fpu.call(dummy, dummy, 1, self.interfaceNodes, dummy, self.scales, dummy, dummy, dummy)
+    self.fpu.call(dummy, dummy, 1, 0, 0, self.interfaceNodes, dummy, self.scales, dummy, dummy, dummy)
+    batch_size = self.Xbuf.shape[0]
+    nc = 1 if n_classes == 2 else n_classes
+    self._init_Xy_buffers((batch_size, n_features), (batch_size, nc))
 
   def predict(self, X):
-    assert X.ndim == 1, "Expected 1D inputs. Batched inference is not currently supported"
-    assert X.shape[0] <= self.config['features'], "More inputs were provided than this FPU supports ({} vs {})".format(X.shape[0], self.config['features'])
-    self.Xbuf[:] = np.zeros(self.Xbuf.shape, dtype='int32')
-    self.Xbuf[:X.shape[0]] = X
+    assert X.ndim == 2, "Expected 2D inputs."
+    assert X.shape[0] == self.Xbuf.shape[0], "Batch size must match"
+    assert X.shape[1] == self.Xbuf.shape[1], "More inputs were provided than this FPU supports ({} vs {})".format(X.shape[1], self.config['features'])
+    #self.Xbuf[:] = np.zeros(self.Xbuf.shape, dtype='int32')
+    #self.Xbuf[:X.shape[0]] = X
+    self.Xbuf[:] = X
     self.Xbuf.sync_to_device()
     dummy = self._dummy_buf
-    self.fpu.call(self.Xbuf, self.ybuf, 3, dummy, dummy, dummy, dummy, dummy, dummy)
+    self.fpu.call(self.Xbuf, self.ybuf, 3, X.shape[0], X.shape[1], dummy, dummy, dummy, dummy, dummy, dummy)
+    while not self.fpu.register_map.CTRL.AP_IDLE:
+      pass
     self.ybuf.sync_from_device()
     return self.ybuf
 

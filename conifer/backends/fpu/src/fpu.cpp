@@ -5,7 +5,7 @@
 #include "fpu.h"
 #include "parameters.h"
 
-void FPU_internal(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
+void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_features, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
   static DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes_int[NTE][NNODES];
   #pragma HLS array_partition variable=nodes_int dim=1
   #pragma HLS aggregate variable=nodes_int compact=bit  
@@ -42,19 +42,13 @@ void FPU_internal(int* X, int* y, int instruction, InterfaceDecisionNode nodes_i
     T X_int[NFEATURES];
     U y_int;
     #pragma HLS array_partition variable=X_int
-    /*ApplyScales: for(int i = 0; i < NFEATURES; i++){
-      #pragma HLS pipeline
-      if(SCALER){
-        X_int[i] = dynamic_scaler<T>(X[i], scales_int[i]);
-      }else{
-        X_int[i] = X[i];
+    for(int n = 0; n < batch_size; n++){
+      for(int i = 0; i < n_features; i++){
+        X_int[i] = X[n*n_features + i];
       }
-    }*/
-    for(int i = 0; i < NFEATURES; i++){
-      X_int[i] = X[i];
+      FPU_df<T, U, FEATBITS, ADDRBITS, CLASSBITS, NFEATURES, NNODES, NTE>(X_int, y_int, nodes_int);
+      y[n] = y_int;
     }
-    FPU_df<T, U, FEATBITS, ADDRBITS, CLASSBITS, NFEATURES, NNODES, NTE>(X_int, y_int, nodes_int);
-    y[0] = y_int;
   }
 }
 
@@ -77,10 +71,10 @@ void FPU_Zynq(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NT
   #pragma HLS INTERFACE mode=s_axilite port=info bundle=control
   #pragma HLS INTERFACE mode=s_axilite port=infoLength bundle=control
 	#pragma HLS INTERFACE mode=s_axilite port=return bundle=control
-  FPU_internal(X, y, instruction, nodes_in, nodes_out, scales_in, scales_out, info, infoLength);
+  FPU_internal(X, y, instruction, 1, NFEATURES, nodes_in, nodes_out, scales_in, scales_out, info, infoLength);
 }
 
-void FPU_Alveo(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
+void FPU_Alveo(int* X, int* y, int instruction, int batch_size, int n_features, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
   #pragma HLS INTERFACE mode=m_axi port=X offset=slave bundle=gmem0
   #pragma HLS INTERFACE mode=m_axi port=y offset=slave bundle=gmem0
   #pragma HLS INTERFACE mode=m_axi port=nodes_in offset=slave bundle=gmem0
@@ -88,5 +82,5 @@ void FPU_Alveo(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[N
   #pragma HLS INTERFACE mode=m_axi port=scales_in offset=slave bundle=gmem0
   #pragma HLS INTERFACE mode=m_axi port=scales_out offset=slave bundle=gmem0
   #pragma HLS INTERFACE mode=m_axi port=info offset=slave bundle=gmem0
-  FPU_internal(X, y, instruction, nodes_in, nodes_out, scales_in, scales_out, info, infoLength);
+  FPU_internal(X, y, instruction, batch_size, n_features, nodes_in, nodes_out, scales_in, scales_out, info, infoLength);
 }

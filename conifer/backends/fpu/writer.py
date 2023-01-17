@@ -215,7 +215,7 @@ class FPUModel(ModelBase):
 
   def load(self):
     assert self.device is not None, 'No device attached! Did you load the driver and attach_device first?'
-    self.device.load(self.pack(), np.ones(self.config.fpu.features, dtype='float'))
+    self.device.load(self.pack(), np.ones(self.config.fpu.features, dtype='float'), self.n_features, self.n_classes)
 
   def decision_function(self, X):
     assert self.device is not None, 'No device attached! Did you load the driver and attach_device first?'
