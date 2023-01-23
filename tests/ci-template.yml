@@ -4,8 +4,7 @@
   tags: 
     - docker
   before_script:
-    - echo $0
-    - source ~/.bashrc
+    - source /home/conifer/miniconda3/etc/profile.d/conda.sh
     - conda activate conifer-testing
     - pip install .
   script:
