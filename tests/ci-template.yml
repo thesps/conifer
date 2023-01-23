@@ -4,6 +4,7 @@
   tags: 
     - docker
   before_script:
+    - conda init bash
     - source ~/.bashrc
     - conda activate conifer-testing
     - pip install .
