@@ -1,0 +1,15 @@
+name: conifer-testing
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - numpy
+  - scipy
+  - pytest
+  - scikit-learn
+  - onnxmltools
+  - onnx
+  - onnxruntime
+  - pip
+  - pip:
+    - tensorflow_decision_forests

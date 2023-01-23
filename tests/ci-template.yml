@@ -1,0 +1,16 @@
+.pytest:
+  stage: test
+  image: gitlab-registry.cern.ch/ssummers/conifer:0.0.base
+  tags: 
+    - docker
+  before_script:
+    - source ~/.bashrc
+    - conda activate conifer-testing
+    - pip install .
+  script:
+    - cd test
+    - pytest $PYTESTFILE -rA
+  artifacts:
+    when: always
+    paths:
+      - test/prj*

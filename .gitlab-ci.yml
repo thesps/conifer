@@ -1,0 +1,27 @@
+stages:
+  - generate
+  - trigger
+  - test
+
+generator:
+  stage: generate
+  image: python:3.7-alpine
+  tags: 
+    - docker
+  before_script:
+    - pip install pyyaml
+  script: 
+    - cd tests
+    - python generate_ci_yaml.py
+  artifacts:
+    paths:
+      - tests/pytests.yml
+
+pytests:
+  stage: trigger
+  trigger:
+    include:
+      - local: tests/ci-template.yml
+      - artifact: tests/pytests.yml
+        job: generator
+    strategy: depend
