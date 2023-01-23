@@ -79,8 +79,8 @@ def test_onnx_hls_predict(train_onnx, hls_convert):
 
 def test_onnx_build(hls_convert):
     model = hls_convert
-    model.build()
-    assert True
+    success = model.build()
+    assert success, "Build failed"
 
 def test_hdl_predict(train_onnx, vhdl_convert):
     import numpy as np
@@ -91,7 +91,7 @@ def test_hdl_predict(train_onnx, vhdl_convert):
 
 def test_hdl_build(vhdl_convert):
     model = vhdl_convert
-    model.build()
-    assert True
+    success = model.build()
+    assert success, "Build failed"
 
 

@@ -57,4 +57,5 @@ def test_multiclass(frontend, backend):
 
     y_hls, y_skl = predicts[frontend](predictor, X, y, cnf)
     np.testing.assert_allclose(y_hls, y_skl, rtol=1e-2, atol=1e-2)
-    cnf.build()
+    success = cnf.build()
+    assert success, "Build failed"
