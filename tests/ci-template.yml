@@ -8,7 +8,7 @@
     - conda activate conifer-testing
     - pip install .
   script:
-    - cd test
+    - cd tests
     - pytest $PYTESTFILE -rA
   artifacts:
     when: always
