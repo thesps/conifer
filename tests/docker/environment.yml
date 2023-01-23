@@ -7,9 +7,9 @@ dependencies:
   - scipy
   - pytest
   - scikit-learn
-  - onnxmltools
-  - onnx
-  - onnxruntime
   - pip
   - pip:
     - tensorflow_decision_forests
+    - onnx
+    - onnxruntime
+    - onnxmltools
