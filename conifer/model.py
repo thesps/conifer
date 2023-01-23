@@ -1,5 +1,6 @@
 from conifer import __version__ as version
 import numpy as np
+import getpass
 import os
 import json
 import copy
@@ -204,7 +205,7 @@ class ModelMetaData:
         self.version = version
         self.time = datetime.datetime.now()
         self.host = platform.node()
-        self.user = os.getlogin()
+        self.user = getpass.getuser()
 
     def _to_dict(self):
         return {'version' : self.version,
