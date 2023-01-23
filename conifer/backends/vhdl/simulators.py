@@ -28,7 +28,10 @@ def _run_sim(simulator, odir):
 
 def _touch(simulator):
   cmd = simulator._touch_cmd
-  success = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+  try:
+    success = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+  except:
+    success = 1
   return success == 0
 
 class Modelsim:
