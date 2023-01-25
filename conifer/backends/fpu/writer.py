@@ -202,6 +202,8 @@ class FPUModel(ModelBase):
     self.interface_trees += [FPUInterfaceTree._null_tree(n_nodes)] * (n_trees - self.n_trees)
 
   def scale(self, threshold: float, score: float):
+    self.threshold_scale = threshold
+    self.score_scale = 1. / score
     for tree in self.interface_trees:
       tree.scale(threshold, score)
 
@@ -215,7 +217,7 @@ class FPUModel(ModelBase):
 
   def load(self):
     assert self.device is not None, 'No device attached! Did you load the driver and attach_device first?'
-    self.device.load(self.pack(), np.ones(self.config.fpu.features, dtype='float'), self.n_features, self.n_classes)
+    self.device.load(self.pack(), self._scales(), self.n_features, self.n_classes)
 
   def decision_function(self, X):
     assert self.device is not None, 'No device attached! Did you load the driver and attach_device first?'
@@ -224,8 +226,14 @@ class FPUModel(ModelBase):
   def write(self):
     self.save()
     with open(f'{self.config.output_dir}/nodes.json', 'w') as f:
-      d = {'nodes' : self.pack().tolist(), 'scales' : np.ones(self.config.fpu.features, dtype='float').tolist()}
+      d = {'nodes' : self.pack().tolist(), 'scales' : self._scales().tolist()}
       json.dump(d, f)
+
+  def _scales(self):
+    scales = np.ones(self.config.fpu.features + 1, dtype='float32') # todo 1 is a placeholder for classes
+    scales[:-1] = self.threshold_scale
+    scales[-1] = self.score_scale
+    return scales
 
 def make_model(ensembleDict, config):
     return FPUModel(ensembleDict, config)

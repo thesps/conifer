@@ -4,6 +4,7 @@
 
 #include "fpu.h"
 #include "parameters.h"
+#include <cstdint>
 
 void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_features, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
   static DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes_int[NTE][NNODES];
@@ -44,10 +45,21 @@ void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_feature
     #pragma HLS array_partition variable=X_int
     for(int n = 0; n < batch_size; n++){
       for(int i = 0; i < n_features; i++){
-        X_int[i] = X[n*n_features + i];
+        if(SCALER){
+          float x_float = *reinterpret_cast<float*>(&X[n*n_features + i]);
+          float x_float_scaled = x_float * scales_int[i];
+          X_int[i] = (T) x_float_scaled;
+        }else{
+          X_int[i] = (T) X[n*n_features + i];
+        }
       }
       FPU_df<T, U, FEATBITS, ADDRBITS, CLASSBITS, NFEATURES, NNODES, NTE>(X_int, y_int, nodes_int);
-      y[n] = y_int;
+      if(SCALER){
+        float y_tmp = ((float) y_int) * scales_int[NFEATURES];
+        y[n] = *(reinterpret_cast<int*>(&y_tmp));
+      }else{
+        y[n] = y_int;
+      }
     }
   }
 }

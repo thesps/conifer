@@ -79,15 +79,16 @@ class AlveoDriver:
     return "".join([chr(i) for i in info])
 
   def _init_Xy_buffers(self, X_shape, y_shape):
-    self.Xbuf = pynq.allocate(X_shape, dtype='int32')
-    self.ybuf = pynq.allocate(y_shape, dtype='int32')
+    dtype = 'float32' if self.config.get('dynamic_scaler', False) else 'int32'
+    self.Xbuf = pynq.allocate(X_shape, dtype=dtype)
+    self.ybuf = pynq.allocate(y_shape, dtype=dtype)
 
   def _init_buffers(self, batch_size=1):
     cfg = getattr(self, 'config', None)
     assert cfg is not None, 'Configuration not loaded'
     self._init_Xy_buffers((batch_size, cfg['features']), (batch_size, 1))
     self.interfaceNodes = pynq.allocate((self.config['tree_engines'], self.config['nodes'], 7), dtype='int32')
-    self.scales = pynq.allocate(self.config['features'], dtype='float')
+    self.scales = pynq.allocate(self.config['features'] + 1, dtype='float32') # todo 1 is placehold for number of classes
     self._dummy_buf = pynq.allocate(1)
 
   def load(self, nodes, scales, n_features=1, n_classes=2):
@@ -106,8 +107,7 @@ class AlveoDriver:
     assert X.ndim == 2, "Expected 2D inputs."
     assert X.shape[0] == self.Xbuf.shape[0], "Batch size must match"
     assert X.shape[1] == self.Xbuf.shape[1], "More inputs were provided than this FPU supports ({} vs {})".format(X.shape[1], self.config['features'])
-    #self.Xbuf[:] = np.zeros(self.Xbuf.shape, dtype='int32')
-    #self.Xbuf[:X.shape[0]] = X
+    assert X.dtype == self.Xbuf.dtype, f"Cannot copy {X.dtype} data into {self.Xbuf.dtype} buffer"
     self.Xbuf[:] = X
     self.Xbuf.sync_to_device()
     dummy = self._dummy_buf
