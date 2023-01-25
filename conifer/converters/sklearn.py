@@ -2,9 +2,9 @@ import numpy as np
 
 def convert_bdt(bdt):
   ensembleDict = {'max_depth' : bdt.max_depth, 'n_trees' : bdt.n_estimators,
-                  'n_features' : bdt.n_features_,
+                  'n_features' : bdt.n_features_in_,
                   'n_classes' : bdt.n_classes_, 'trees' : [],
-                  'init_predict' : bdt._raw_predict_init(np.zeros(bdt.n_features_).reshape(1, -1))[0].tolist(),
+                  'init_predict' : bdt._raw_predict_init(np.zeros(bdt.n_features_in_).reshape(1, -1))[0].tolist(),
                   'norm' : 1}
   for trees in bdt.estimators_:
     treesl = []
@@ -19,7 +19,7 @@ def convert_bdt(bdt):
 
 def convert_random_forest(bdt):
   ensembleDict = {'max_depth' : bdt.max_depth, 'n_trees' : bdt.n_estimators,
-                  'n_features' : bdt.n_features_,
+                  'n_features' : bdt.n_features_in_,
                   'n_classes' : bdt.n_classes_, 'trees' : [],
                   'init_predict' : [0] * bdt.n_classes_, 
                   'norm' : 1}
