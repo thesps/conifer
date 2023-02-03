@@ -35,7 +35,10 @@ class FPUInterfaceNode:
     self.is_leaf = is_leaf
 
   def scale(self, threshold, score):
-    self.threshold *= threshold
+    if isinstance(threshold, np.ndarray):
+      self.threshold *= threshold[self.feature]
+    else:
+      self.threshold *= threshold
     self.score *= score
 
   def pack(self) -> List[int] :
@@ -187,10 +190,13 @@ class FPUModel(ModelBase):
       for tree in tree_class:
         interface_trees.append(FPUInterfaceTree.from_flat_tree_dictionary(tree, ic))
     self.interface_trees = interface_trees
-    self.device = None
 
     fpu_cfg = self.config.fpu
     self.pad_to(fpu_cfg.tree_engines, fpu_cfg.nodes)
+
+    if self.config.fpu.dynamic_scaler:
+      t, s = self.derive_scales()
+      self.scale(t, s)
 
   def attach_device(self, device):
     self.device = device
@@ -201,7 +207,24 @@ class FPUModel(ModelBase):
       tree.pad_to(n_nodes)
     self.interface_trees += [FPUInterfaceTree._null_tree(n_nodes)] * (n_trees - self.n_trees)
 
+  def derive_scales(self):
+    thresholds = np.array([t for trees_c in self.trees for tree in trees_c for t in tree.threshold if t != -2])
+    features = np.array([f for trees_c in self.trees for tree in trees_c for f in tree.feature if f != -2])
+    threshold_scales = np.zeros(shape=self.n_features, dtype='float32')
+    h = 2**(self.config.fpu.threshold_type-1)-1
+    for i in range(self.n_features):
+      t = np.abs(thresholds[features == i])
+      t = t[t != 0]
+      threshold_scales[i] = h / t.max()
+
+    v = np.array([v for trees_c in self.trees for tree in trees_c for v, f in zip(tree.value, tree.feature) if f != -2])
+    v = np.abs(v[v != 0])
+    h = (2**(self.config.fpu.score_type-1)-1) / self.n_trees
+    score_scales = np.array([h / v.max()])
+    return threshold_scales, score_scales
+
   def scale(self, threshold: float, score: float):
+    logger.info(f'Scaling model with threshold scales {threshold}, score scales {score}')
     self.threshold_scale = threshold
     self.score_scale = 1. / score
     for tree in self.interface_trees:
@@ -231,7 +254,7 @@ class FPUModel(ModelBase):
 
   def _scales(self):
     scales = np.ones(self.config.fpu.features + 1, dtype='float32') # todo 1 is a placeholder for classes
-    scales[:-1] = self.threshold_scale
+    scales[:self.n_features] = self.threshold_scale
     scales[-1] = self.score_scale
     return scales
 
