@@ -6,6 +6,7 @@ import json
 import copy
 import datetime
 import platform
+import getpass
 import logging
 logger = logging.getLogger(__name__)
 
@@ -211,7 +212,7 @@ class ModelMetaData:
         self.version = version
         self.time = datetime.datetime.now()
         self.host = platform.node()
-        self.user = os.getlogin()
+        self.user = getpass.getuser()
 
     def _to_dict(self):
         return {'version' : str(self.version),
