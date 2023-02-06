@@ -46,7 +46,7 @@ class ZynqDriver:
     self.interfaceNodes = pynq.allocate((self.config['tree_engines'], self.config['nodes'], 7), dtype='int32')
     self.scales = pynq.allocate(self.config['features'] + 1, dtype='float32') # todo 1 is placehold for number of classes
 
-  def load(self, nodes, scales, n_features=1, n_classes=2, batch_size=1):
+  def load(self, nodes, scales, n_features=1, n_classes=2, batch_size=None):
     assert n_classes == 2, "Only binary classification is currently supported"
     self.interfaceNodes[:] = nodes
     self.scales[:] = scales
@@ -56,6 +56,8 @@ class ZynqDriver:
     # load
     self.fpu.write(self.fpu.register_map.instruction.address, 1)
     self.fpu.write(self.fpu.register_map.CTRL.address, 1)
+    if batch_size is None:
+      batch_size = self.Xbuf.shape[0]
     nc = 1 if n_classes == 2 else n_classes
     self._init_Xy_buffers((batch_size, n_features), (batch_size, nc))
 
@@ -113,7 +115,7 @@ class AlveoDriver:
     self.scales = pynq.allocate(self.config['features'] + 1, dtype='float32') # todo 1 is placehold for number of classes
     self._dummy_buf = pynq.allocate(1)
 
-  def load(self, nodes, scales, n_features=1, n_classes=2):
+  def load(self, nodes, scales, n_features=1, n_classes=2, batch_size=None):
     assert n_classes == 2, "Only binary classification is currently supported"
     self.interfaceNodes[:] = nodes
     self.scales[:] = scales
@@ -121,7 +123,8 @@ class AlveoDriver:
     self.scales.sync_to_device()
     dummy = self._dummy_buf
     self.fpu.call(dummy, dummy, 1, 0, 0, self.interfaceNodes, dummy, self.scales, dummy, dummy, dummy)
-    batch_size = self.Xbuf.shape[0]
+    if batch_size is None:
+      batch_size = self.Xbuf.shape[0]
     nc = 1 if n_classes == 2 else n_classes
     self._init_Xy_buffers((batch_size, n_features), (batch_size, nc))
 

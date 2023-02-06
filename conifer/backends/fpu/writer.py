@@ -198,9 +198,9 @@ class FPUModel(ModelBase):
       t, s = self.derive_scales()
       self.scale(t, s)
 
-  def attach_device(self, device):
+  def attach_device(self, device, batch_size=None):
     self.device = device
-    self.load()
+    self.load(batch_size=batch_size)
     
   def pad_to(self, n_trees, n_nodes):
     for tree in self.interface_trees:
@@ -238,9 +238,9 @@ class FPUModel(ModelBase):
       data[i] = tree.pack()
     return data
 
-  def load(self):
+  def load(self, batch_size=None):
     assert self.device is not None, 'No device attached! Did you load the driver and attach_device first?'
-    self.device.load(self.pack(), self._scales(), self.n_features, self.n_classes)
+    self.device.load(self.pack(), self._scales(), self.n_features, self.n_classes, batch_size)
 
   def decision_function(self, X):
     assert self.device is not None, 'No device attached! Did you load the driver and attach_device first?'
@@ -476,4 +476,3 @@ class AlveoFPUBuilder(FPUBuilder):
     with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}.zip', 'w') as zip:
       zip.write(f'{self.output_dir}/{self.project_name}.xclbin', '{self.project_name}.xclbin')
       zip.write(f'{self.output_dir}/{self.project_name}.json', '{self.project_name}.json')
-
