@@ -17,10 +17,10 @@ cfg['part'] = 'xcu200-fsgd2104-2-e'
 cfg['platform'] = 'xilinx_u200_gen3x16_xdma_2_202110_1'
 cfg['tree_engines'] = 100
 cfg['nodes'] = 512
-cfg['dynamic_scaler'] = False
+cfg['dynamic_scaler'] = True
 
 # Set the output directory to some code name
-cfg['output_dir'] = 'fpu-08-u200_100TE_512N_NDS'
+cfg['output_dir'] = 'fpu-0A-u200_100TE_512N_DS'
 
 builder = AlveoFPUBuilder(cfg)
 

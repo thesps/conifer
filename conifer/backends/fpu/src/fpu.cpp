@@ -64,7 +64,7 @@ void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_feature
   }
 }
 
-void FPU_Zynq(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
+void FPU_Zynq(int* X, int* y, int instruction, int batch_size, int n_features, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
   #pragma HLS INTERFACE mode=m_axi port=X offset=slave bundle=gmem0
   #pragma HLS INTERFACE mode=m_axi port=y offset=slave bundle=gmem0
   #pragma HLS INTERFACE mode=m_axi port=nodes_in offset=slave bundle=gmem0
@@ -74,6 +74,8 @@ void FPU_Zynq(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NT
   #pragma HLS INTERFACE mode=m_axi port=info offset=slave bundle=gmem0
 
   #pragma HLS INTERFACE mode=s_axilite port=instruction bundle=control
+  #pragma HLS INTERFACE mode=s_axilite port=batch_size bundle=control
+  #pragma HLS INTERFACE mode=s_axilite port=n_features bundle=control
   #pragma HLS INTERFACE mode=s_axilite port=X bundle=control
 	#pragma HLS INTERFACE mode=s_axilite port=y bundle=control
   #pragma HLS INTERFACE mode=s_axilite port=nodes_in bundle=control
@@ -83,7 +85,7 @@ void FPU_Zynq(int* X, int* y, int instruction, InterfaceDecisionNode nodes_in[NT
   #pragma HLS INTERFACE mode=s_axilite port=info bundle=control
   #pragma HLS INTERFACE mode=s_axilite port=infoLength bundle=control
 	#pragma HLS INTERFACE mode=s_axilite port=return bundle=control
-  FPU_internal(X, y, instruction, 1, NFEATURES, nodes_in, nodes_out, scales_in, scales_out, info, infoLength);
+  FPU_internal(X, y, instruction, batch_size, n_features, nodes_in, nodes_out, scales_in, scales_out, info, infoLength);
 }
 
 void FPU_Alveo(int* X, int* y, int instruction, int batch_size, int n_features, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){

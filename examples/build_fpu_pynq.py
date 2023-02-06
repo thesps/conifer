@@ -15,11 +15,11 @@ logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 cfg = ZynqFPUBuilder.default_cfg()
 cfg['tree_engines'] = 100
 cfg['nodes'] = 512
-cfg['dynamic_scaler'] = False
+cfg['dynamic_scaler'] = True
 
 stamp = int(datetime.datetime.now().timestamp())
 # Set the output directory to some code name
-cfg['output_dir'] = 'fpu-08_100TE_512N_NDS'
+cfg['output_dir'] = 'fpu-0A-pynq-z2_100TE_512N_DS'
 
 builder = ZynqFPUBuilder(cfg)
 
