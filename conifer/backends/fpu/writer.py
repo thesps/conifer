@@ -208,16 +208,17 @@ class FPUModel(ModelBase):
     self.interface_trees += [FPUInterfaceTree._null_tree(n_nodes)] * (n_trees - self.n_trees)
 
   def derive_scales(self):
-    thresholds = np.array([t for trees_c in self.trees for tree in trees_c for t in tree.threshold if t != -2])
+    # only scale thresholds of non-leaf nodes
+    thresholds = np.array([t for trees_c in self.trees for tree in trees_c for t, f in zip(tree.threshold, tree.feature) if f != -2])
     features = np.array([f for trees_c in self.trees for tree in trees_c for f in tree.feature if f != -2])
     threshold_scales = np.zeros(shape=self.n_features, dtype='float32')
     h = 2**(self.config.fpu.threshold_type-1)-1
     for i in range(self.n_features):
       t = np.abs(thresholds[features == i])
       t = t[t != 0]
-      threshold_scales[i] = h / t.max()
-
-    v = np.array([v for trees_c in self.trees for tree in trees_c for v, f in zip(tree.value, tree.feature) if f != -2])
+      threshold_scales[i] = 1. if len(t) == 0 else h / t.max()
+    # only scale the scores of leaf nodes
+    v = np.array([v for trees_c in self.trees for tree in trees_c for v, f in zip(tree.value, tree.feature) if f == -2])
     v = np.abs(v[v != 0])
     h = (2**(self.config.fpu.score_type-1)-1) / self.n_trees
     score_scales = np.array([h / v.max()])
