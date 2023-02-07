@@ -265,6 +265,8 @@ def load_model(filename, new_config=None):
     metadata = js.get('metadata', None)
     if metadata is not None:
         metadata = [ModelMetaData._from_dict(mmd) for mmd in metadata]
+    else:
+        metadata = []
 
     model = make_model(js, config)
     model._metadata = metadata + model._metadata
