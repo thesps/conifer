@@ -9,10 +9,7 @@ from typing import List
 import logging
 logger = logging.getLogger(__name__)
 from conifer.model import ModelBase, ConfigBase, ModelMetaData
-try:
-    from conifer.backends.fpu.fpu_driver import ZynqDriver
-except ImportError:
-    FPUDriver = None
+from conifer.utils import copydocstring
 
 class FPUInterfaceNode:
   '''
@@ -199,6 +196,16 @@ class FPUModel(ModelBase):
       self.scale(t, s)
 
   def attach_device(self, device, batch_size=None):
+    '''
+    Load model onto FPU device
+
+    Parameters
+    ----------
+    device
+      FPU runtime device (AlveoDriver or ZynqDriver)
+    batch_size: integer
+      batch size used for allocating buffers
+    '''
     self.device = device
     self.load(batch_size=batch_size)
     
@@ -208,6 +215,15 @@ class FPUModel(ModelBase):
     self.interface_trees += [FPUInterfaceTree._null_tree(n_nodes)] * (n_trees - self.n_trees)
 
   def derive_scales(self):
+    '''
+    Derive threshold and score scale factors from static analysis of model parameters, and configured precision.
+    Returns
+    ----------
+    threshold_scales: ndarray of shape (n_features)
+      Scale factors derived for thresholds
+    score_scales: ndarray of shape (n_classes)
+      Scale factors derived for scores
+    '''
     # only scale thresholds of non-leaf nodes
     thresholds = np.array([t for trees_c in self.trees for tree in trees_c for t, f in zip(tree.threshold, tree.feature) if f != -2])
     features = np.array([f for trees_c in self.trees for tree in trees_c for f in tree.feature if f != -2])
@@ -225,6 +241,15 @@ class FPUModel(ModelBase):
     return threshold_scales, score_scales
 
   def scale(self, threshold: float, score: float):
+    '''
+    Scale model tresholds and scores by scale factors
+    Parameters
+    ----------
+    threshold: ndarray of shape (n_features) or scalar
+      scale factors by which to multiply thresholds
+    score: ndarray of shape (n_classes) or scalar
+      scale factors by which to divide scores
+    '''
     logger.info(f'Scaling model with threshold scales {threshold}, score scales {score}')
     self.threshold_scale = threshold
     self.score_scale = 1. / score
@@ -232,6 +257,13 @@ class FPUModel(ModelBase):
       tree.scale(threshold, score)
 
   def pack(self):
+    '''
+    Pack model into FPU InterfaceDecisionTrees
+    Returns
+    ----------
+    data: ndarray of shape (FPU TEs, FPU nodes, 7), dtype int32
+      The packed InterfaceDecisionTrees
+    '''
     assert self.n_trees <= self.config.fpu.tree_engines, f'Cannot pack model with {self.n_trees} trees to FPU target with {self.config.fpu.tree_engines} Tree Engines'
     assert 2**self.max_depth <= self.config.fpu.nodes, f'Cannot pack model with max_depth {self.max_depth} to FPU target with {self.nodes} nodes'
     data = np.zeros((self.config.fpu.tree_engines, self.config.fpu.nodes, 7), dtype='int32')
@@ -240,20 +272,34 @@ class FPUModel(ModelBase):
     return data
 
   def load(self, batch_size=None):
+    '''
+    Load model onto attached FPU device
+    '''
     assert self.device is not None, 'No device attached! Did you load the driver and attach_device first?'
     self.device.load(self.pack(), self._scales(), self.n_features, self.n_classes, batch_size)
 
+  @copydocstring(ModelBase.write)
   def decision_function(self, X):
     assert self.device is not None, 'No device attached! Did you load the driver and attach_device first?'
     return self.device.predict(X)
 
   def write(self):
+    '''
+    Write the FPU packed model (InterfaceDecisionTrees and scales) to JSON files.
+    These files can be used to execute inference in contexts without access to the model object.
+    '''
     self.save()
     with open(f'{self.config.output_dir}/nodes.json', 'w') as f:
       d = {'nodes' : self.pack().tolist(), 'scales' : self._scales().tolist()}
       json.dump(d, f)
 
   def _scales(self):
+    '''
+    Get the scales packed for FPU loading
+    Returns
+    ----------
+    scales: ndarray of shape (FPU features + 1)
+    '''
     scales = np.ones(self.config.fpu.features + 1, dtype='float32') # todo 1 is a placeholder for classes
     scales[:self.n_features] = self.threshold_scale
     scales[-1] = self.score_scale
@@ -365,6 +411,9 @@ class ZynqFPUBuilder(FPUBuilder):
     return ZynqFPUBuilderConfig.default_config()
 
   def write(self):
+    '''
+    Write project files
+    '''
     super().write()
     filedir = os.path.dirname(os.path.abspath(__file__))
     shutil.copyfile(f'{filedir}/src/build_hls.tcl', f'{self.output_dir}/build_hls.tcl')
@@ -387,6 +436,15 @@ class ZynqFPUBuilder(FPUBuilder):
       f.write(f'set export_format ip_catalog\n')
 
   def build(self, csynth=True, bitfile=True):
+    '''
+    Build FPU project
+    Parameters
+    ----------
+    csynth: boolean (optional)
+      Run HLS C Synthesis
+    bitfile: boolean (optional)
+      Create Vivado IPI project, run synthesis and implementation
+    '''
     self.write()
     cwd = os.getcwd()
     os.chdir(self.output_dir)
@@ -400,6 +458,9 @@ class ZynqFPUBuilder(FPUBuilder):
     os.chdir(cwd)
 
   def package(self):
+    '''
+    Collect build products and compress to a zip file
+    '''
     logger.info(f'Packaging FPU bitfile to {self.output_dir}/{self.project_name}.zip')
     with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}_vivado/fpu.xsa', 'r') as zip:
       zip.extractall(f'{self.output_dir}/{self.project_name}_vivado/package')
@@ -439,6 +500,9 @@ class AlveoFPUBuilder(FPUBuilder):
     return AlveoFPUBuilderConfig.default_config()
 
   def write(self):
+    '''
+    Write project files
+    '''
     super().write()
     filedir = os.path.dirname(os.path.abspath(__file__))
     shutil.copyfile(f'{filedir}/src/build_hls.tcl', f'{self.output_dir}/build_hls.tcl')
@@ -458,6 +522,15 @@ class AlveoFPUBuilder(FPUBuilder):
       f.write(f'set export_format xo\n')
 
   def build(self, csynth=True, bitfile=True):
+    '''
+    Build FPU project
+    Parameters
+    ----------
+    csynth: boolean (optional)
+      Run HLS C Synthesis
+    bitfile: boolean (optional)
+      Run v++ linkage (Place and Route)
+    '''
     self.write()
     cwd = os.getcwd()
     os.chdir(self.output_dir)
@@ -473,6 +546,9 @@ class AlveoFPUBuilder(FPUBuilder):
     os.chdir(cwd)
 
   def package(self):
+    '''
+    Collect build products and compress to a zip file
+    '''
     logger.info(f'Packaging FPU bitfile to {self.output_dir}/{self.project_name}.zip')
     with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}.zip', 'w') as zip:
       zip.write(f'{self.output_dir}/{self.project_name}.xclbin', '{self.project_name}.xclbin')

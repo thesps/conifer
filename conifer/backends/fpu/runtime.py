@@ -24,6 +24,13 @@ class ZynqDriver:
     return infoLen
 
   def get_info(self):
+    '''
+    Get FPU configuration from device
+
+    Returns
+    ----------
+    configuration: dictionary
+    '''
     infoLen = self.get_info_len()
     infoLen = self.get_info_len()
     info = pynq.buffer.allocate(infoLen, dtype='byte')
@@ -47,6 +54,22 @@ class ZynqDriver:
     self.scales = pynq.allocate(self.config['features'] + 1, dtype='float32') # todo 1 is placehold for number of classes
 
   def load(self, nodes, scales, n_features=1, n_classes=2, batch_size=None):
+    '''
+    Load packed model onto FPU
+
+    Parameters
+    ----------
+    nodes: ndarray of shape (FPU TEs, FPU nodes, 7), dtype int32
+      Packed nodes, from FPUModel.pack
+    scales: ndarray of shape (FPU features + 1), dtype float32
+      Packed scale factors, from FPUModel._scales
+    n_features: integer (optional)
+      Number of model features (must be less than FPU features)
+    n_classes: integer (optional)
+      Number of model classes (Only binary classification is currently supported)
+    batch_size: integer (optional)
+      Batch size for allocating buffers
+    '''
     assert n_classes == 2, "Only binary classification is currently supported"
     self.interfaceNodes[:] = nodes
     self.scales[:] = scales
@@ -62,6 +85,10 @@ class ZynqDriver:
     self._init_Xy_buffers((batch_size, n_features), (batch_size, nc))
 
   def read(self):
+    '''
+    Read packed model from FPU
+    Sets device attributes interfaceNodes and scales
+    '''
     # read back the nodes
     self.fpu.write(self.fpu.register_map.nodes_out.address, self.interfaceNodes.physical_address)
     self.fpu.write(self.fpu.register_map.scales_out.address, self.scales.physical_address)
@@ -70,6 +97,18 @@ class ZynqDriver:
     self.fpu.write(self.fpu.register_map.CTRL.address, 1)
 
   def predict(self, X):
+    '''
+    Execute inference on FPU
+
+    Parameters
+    ----------
+    X: ndarray of shape (batch_size, n_features), dtype float32 or int32
+      Input sample. Shape must match allocated buffers
+
+    Returns
+    ----------
+    score: ndarray of shape (batch_size, n_classes)
+    '''
     assert X.ndim == 2, "Expected 2D inputs."
     assert X.shape[0] == self.Xbuf.shape[0], "Batch size must match"
     assert X.shape[1] == self.Xbuf.shape[1], "More inputs were provided than this FPU supports ({} vs {})".format(X.shape[1], self.config['features'])
@@ -94,6 +133,13 @@ class AlveoDriver:
     self._init_buffers(batch_size=batch_size)
 
   def get_info(self):
+    '''
+    Get FPU configuration from device
+
+    Returns
+    ----------
+    configuration: dictionary
+    '''
     self.fpu.write(self.fpu.register_map.CTRL.address, 1)
     infoLen =self. fpu.read(self.fpu.register_map.infoLength.address)
     info = pynq.allocate(infoLen, dtype='byte')
@@ -116,6 +162,22 @@ class AlveoDriver:
     self._dummy_buf = pynq.allocate(1)
 
   def load(self, nodes, scales, n_features=1, n_classes=2, batch_size=None):
+    '''
+    Load packed model onto FPU
+
+    Parameters
+    ----------
+    nodes: ndarray of shape (FPU TEs, FPU nodes, 7), dtype int32
+      Packed nodes, from FPUModel.pack
+    scales: ndarray of shape (FPU features + 1), dtype float32
+      Packed scale factors, from FPUModel._scales
+    n_features: integer (optional)
+      Number of model features (must be less than FPU features)
+    n_classes: integer (optional)
+      Number of model classes (Only binary classification is currently supported)
+    batch_size: integer (optional)
+      Batch size for allocating buffers
+    '''
     assert n_classes == 2, "Only binary classification is currently supported"
     self.interfaceNodes[:] = nodes
     self.scales[:] = scales
@@ -129,6 +191,18 @@ class AlveoDriver:
     self._init_Xy_buffers((batch_size, n_features), (batch_size, nc))
 
   def predict(self, X):
+    '''
+    Execute inference on FPU
+
+    Parameters
+    ----------
+    X: ndarray of shape (batch_size, n_features), dtype float32 or int32
+      Input sample. Shape must match allocated buffers
+
+    Returns
+    ----------
+    score: ndarray of shape (batch_size, n_classes)
+    '''
     assert X.ndim == 2, "Expected 2D inputs."
     assert X.shape[0] == self.Xbuf.shape[0], "Batch size must match"
     assert X.shape[1] == self.Xbuf.shape[1], "More inputs were provided than this FPU supports ({} vs {})".format(X.shape[1], self.config['features'])

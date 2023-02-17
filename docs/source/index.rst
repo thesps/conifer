@@ -13,6 +13,7 @@ API Reference
    :caption: Contents:
 
    conifer
+   fpu
 
 Downloads
 ==================
