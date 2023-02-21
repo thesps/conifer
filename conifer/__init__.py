@@ -1,8 +1,9 @@
 from __future__ import absolute_import
 from importlib.metadata import version, PackageNotFoundError
+from packaging.version import Version
 
 try:
-    __version__ = version("conifer")
+    __version__ = Version(version("conifer"))
 except PackageNotFoundError:
     # package is not installed
     pass

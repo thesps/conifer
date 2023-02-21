@@ -17,12 +17,14 @@ del SPEC_XILINXHLS
 
 from conifer.backends import vhdl
 from conifer.backends import cpp
+from conifer.backends import fpu
 
 _backend_map = {'xilinxhls' : xilinxhls,
                 'vivadohls' : vivadohls,
                 'vitishls'  : vitishls,
                 'vhdl'      : vhdl,
-                'cpp'       : cpp}
+                'cpp'       : cpp,
+                'fpu'       : fpu,}
 
 def get_backend(backend):
   '''Get backend object from string'''
