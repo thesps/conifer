@@ -1,5 +1,6 @@
 from conifer.model import DecisionTreeBase, ConfigBase
 import numpy as np
+import xml.etree.ElementTree as ET
 
 class BottomUpDecisionTree(DecisionTreeBase):
   _tree_fields = DecisionTreeBase._tree_fields + ['parent', 'depth', 'iLeaf']
@@ -94,3 +95,68 @@ class MultiPrecisionConfig(ConfigBase):
 
   def any_ap_types(self):
     return np.any(['ap_' in t for t in [self.input_precision, self.threshold_precision, self.score_precision]])
+
+def read_hls_report(filename: str) -> dict:
+  '''
+  Extract estimated performance metrics from HLS C Synthesis such as:
+    latency (min, max), interval (min, max), resources
+  Parameters
+  ----------
+  filename : string
+    Name of XML HLS report file
+  Returns
+  ----------
+  dictionary of extracted report contents
+  '''
+  report = {}
+  xml = ET.parse(filename)
+  PE = xml.find('PerformanceEstimates')
+  if PE is not None:
+    SoOL = PE.find('SummaryOfOverallLatency')
+    if SoOL is not None:
+      report['latency_best'] = SoOL.find('Best-caseLatency')
+      report['latency_worst'] = SoOL.find('Worst-caseLatency')
+      report['interval_best'] = SoOL.find('Interval-min')
+      report['interval_worst'] = SoOL.find('Interval-max')
+  AE = xml.find('AreaEstimates')
+  if AE is not None:
+    R = AE.find('Resources')
+    if R is not None:
+      report['lut'] = R.find('LUT')
+      report['ff'] = R.find('FF')
+      report['dsp'] = R.find('DSP')
+      report['bram18'] = R.find('BRAM_18K')
+
+  for key in report.keys():
+    if key is not None:
+      report[key] = int(report[key].text)
+  return report
+
+def read_vsynth_report(filename):
+  report = {}
+  section = 0
+  with open(filename) as f:
+    for line in f.readlines():
+      # track which report section the line is in for filtering
+      if '1. CLB Logic' in line:
+        section = 1
+      elif '1.1 Summary of Registers by Type' in line:
+        section = 1.1
+      elif '2. BLOCKRAM' in line:
+        section = 2
+      elif '3. ARITHMETIC' in line:
+        section = 3
+      elif '4. I/O' in line:
+        section = 4
+
+      # extract the value from the tables in each section
+      if section == 1 and 'CLB LUTs*' in line:
+        report['lut'] = int(line.split('|')[2])
+      elif section == 1 and 'CLB Registers' in line:
+        report['ff'] = int(line.split('|')[2])
+      elif section == 2 and 'RAMB18' in line and 'Note' not in line:
+        report['bram18'] = int(line.split('|')[2])
+      elif section == 3 and 'DSPs' in line:
+        report['dsp'] = int(line.split('|')[2])
+
+  return report
