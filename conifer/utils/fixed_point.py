@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import datetime
 import logging
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ class FixedPointConverter:
     logger.info(f'Constructing converter for {type_string}')
     self.type_string = type_string
     self.sani_type = type_string.replace('<','_').replace('>','').replace(',','_')
+    self.sani_type += f'_{int(datetime.datetime.now().timestamp()) + np.random.randint(0, 2**32)}'
     filedir = os.path.dirname(os.path.abspath(__file__))
     cpp_filedir = f"./.fp_converter_{self.sani_type}"
     cpp_filename = cpp_filedir + f'/{self.sani_type}.cpp'
