@@ -1,9 +1,10 @@
 import os
 from shutil import copyfile
 import numpy as np
+import math
 from enum import Enum
 from conifer.utils import FixedPointConverter, copydocstring
-from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig
+from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig, read_vsynth_report
 from conifer.model import ModelBase
 import copy
 import datetime
@@ -240,6 +241,24 @@ class VHDLModel(ModelBase):
           logger.error("build failed, check build.log")
           return False
       return True
+
+  def read_report(self) -> dict:
+    '''
+    Read the Synthesis report
+    Returns
+    ----------
+    dictionary of extracted report contents
+    '''
+    vsynth_report = read_vsynth_report(f'{self.config.output_dir}/util.rpt')
+    report = {}
+    for key in ['lut', 'ff']:
+      report[key] = vsynth_report[key]
+
+    # VHDL latency and II are fixed by implementation
+    # use math ceil to return int
+    report['latency'] = 1 + self.max_depth + math.ceil(math.log2(self.n_trees))
+    report['interval'] = 1
+    return report
 
 def make_model(ensembleDict, config):
     return VHDLModel(ensembleDict, config)

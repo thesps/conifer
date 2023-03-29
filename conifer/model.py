@@ -1,10 +1,12 @@
 from conifer import __version__ as version
+from packaging.version import Version
 import numpy as np
 import os
 import json
 import copy
 import datetime
 import platform
+import getpass
 import logging
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,13 @@ class ConfigBase:
         assert get_backend(self.backend) is not None, f'Backend {self.backend} not found'
 
     def _to_dict(self):
-        dictionary = {k : getattr(self, k) for k in self._config_fields}
+        dictionary = {}
+        for k in self._config_fields:
+            if hasattr(getattr(self, k), '_to_dict'):
+                v = getattr(self, k)._to_dict()
+            else:
+                v = getattr(self, k)
+            dictionary[k] = v
         return dictionary
 
     def _log(self, logger):
@@ -210,17 +218,17 @@ class ModelMetaData:
         self.version = version
         self.time = datetime.datetime.now()
         self.host = platform.node()
-        self.user = os.getlogin()
+        self.user = getpass.getuser()
 
     def _to_dict(self):
-        return {'version' : self.version,
+        return {'version' : str(self.version),
                 'host'    : self.host,
                 'user'    : self.user,
                 'time'    : self.time.timestamp()}
 
     def _from_dict(d):
         mmd = ModelMetaData()
-        mmd.version = d.get('version', None)
+        mmd.version = Version(d.get('version', None))
         mmd.host = d.get('host', None)
         mmd.user = d.get('user', None)
         mmd.time = datetime.datetime.fromtimestamp(d.get('time', 0))
@@ -263,6 +271,8 @@ def load_model(filename, new_config=None):
     metadata = js.get('metadata', None)
     if metadata is not None:
         metadata = [ModelMetaData._from_dict(mmd) for mmd in metadata]
+    else:
+        metadata = []
 
     model = make_model(js, config)
     model._metadata = metadata + model._metadata

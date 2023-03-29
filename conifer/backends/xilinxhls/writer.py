@@ -4,7 +4,7 @@ import warnings
 import numpy as np
 import copy
 from conifer.utils import _ap_include, copydocstring
-from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig
+from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig, read_hls_report
 from conifer.model import ModelBase
 import datetime
 import logging
@@ -498,6 +498,29 @@ class XilinxHLSModel(ModelBase):
                 rval = False
         os.chdir(cwd)
         return rval
+
+    def read_report(self) -> dict:
+        '''
+        Read the HLS C Synthesis report
+        Returns
+        ----------
+        dictionary of extracted report contents
+        '''
+        report_file = f'{self.config.output_dir}/{self.config.project_name}_prj/solution1/syn/report/{self.config.project_name}_csynth.xml'
+        full_report = read_hls_report(report_file)
+        lb, lw = full_report['latency_best'], full_report['latency_worst']
+        if lb != lw:
+            logger.warn(f'Model has different best/worst latency ({lb} and {lw})')
+        iib, iiw = full_report['interval_best'], full_report['interval_worst']
+        if lb != lw:
+            logger.warn(f'Model has different best/worst interval ({iib} and {iiw})')
+
+        report = {}
+        report['latency'] = lb
+        report['interval'] = iib
+        for key in ['lut', 'ff']:
+            report[key] = full_report[key]
+        return report
 
 def auto_config(granularity='simple'):
     '''

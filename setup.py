@@ -22,6 +22,7 @@ setup(
     install_requires=[
         'numpy',
         'pybind11',
+        'packaging',
     ],
     include_package_data=True,
 )
