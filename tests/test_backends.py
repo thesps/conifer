@@ -5,6 +5,7 @@ Test that the conifer backends yield the same output given the same model, data,
 import conifer
 import pytest
 import numpy as np
+import datetime
 
 def f_train_skl():
     # Example BDT creation from: https://scikit-learn.org/stable/modules/ensemble.html
@@ -22,59 +23,45 @@ def f_train_skl():
 
     return clf, X_test, y_test.shape
 
-def all_backends_predict(model, X, y_shape, precision):
+def backend_predict(model, odir, X, y_shape, backend, backend_config):
+  the_backend = conifer.backends.get_backend(backend)
+  cfg = the_backend.auto_config()
+  cfg.update(backend_config)
+  cfg['OutputDir'] = odir
+  model = conifer.converters.convert_from_sklearn(model, cfg)
+  model.compile()
+  y = model.decision_function(X).reshape(y_shape)   
 
-  hls_cfg = conifer.backends.xilinxhls.auto_config()
-  hls_cfg['Precision'] = precision
-  hls_cfg['OutputDir'] = f'prj_backend_equality_hls_{precision}'
-  hls_model = conifer.converters.convert_from_sklearn(model, hls_cfg)
-  hls_model.compile()
-  y_hls = hls_model.decision_function(X).reshape(y_shape)
-
-  """
-  TODO: only include these in the tests when matching is good
-  hdl_cfg = conifer.backends.vhdl.auto_config()
-  hdl_cfg['Precision'] = precision
-  hdl_cfg['OutputDir'] = f'prj_backend_equality_hdl_{precision}'
-  hdl_model = conifer.converters.convert_from_sklearn(model, hdl_cfg)
-  hdl_model.compile()
-  y_hdl = hdl_model.decision_function(X).reshape(y_shape)
-  """
-
-  cpp_cfg = conifer.backends.cpp.auto_config()
-  cpp_cfg['Precision'] = precision
-  cpp_cfg['OutputDir'] = f'prj_backend_equality_cpp_{precision}'
-  cpp_model = conifer.converters.convert_from_sklearn(model, cpp_cfg)
-  cpp_model.compile()
-  y_cpp = cpp_model.decision_function(X).reshape(y_shape)
-
-  #return {'hls' : y_hls, 'hdl' : y_hdl, 'cpp' : y_cpp}
-  return {'hls' : y_hls, 'cpp' : y_cpp}
-
+class Tester:
+   def __init__(self, model, X, y_shape, backend_a, backend_b, config_a={}, config_b={}):
+      self.model = model
+      self.X = X
+      self.y_shape = y_shape
+      self.backend_a = backend_a
+      self.backend_b = backend_b
+      self.config_a = config_a
+      self.config_b = config_b
 
 model0 = f_train_skl()
-tests = [(*model0, 'ap_fixed<16,6>'),
-         (*model0, 'ap_fixed<8,4,AP_TRN,AP_WRAP>'),
-         (*model0, 'ap_fixed<8,4,AP_RND,AP_WRAP>'),
-         (*model0, 'ap_fixed<8,4,AP_RND_ZERO,AP_WRAP>'),
-         (*model0, 'ap_fixed<8,4,AP_RND,AP_SAT>'),
-         (*model0, 'ap_fixed<18,8>'),
-         (*model0, 'ap_fixed<18,8,AP_RND_CONV,AP_SAT>'),
-        ]
 
-results = [all_backends_predict(*test) for test in tests]
+# compare pairs of backends with different precision at different rounding modes
+hls_cpp_precisions = ['ap_fixed<16,6>', 'ap_fixed<8,4,AP_TRN,AP_WRAP>', 'ap_fixed<8,4,AP_RND,AP_WRAP>', 'ap_fixed<8,4,AP_RND_ZERO,AP_WRAP>',
+                      'ap_fixed<8,4,AP_RND,AP_SAT>', 'ap_fixed<18,8>', 'ap_fixed<18,8,AP_RND_CONV,AP_SAT>']
+# compare configs with mixed precision
+mixed_precision_cfg = {'InputPrecision' : 'ap_fixed<16,6>', 'ScorePrecision' : 'ap_fixed<12,5>'}
 
-@pytest.mark.parametrize('predictions', results)
-def test_cpp_hls(predictions):
-  np.testing.assert_array_equal(predictions['cpp'], predictions['hls'])
+tests = [*[Tester(*model0, 'xilinxhls', 'cpp', {'Precision' : p}, {'Precision' : p}) for p in hls_cpp_precisions],
+         Tester(*model0, 'xilinxhls', 'vhdl', mixed_precision_cfg, mixed_precision_cfg),
+         Tester(*model0, 'xilinxhls', 'xilinxhls', {'Unroll' : True}, {'Unroll' : False})]
 
-"""
-  TODO: only include these tests when matching is good
-@pytest.mark.parametrize('predictions', results)
-def test_cpp_hdl(predictions):
-  np.testing.assert_array_equal(predictions['cpp'], predictions['hdl'])
-
-@pytest.mark.parametrize('predictions', results)
-def test_hls_hdl(predictions):
-  np.testing.assert_array_equal(predictions['hls'], predictions['hdl']) 
-"""
+@pytest.mark.parametrize('test', tests)
+def test_backend_equality(test):
+  stamp = int(datetime.datetime.now().timestamp())
+  if test.backend_a == test.backend_b:
+     name_a, name_b = test.backend_a + '_a', test.backend_a + '_b'
+  else:
+     name_a, name_b = test.backend_a, test.backend_b
+  name_a, name_b = [f'prj_backends_{stamp}_{n}' for n in [name_a, name_b]]
+  y_a = backend_predict(test.model, name_a, test.X, test.y_shape, test.backend_a, test.config_a)
+  y_b = backend_predict(test.model, name_b, test.X, test.y_shape, test.backend_b, test.config_b)
+  np.testing.assert_array_equal(y_a, y_b)
