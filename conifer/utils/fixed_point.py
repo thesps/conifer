@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import datetime
+from conifer.utils.misc import _ap_include
 import logging
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class FixedPointConverter:
 
     curr_dir = os.getcwd()
     os.chdir(cpp_filedir)
-    cmd = f"g++ -O3 -shared -std=c++11 -fPIC $(python3 -m pybind11 --includes) -I/cvmfs/cms.cern.ch/slc7_amd64_gcc900/external/hls/2019.08/include/ {self.sani_type}.cpp -o {self.sani_type}.so"
+    cmd = f"g++ -O3 -shared -std=c++11 -fPIC $(python3 -m pybind11 --includes) {_ap_include()} {self.sani_type}.cpp -o {self.sani_type}.so"
     logger.debug(f'Compiling with command {cmd}')
     try:
       ret_val = os.system(cmd)
