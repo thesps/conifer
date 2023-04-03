@@ -44,16 +44,16 @@ def get_hls():
 
 class XilinxHLSConfig(MultiPrecisionConfig):
     backend = 'xilinxhls'
-    _config_fields = MultiPrecisionConfig._config_fields + ['xilinx_part', 'clock_period', 'pipeline']
+    _config_fields = MultiPrecisionConfig._config_fields + ['xilinx_part', 'clock_period', 'unroll']
     _xhls_alts = {'xilinx_part'  : ['XilinxPart'],
                   'clock_period' : ['ClockPeriod'],
-                  'pipeline'     : ['Pipeline']
+                  'unroll'       : ['Unroll']
                   }
     _alternates = {**MultiPrecisionConfig._alternates, **_xhls_alts}
     _xhls_defaults = {'precision'    : 'ap_fixed<18,8>',
                       'xilinx_part'  : 'xcvu9p-flgb2104-2L-e',
                       'clock_period' : 5,
-                      'pipeline'     : True
+                      'unroll'     : True
                       }
     _defaults = {**MultiPrecisionConfig._defaults, **_xhls_defaults}
     def __init__(self, configDict, validate=True):
@@ -76,46 +76,44 @@ class XilinxHLSModel(ModelBase):
             for tree in trees_class:
                 tree.padTree(self.max_depth)
 
-    @copydocstring(ModelBase.write)
-    def write(self):
-
-        self.save()
+    def write_bdt_h(self):
+        '''
+        Write the BDT.h file depending on configuration options
+        '''
         cfg = self.config
-
         filedir = os.path.dirname(os.path.abspath(__file__))
+        
+        if cfg.unroll:
+            copyfile(f'{filedir}/firmware/BDT_unrolled.h',
+                     f'{cfg.output_dir}/firmware/BDT.h')    
+        else:        
+            copyfile(f'{filedir}/firmware/BDT_rolled.h',
+                     f'{cfg.output_dir}/firmware/BDT.h')
 
-        logger.info(f"Writing project to {cfg.output_dir}")
+        if cfg.unroll:
+            fin = open(f'{filedir}/hls-template/firmware/BDT_unrolled.cpp', 'r')
+            fout = open(f'{cfg.output_dir}/firmware/BDT.cpp', 'w')
+            for line in fin.readlines():
+                if '// conifer insert tree_scores' in line:
+                    newline = ''
+                    for it, trees in enumerate(self.trees):
+                        for ic, tree in enumerate(trees):
+                            newline += f'  scores[{it}][{ic}] = tree_{it}_{ic}.decision_function(x);\n'
+                else:
+                    newline = line
+                fout.write(newline)
+        else:
+            copyfile(f'{filedir}/hls-template/firmware/BDT_rolled.cpp',
+                     f'{cfg.output_dir}/firmware/BDT.cpp')
 
-        os.makedirs('{}/firmware'.format(cfg.output_dir), exist_ok=True)
-        os.makedirs('{}/tb_data'.format(cfg.output_dir), exist_ok=True)
-        copyfile('{}/firmware/BDT.h'.format(filedir),
-                '{}/firmware/BDT.h'.format(cfg.output_dir))
 
-        ###################
-        # myproject.cpp
-        ###################
+    def write_parameters_h(self):
+        '''
+        Write the parameters.h file depending on the configuration
+        '''
 
-        fout = open(
-            '{}/firmware/{}.cpp'.format(cfg.output_dir, cfg.project_name), 'w')
-        fout.write('#include "BDT.h"\n')
-        fout.write('#include "parameters.h"\n')
-        fout.write('#include "{}.h"\n'.format(cfg.project_name))
-
-        fout.write(
-            'void {}(input_arr_t x, score_arr_t score, score_t tree_scores[BDT::fn_classes(n_classes) * n_trees]){{\n'.format(cfg.project_name))
-        fout.write('\t#pragma HLS array_partition variable=x\n')
-        fout.write('\t#pragma HLS array_partition variable=score\n')
-        fout.write('\t#pragma HLS array_partition variable=tree_scores\n')
-        if(cfg.pipeline):
-            fout.write('\t#pragma HLS pipeline\n')
-            fout.write('\t#pragma HLS unroll\n')
-        fout.write('\tbdt.decision_function(x, score, tree_scores);\n}')
-        fout.close()
-
-        ###################
-        # parameters.h
-        ###################
-
+        cfg = self.config
+        
         fout = open('{}/firmware/parameters.h'.format(cfg.output_dir), 'w')
         fout.write('#ifndef BDT_PARAMS_H__\n#define BDT_PARAMS_H__\n\n')
         fout.write('#include  "BDT.h"\n')
@@ -129,7 +127,7 @@ class XilinxHLSModel(ModelBase):
         fout.write('static const int n_classes = {};\n'.format(
             self.n_classes))
         fout.write('static const bool unroll = {};\n'.format(
-            str(cfg.pipeline).lower()))
+            str(cfg.unroll).lower()))
 
         input_precision = cfg.input_precision
         fout.write('typedef {} input_t;\n'.format(input_precision))
@@ -141,6 +139,65 @@ class XilinxHLSModel(ModelBase):
         score_precision = cfg.score_precision
         fout.write('typedef {} score_t;\n'.format(score_precision))
         fout.write('typedef score_t score_arr_t[n_classes];\n')
+
+        if self.config.unroll:
+            self._write_parameters_h_unrolled(fout)
+        else:
+            self._write_parameters_h_array(fout)
+        fout.close()       
+
+    def _write_parameters_h_unrolled(self, fout):
+        '''
+        Write the parameters.h file with manually unrolled trees
+        '''
+        cfg = self.config
+        tree_fields = ['feature', 'threshold', 'value',
+                       'children_left', 'children_right', 'parent']
+
+        # write the BDT instance
+        fout.write(
+            "static const BDT::BDT<n_trees, n_classes, input_arr_t, score_t, threshold_t> bdt = \n")
+        fout.write("{ // The struct\n")
+        newline = "\t" + str(self.norm) + ", // The normalisation\n"
+        fout.write(newline)
+        newline = "\t{"
+        if self.n_classes > 2:
+            for iip, ip in enumerate(self.init_predict):
+                if iip < len(self.init_predict) - 1:
+                    newline += '{},'.format(ip)
+                else:
+                    newline += '{}}}, // The init_predict\n}};'.format(ip)
+        else:
+            newline += str(self.init_predict[0]) + '},\n}; // bdt\n'
+        fout.write(newline)
+
+        # write the trees instances
+        nc = 1 if self.n_classes == 2 else self.n_classes
+        fout.write("// The trees\n")
+        # loop over trees
+        for itree, trees in enumerate(self.trees):
+            # loop over classes
+            for iclass, tree in enumerate(trees):
+                fout.write(f'static const BDT::Tree<{itree*nc+iclass}, {tree.n_nodes()}, {tree.n_leaves()}')
+                fout.write(f', input_arr_t, score_t, threshold_t>')
+                fout.write(f' tree_{itree}_{iclass} = {{\n')
+                # loop over fields
+                for ifield, field in enumerate(tree_fields):
+                    newline = '    {'
+                    newline += ','.join(map(str, getattr(tree, field)))
+                    newline += '}'
+                    if ifield < len(tree_fields) - 1:
+                        newline += ','
+                    newline += '\n'
+                    fout.write(newline)
+                fout.write('};\n')
+            #fout.write(newline)
+        fout.write('#endif')
+
+    def _write_parameters_h_array(self, fout):
+        '''
+        Write the parameters.h file with the array of trees
+        '''
 
         tree_fields = ['feature', 'threshold', 'value',
                     'children_left', 'children_right', 'parent']
@@ -187,8 +244,42 @@ class XilinxHLSModel(ModelBase):
             newline += '\n'
             fout.write(newline)
         fout.write('\t}\n};')
-
         fout.write('\n#endif')
+
+    @copydocstring(ModelBase.write)
+    def write(self):
+
+        self.save()
+        cfg = self.config
+
+        filedir = os.path.dirname(os.path.abspath(__file__))
+
+        logger.info(f"Writing project to {cfg.output_dir}")
+
+        os.makedirs('{}/firmware'.format(cfg.output_dir), exist_ok=True)
+        os.makedirs('{}/tb_data'.format(cfg.output_dir), exist_ok=True)
+
+        self.write_bdt_h()
+        self.write_parameters_h()
+
+        ###################
+        # myproject.cpp
+        ###################
+
+        fout = open(
+            '{}/firmware/{}.cpp'.format(cfg.output_dir, cfg.project_name), 'w')
+        fout.write('#include "BDT.h"\n')
+        fout.write('#include "parameters.h"\n')
+        fout.write('#include "{}.h"\n'.format(cfg.project_name))
+
+        fout.write(
+            'void {}(input_arr_t x, score_arr_t score){{\n'.format(cfg.project_name))
+        fout.write('\t#pragma HLS array_partition variable=x\n')
+        fout.write('\t#pragma HLS array_partition variable=score\n')
+        if(cfg.unroll):
+            fout.write('\t#pragma HLS pipeline\n')
+            fout.write('\t#pragma HLS unroll\n')
+        fout.write('\tbdt.decision_function(x, score);\n}')
         fout.close()
 
         #######################
@@ -361,7 +452,7 @@ class XilinxHLSModel(ModelBase):
         if ap_include is None:
             os.chdir(curr_dir)
             raise Exception("Couldn't find Xilinx ap_ headers. Source the Vivado/Vitis HLS toolchain, or set XILINX_AP_INCLUDE environment variable.")
-        cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} bridge.cpp firmware/{cfg.project_name}.cpp -o conifer_bridge_{self._stamp}.so"
+        cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} bridge.cpp firmware/BDT.cpp firmware/{cfg.project_name}.cpp -o conifer_bridge_{self._stamp}.so"
         logger.debug(f'Compiling with command {cmd}')
         try:
             ret_val = os.system(cmd)
@@ -446,7 +537,7 @@ def auto_config(granularity='simple'):
               'OutputDir': 'my-conifer-prj',
               'XilinxPart': 'xcvu9p-flgb2104-2L-e',
               'ClockPeriod': '5',
-              'Pipeline' : True}
+              'Unroll' : True}
     if granularity == 'full':
         config['InputPrecision'] = 'ap_fixed<18,8>'
         config['ThresholdPrecision'] = 'ap_fixed<18,8>'
