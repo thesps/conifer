@@ -1,6 +1,7 @@
 from conifer.model import DecisionTreeBase, ConfigBase
 import numpy as np
 import xml.etree.ElementTree as ET
+import re
 
 class BottomUpDecisionTree(DecisionTreeBase):
   _tree_fields = DecisionTreeBase._tree_fields + ['parent', 'depth', 'iLeaf']
@@ -130,6 +131,48 @@ def read_hls_report(filename: str) -> dict:
   for key in report.keys():
     if key is not None:
       report[key] = int(report[key].text)
+  return report
+
+def read_hls_log(filename: str) -> dict:
+  '''
+  Extract build metrics from HLS C Synthesis log such as:
+    synthesis time, synthesis memory usage
+  Parameters
+  ----------
+  filename : string
+    Name of HLS log file
+  Returns
+  ----------
+  dictionary of extracted log contents
+  '''
+  report = {}
+  with open(filename) as f:
+    for line in f.readlines():
+      if 'HLS 200-112' in line: # build summary line
+        search = 'Total elapsed time: ([0-9]+)\.*([0-9]*) seconds'
+        m = re.search(search, line)
+        if m is not None:
+          report['time_seconds'] = float(m.group(1))
+          if m.group(2) != '':
+            report['time_seconds'] += float(m.group(2))/100
+        else:
+          report['time_seconds'] = None
+        search = 'peak allocated memory: ([0-9]+)\.*([0-9]*) ([k,M,G])B'
+        m = re.search(search, line)
+        if m is not None:
+          mem = float(m.group(1))
+          if m.group(2) != '':
+            mem += float(m.group(2))/1000
+          div = 1
+          if m.group(3) == 'G':
+            div = 1
+          elif m.group(3) == 'M':
+            div=1e3
+          elif m.group(3) == 'k':
+            div=1e6
+          report['memory_GB'] = mem / div
+        else:
+          report['memory_GB'] = None
   return report
 
 def read_vsynth_report(filename):
