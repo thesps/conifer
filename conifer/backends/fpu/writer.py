@@ -3,6 +3,7 @@ import math
 import numpy as np
 import json
 import shutil
+import time
 import os
 import zipfile
 from typing import List
@@ -448,30 +449,42 @@ class ZynqFPUBuilder(FPUBuilder):
     self.write()
     cwd = os.getcwd()
     os.chdir(self.output_dir)
+    success = True
     if csynth:
       logger.info(f"Building FPU HLS")
-      os.system('vitis_hls -f build_hls.tcl')
-    if bitfile:
+      success = success and os.system('vitis_hls -f build_hls.tcl')==0
+    if success and bitfile:
       logger.info(f"Building FPU bitfile")
-      os.system('vivado -mode batch -source build_bit.tcl')
-      self.package()
+      success = success and os.system('vivado -mode batch -source build_bit.tcl')==0
+      if success:
+        self.package()
     os.chdir(cwd)
+    return success
 
-  def package(self):
+  def package(self, retry: int = 30):
     '''
     Collect build products and compress to a zip file
     '''
     logger.info(f'Packaging FPU bitfile to {self.output_dir}/{self.project_name}.zip')
-    with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}_vivado/fpu.xsa', 'r') as zip:
-      zip.extractall(f'{self.output_dir}/{self.project_name}_vivado/package')
-    os.makedirs(f'{self.output_dir}/package', exist_ok=True)
-    shutil.copyfile(f'{self.output_dir}/{self.project_name}_vivado/package/fpu.bit', f'{self.output_dir}/package/fpu.bit')
-    shutil.copyfile(f'{self.output_dir}/{self.project_name}_vivado/package/design_1.hwh', f'{self.output_dir}/package/fpu.hwh')
-    shutil.copyfile(f'{self.output_dir}/{self.project_name}.json', f'{self.output_dir}/package/fpu.json')
-    with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}.zip', 'w') as zip:
-      zip.write(f'{self.output_dir}/package/fpu.bit', 'fpu.bit')
-      zip.write(f'{self.output_dir}/package/fpu.hwh', 'fpu.hwh')
-      zip.write(f'{self.output_dir}/package/fpu.json', 'fpu.json')
+
+    for attempt in range(2):
+      if os.path.exists(f'{self.output_dir}/{self.project_name}_vivado/fpu.xsa'):
+        with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}_vivado/fpu.xsa', 'r') as zip:
+          zip.extractall(f'{self.output_dir}/{self.project_name}_vivado/package')
+        os.makedirs(f'{self.output_dir}/package', exist_ok=True)
+        shutil.copyfile(f'{self.output_dir}/{self.project_name}_vivado/package/fpu.bit', f'{self.output_dir}/package/fpu.bit')
+        shutil.copyfile(f'{self.output_dir}/{self.project_name}_vivado/package/design_1.hwh', f'{self.output_dir}/package/fpu.hwh')
+        shutil.copyfile(f'{self.output_dir}/{self.project_name}.json', f'{self.output_dir}/package/fpu.json')
+        filedir = os.path.dirname(os.path.abspath(__file__))
+        with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}.zip', 'w') as zip:
+          zip.write(f'{self.output_dir}/package/fpu.bit', 'fpu.bit')
+          zip.write(f'{self.output_dir}/package/fpu.hwh', 'fpu.hwh')
+          zip.write(f'{self.output_dir}/package/fpu.json', 'fpu.json')
+          zip.write(f'{filedir}/src/LICENSE', 'LICENSE')
+        break
+      else:
+        logger.info(f'Bitfile not found, waiting {retry} for retry')
+        time.sleep(retry)      
 
 class AlveoFPUBuilderConfig(FPUBuilderConfig):
   backend = 'fpu_builder'
@@ -534,22 +547,34 @@ class AlveoFPUBuilder(FPUBuilder):
     self.write()
     cwd = os.getcwd()
     os.chdir(self.output_dir)
+    success = True
     if csynth:
       logger.info(f"Building FPU HLS")
-      os.system('vitis_hls -f build_hls.tcl')
-    if bitfile:
+      success = success and os.system('vitis_hls -f build_hls.tcl')==0
+    if success and bitfile:
       logger.info(f"Building FPU bitfile")
       pn = self.project_name
       vitis_cmd = f'v++ -t hw --platform {self.platform} --link {pn}/solution1/impl/export.xo -o {pn}.xclbin'
-      os.system(vitis_cmd)
-      self.package()
+      success = success and os.system(vitis_cmd)==0
+      if success:
+        self.package()
     os.chdir(cwd)
+    return success
 
-  def package(self):
+  def package(self, retry: int = 30):
     '''
     Collect build products and compress to a zip file
     '''
     logger.info(f'Packaging FPU bitfile to {self.output_dir}/{self.project_name}.zip')
-    with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}.zip', 'w') as zip:
-      zip.write(f'{self.output_dir}/{self.project_name}.xclbin', '{self.project_name}.xclbin')
-      zip.write(f'{self.output_dir}/{self.project_name}.json', '{self.project_name}.json')
+
+    for attempt in range(2):
+      if os.path.exists(f'{self.output_dir}/{self.project_name}.xclbin'):
+        filedir = os.path.dirname(os.path.abspath(__file__))
+        with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}.zip', 'w') as zip:
+          zip.write(f'{self.output_dir}/{self.project_name}.xclbin', '{self.project_name}.xclbin')
+          zip.write(f'{self.output_dir}/{self.project_name}.json', '{self.project_name}.json')
+          zip.write(f'{filedir}/src/LICENSE', 'LICENSE')
+        break
+      else:
+        logger.info(f'Bitfile not found, waiting {retry} for retry')
+        time.sleep(retry)
