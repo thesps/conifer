@@ -115,9 +115,10 @@ class XilinxHLSModel(ModelBase):
         trees = ensembleDict.get('trees', None)
         assert trees is not None, f'Missing expected key trees in ensembleDict'
         self.trees = [[BottomUpDecisionTree(treeDict) for treeDict in trees_class] for trees_class in trees]
-        for trees_class in self.trees:
-            for tree in trees_class:
-                tree.padTree(self.max_depth)
+        if not self.config.unroll:
+            for trees_class in self.trees:
+                for tree in trees_class:
+                    tree.padTree(self.max_depth)
 
     def write_bdt_h(self):
         '''
