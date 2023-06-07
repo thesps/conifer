@@ -25,3 +25,4 @@ cfg['output_dir'] = 'fpu-0A-u200_100TE_512N_DS'
 builder = AlveoFPUBuilder(cfg)
 
 builder.build(csynth=True, bitfile=True)
+builder.package()
