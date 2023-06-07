@@ -24,3 +24,4 @@ cfg['output_dir'] = 'fpu-0A-pynq-z2_100TE_512N_DS'
 builder = ZynqFPUBuilder(cfg)
 
 builder.build()
+builder.package()

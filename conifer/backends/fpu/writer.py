@@ -456,18 +456,22 @@ class ZynqFPUBuilder(FPUBuilder):
     if success and bitfile:
       logger.info(f"Building FPU bitfile")
       success = success and os.system('vivado -mode batch -source build_bit.tcl')==0
-      if success:
-        self.package()
     os.chdir(cwd)
     return success
 
-  def package(self, retry: int = 30):
+  def package(self, retry: int = 6, retries: int = 10):
     '''
     Collect build products and compress to a zip file
+    Parameters
+    ----------
+    retry: int (optional)
+      wait time in seconds before retrying
+    retries: int (optional)
+      number of retries before exiting
     '''
     logger.info(f'Packaging FPU bitfile to {self.output_dir}/{self.project_name}.zip')
 
-    for attempt in range(2):
+    for attempt in range(retries):
       if os.path.exists(f'{self.output_dir}/{self.project_name}_vivado/fpu.xsa'):
         with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}_vivado/fpu.xsa', 'r') as zip:
           zip.extractall(f'{self.output_dir}/{self.project_name}_vivado/package')
@@ -483,7 +487,7 @@ class ZynqFPUBuilder(FPUBuilder):
           zip.write(f'{filedir}/src/LICENSE', 'LICENSE')
         break
       else:
-        logger.info(f'Bitfile not found, waiting {retry} for retry')
+        logger.info(f'Bitfile not found, waiting {retry} seconds for retry')
         time.sleep(retry)      
 
 class AlveoFPUBuilderConfig(FPUBuilderConfig):
@@ -556,25 +560,29 @@ class AlveoFPUBuilder(FPUBuilder):
       pn = self.project_name
       vitis_cmd = f'v++ -t hw --platform {self.platform} --link {pn}/solution1/impl/export.xo -o {pn}.xclbin'
       success = success and os.system(vitis_cmd)==0
-      if success:
-        self.package()
     os.chdir(cwd)
     return success
 
-  def package(self, retry: int = 30):
+  def package(self, retry: int = 6, retries: int = 10):
     '''
     Collect build products and compress to a zip file
+    Parameters
+    ----------
+    retry: int (optional)
+      wait time in seconds before retrying
+    retries: int (optional)
+      number of retries before exiting
     '''
     logger.info(f'Packaging FPU bitfile to {self.output_dir}/{self.project_name}.zip')
 
-    for attempt in range(2):
+    for attempt in range(retries):
       if os.path.exists(f'{self.output_dir}/{self.project_name}.xclbin'):
         filedir = os.path.dirname(os.path.abspath(__file__))
         with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}.zip', 'w') as zip:
-          zip.write(f'{self.output_dir}/{self.project_name}.xclbin', '{self.project_name}.xclbin')
-          zip.write(f'{self.output_dir}/{self.project_name}.json', '{self.project_name}.json')
+          zip.write(f'{self.output_dir}/{self.project_name}.xclbin', f'{self.project_name}.xclbin')
+          zip.write(f'{self.output_dir}/{self.project_name}.json', f'{self.project_name}.json')
           zip.write(f'{filedir}/src/LICENSE', 'LICENSE')
         break
       else:
-        logger.info(f'Bitfile not found, waiting {retry} for retry')
+        logger.info(f'Bitfile not found, waiting {retry} seconds for retry')
         time.sleep(retry)
