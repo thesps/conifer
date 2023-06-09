@@ -3,26 +3,26 @@ import json
 import xgboost as xgb
 from typing import Union
 
-def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier]):
-    assert isinstance(bdt, (xgb.core.Booster, xgb.XGBClassifier))
+def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor]):
+    assert isinstance(bdt, (xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor))
     if isinstance(bdt, xgb.core.Booster):
       bst = bdt
-    elif isinstance(bdt, (xgb.XGBClassifier)):
+    elif isinstance(bdt, (xgb.XGBClassifier, xgb.XGBRegressor)):
       bst = bdt.get_booster()
     meta = json.loads(bst.save_config())
     updater = meta.get('learner').get('gradient_booster').get('gbtree_train_param').get('updater').split(',')[0]
     max_depth = int(meta.get('learner').get('gradient_booster').get('updater').get(updater).get('train_param').get('max_depth'))
     n_classes = int(meta.get('learner').get('learner_model_param').get('num_class'))
-    n_trees = int(meta.get('learner').get('gradient_booster').get('gbtree_model_param').get('num_trees'))
     fn_classes = 1 if n_classes == 0 else n_classes # the number of learners
     n_classes = 2 if n_classes == 0 else n_classes # the actual number of classes
+    n_trees = int(int(meta.get('learner').get('gradient_booster').get('gbtree_model_param').get('num_trees')) / fn_classes)
     n_features = int(meta['learner']['learner_model_param']['num_feature'])
     ensembleDict = {'max_depth' : max_depth,
                     'n_trees' : n_trees,
                     'n_classes' : n_classes,
                     'n_features' : n_features,
                     'trees' : [],
-                    'init_predict' : [0] * n_classes, # meta.get('learner').get('learner_model_param').get('base_score')
+                    'init_predict' : [0] * n_classes,
                     'norm' : 1}
     
     feature_names = {}
@@ -33,6 +33,7 @@ def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier]):
       for i, feature_name in enumerate(bst.feature_names):
         feature_names[feature_name] = i
 
+    # TODO: try bst.trees_to_dataframe()
     trees = bst.get_dump()
     for i in range(ensembleDict['n_trees']):
         treesl = []
