@@ -1,6 +1,7 @@
 import numpy as np
 import json
 import xgboost as xgb
+import pandas
 from typing import Union
 
 def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor]):
@@ -33,88 +34,27 @@ def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor]):
       for i, feature_name in enumerate(bst.feature_names):
         feature_names[feature_name] = i
 
-    # TODO: try bst.trees_to_dataframe()
-    trees = bst.get_dump()
+    trees = bst.trees_to_dataframe()
     for i in range(ensembleDict['n_trees']):
         treesl = []
         for j in range(fn_classes):
-            tree = trees[fn_classes * i + j]
+            tree = trees[trees.Tree == fn_classes * i + j]
             tree = treeToDict(tree, feature_names)
             treesl.append(tree)
         ensembleDict['trees'].append(treesl)
     return ensembleDict
 
-def treeToDict(tree, feature_names):
-  # First of all make the tree sklearn-like
-  # split by newline, ignore the last line
-  nodes = tree.split('\n')[:-1]
-  # remove tab characters
-  nodes = list(map(lambda x: x.replace('\t',''), nodes))
-  real_nNodes = len(nodes)
-  # Number of nodes that are in the tree
-  # Pruning removes nodes but does not reset index 
-  old_node_indices = []
-  for i in range(real_nNodes):
-    iNode = int(nodes[i].split(':')[0])
-    old_node_indices.append(iNode)
-    # Node indices that are left in the tree after pruning
-  nNodes = max(old_node_indices)+1
-  # Maximum Node index 
-  nPrunedNodes = nNodes - len(old_node_indices) 
-  if nPrunedNodes > 0:
-    node_to_node_dict = dict(list(enumerate(sorted(old_node_indices))))
-    node_to_node_dict = {value:key for key, value in node_to_node_dict.items()}
-    # Create a dictionary remapping old Node indicies to new node indicies and invert
-  features = [0] * nNodes
-  thresholds = [0] * nNodes
-  children_left = [0] * nNodes
-  children_right = [0] * nNodes
-  values = [0] * nNodes 
-  for node in nodes:
-    if node == '':
-        pass
-    elif 'leaf' in node: # is a leaf
-      # Looks like: 'i:leaf=value[i]'
-      data = node.split('leaf')
-      iNode = int(data[0].replace(':',''))
-      if nPrunedNodes > 0:
-        iNode = node_to_node_dict[iNode]
-        # Remap node index
-      feature = -2
-      threshold = 0
-      child_left = -1
-      child_right = -1
-      value = float(data[1].replace('=',''))
-    else:
-      # Looks like:
-      # 'i:[f{feature[i]}<{threshold[i]} yes={children_left[i]},no={children_right[i]}...'
-      iNode = int(node.split(':')[0]) # index comes before ':'
-      if nPrunedNodes > 0:
-        iNode = node_to_node_dict[iNode]
-        # Remap node index
-      # split around 'feature<threshold'
-      data = node.split('<')
-      feature = feature_names[data[0].split('[')[-1]]
-      threshold = float(data[1].split(']')[0])
-      child_left = int(node.split('yes=')[1].split(',')[0])
-      child_right = int(node.split('no=')[1].split(',')[0])
-      if nPrunedNodes > 0:
-        child_left = node_to_node_dict[child_left]
-        child_right = node_to_node_dict[child_right]
-        # Remap node index for children to preserve tree structure
-      value = 0
-    features[iNode] = feature
-    thresholds[iNode] = threshold
-    children_left[iNode] = child_left
-    children_right[iNode] = child_right
-    values[iNode] = value
-  if nPrunedNodes > 0:
-    del features[-nPrunedNodes:]
-    del thresholds[-nPrunedNodes:] 
-    del children_left[-nPrunedNodes:]
-    del children_right[-nPrunedNodes:] 
-    del values[-nPrunedNodes:]
-    # Remove the last N unused nodes in the tree 
-  treeDict = {'feature' : features, 'threshold' : thresholds, 'children_left' : children_left,
-              'children_right' : children_right, 'value' : values}
+def treeToDict(tree : pandas.DataFrame, feature_names):
+  assert isinstance(tree, pandas.DataFrame), "This method expects the tree as a pandas DataFrame"
+  thresholds = tree.Split.fillna(0).tolist()
+  features = tree.Feature.map(lambda x : -2 if x == 'Leaf' else feature_names[x]).tolist()
+  children_left = tree.Yes.map(lambda x : int(x.split('-')[1]) if isinstance(x, str) else -1).tolist()
+  children_right = tree.No.map(lambda x : int(x.split('-')[1]) if isinstance(x, str) else -1).tolist()
+  values = tree.Gain.tolist()
+  treeDict = {'feature'        : features,
+              'threshold'      : thresholds,
+              'children_left'  : children_left,
+              'children_right' : children_right,
+              'value'          : values
+              }
   return treeDict
