@@ -7,6 +7,7 @@ import copy
 import datetime
 import platform
 import getpass
+from typing import Union
 try:
     import pydot
 except ImportError:
@@ -43,7 +44,25 @@ class DecisionTreeBase:
   def n_leaves(self):
     return len([n for n in self.feature if n == -2])
   
-  def draw(self, filename=None, graph=None, tree_id=None):
+  def draw(self, filename : str = None, graph=None, tree_id=None):
+    '''
+    Draw a pydot graph of the decision tree
+
+    Parameters
+    ----------
+    filename: string
+        filename to save to, with any extension supported by pydot write
+
+    graph:
+        existing pydot graph to add to
+
+    tree_id:
+        ID of the tree within an ensemble
+
+    Returns
+    ----------
+    pydot Dot graph object
+    '''
     if not _check_pydot():
         raise ImportError('Could not import pydot. Install Graphviz and pydot to draw trees')
     graph = pydot.Dot(graph_type='graph') if graph is None else graph
@@ -199,6 +218,18 @@ class ModelBase:
         raise NotImplementedError
     
     def draw(self, filename=None):
+        '''
+        Draw a pydot graph of the decision tree
+
+        Parameters
+        ----------
+        filename: string
+            filename to save to, with any extension supported by pydot write
+
+        Returns
+        ----------
+        pydot Dot graph object
+        '''
         if not _check_pydot():
             raise ImportError('Could not import pydot. Install Graphviz and pydot to draw trees')
         graph = pydot.Dot(graph_type='graph')
