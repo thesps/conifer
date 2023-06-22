@@ -31,7 +31,7 @@ Available backends:
 
 See our paper in JINST: "[Fast inference of Boosted Decision Trees in FPGAs for particle physics](https://iopscience.iop.org/article/10.1088/1748-0221/15/05/P05026)".
 
-Conifer originated as a development for [hls4ml](https://fastmachinelearning.org/hls4ml/), and borrows heavily from the code and ideas developed for it.
+Conifer originated as a development for [hls4ml](https://fastmachinelearning.org/hls4ml/), and is developed under the [Fast Machine Learning Lab](https://fastmachinelearning.org/).
 
 # Usage
 
@@ -102,3 +102,6 @@ print(fpu.get_info())
 
 
 </details>
+
+# License
+Apart from the source code and binaries of the Forest Processing Unit (FPU), `conifer` is licensed under *Apache v2*. The FPU source code and binaries are licensed under the [*CERN-OHL-P v2*](https://cern.ch/cern-ohl) or later.

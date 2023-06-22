@@ -1,0 +1,7 @@
+Summary of changes to FPU hardware design
+Date format: dd/mm/yyyy
+
+20/12/2022 - First implementation FPU
+17/01/2023 - Added support for batched inference for Alveo design
+25/01/2023 - Added support for floating-point interface with dynamic scaling
+06/02/2023 - Added support for batched inference for Zynq design

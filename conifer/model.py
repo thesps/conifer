@@ -7,9 +7,26 @@ import copy
 import datetime
 import platform
 import getpass
+from typing import Union
+try:
+    import pydot
+except ImportError:
+    pydot = None
 import logging
 logger = logging.getLogger(__name__)
 
+def _check_pydot():
+    '''Returns True if PyDot and Graphviz are available, otherwise returns False'''
+    if pydot is None:
+        return False
+    try:
+        # Attempt to create an image of a blank graph
+        # to check the pydot/graphviz installation.
+        pydot.Dot.create(pydot.Dot())
+        return True
+    except OSError:
+        return False
+    
 class DecisionTreeBase:
   '''
   Conifer DecisionTreeBase representation class
@@ -26,6 +43,52 @@ class DecisionTreeBase:
 
   def n_leaves(self):
     return len([n for n in self.feature if n == -2])
+  
+  def draw(self, filename : str = None, graph=None, tree_id=None):
+    '''
+    Draw a pydot graph of the decision tree
+
+    Parameters
+    ----------
+    filename: string
+        filename to save to, with any extension supported by pydot write
+
+    graph:
+        existing pydot graph to add to
+
+    tree_id:
+        ID of the tree within an ensemble
+
+    Returns
+    ----------
+    pydot Dot graph object
+    '''
+    if not _check_pydot():
+        raise ImportError('Could not import pydot. Install Graphviz and pydot to draw trees')
+    graph = pydot.Dot(graph_type='graph') if graph is None else graph
+    tree_id = '' if tree_id is None else tree_id
+    sg = pydot.Cluster(tree_id, label=tree_id, peripheries=0 if tree_id=='' else 1)
+    graph.add_subgraph(sg)
+    for i in range(self.n_nodes()):
+      node_id = f'{tree_id}_{i}'
+      l = f'{tree_id}_{self.children_left[i]}'
+      r = f'{tree_id}_{self.children_right[i]}'
+      label = f'x[{self.feature[i]}] <= {self.threshold[i]:.2f}' if self.feature[i] != -2 else f'{self.value[i]:.2f}'
+      sg.add_node(pydot.Node(node_id, label=label))
+      if self.children_left[i] != -1:
+        sg.add_edge(pydot.Edge(node_id, l,))
+      if self.children_right[i] != -1:
+        sg.add_edge(pydot.Edge(node_id, r,))
+    if filename is not None:
+        _, extension = os.path.splitext(filename)
+        if not extension:
+            extension = 'png'
+        else:
+            extension = extension[1:]
+        graph.write(filename, format=extension)
+
+    return graph
+
 
 class ConfigBase:
     '''
@@ -153,6 +216,35 @@ class ModelBase:
         Compilation is carried out by the model backend
         '''
         raise NotImplementedError
+    
+    def draw(self, filename=None):
+        '''
+        Draw a pydot graph of the decision tree
+
+        Parameters
+        ----------
+        filename: string
+            filename to save to, with any extension supported by pydot write
+
+        Returns
+        ----------
+        pydot Dot graph object
+        '''
+        if not _check_pydot():
+            raise ImportError('Could not import pydot. Install Graphviz and pydot to draw trees')
+        graph = pydot.Dot(graph_type='graph')
+        for i, treesi in enumerate(self.trees):
+            for j, tree in enumerate(treesi):
+                tree_id = f'Tree {i}, Class {j}'
+                tree.draw(filename=None, graph=graph, tree_id=tree_id)
+        if filename is not None:
+            _, extension = os.path.splitext(filename)
+            if not extension:
+                extension = 'png'
+            else:
+                extension = extension[1:]
+            graph.write(filename, format=extension)
+        return graph
 
     def decision_function(self, X, trees=False):
         '''
