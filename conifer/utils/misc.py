@@ -41,6 +41,12 @@ def _gcc_opts():
      return '-undefined dynamic_lookup'
   else:
      return ''
+  
+def _py_executable():
+  '''
+  Get the python executable 
+  '''
+  return sys.executable
 
 def copydocstring(fromfunc, sep="\n"):
   """
