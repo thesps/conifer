@@ -57,7 +57,7 @@ class CPPModel(ModelBase):
         newline =  f"typedef {cfg.threshold_precision} T;\n"
         newline += f"typedef {cfg.score_precision} U;\n"
       elif 'PYBIND11_MODULE' in line:
-        newline = f'PYBIND11_MODULE(conifer_bridge_{self._stamp}, m){{\n'
+        newline = line.replace('conifer_bridge', f'conifer_bridge_{self._stamp}')
       elif '// conifer insert include' in line:
         newline = '#include "ap_fixed.h"' if cfg.any_ap_types() else ''
       fout.write(newline)
