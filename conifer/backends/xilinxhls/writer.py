@@ -452,7 +452,7 @@ class XilinxHLSModel(ModelBase):
         if ap_include is None:
             os.chdir(curr_dir)
             raise Exception("Couldn't find Xilinx ap_ headers. Source the Vivado/Vitis HLS toolchain, or set XILINX_AP_INCLUDE environment variable.")
-        cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} bridge.cpp firmware/BDT.cpp firmware/{cfg.project_name}.cpp -o conifer_bridge_{self._stamp}.so"
+        cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python -m pybind11 --includes) {ap_include} -undefined dynamic_lookup bridge.cpp firmware/BDT.cpp firmware/{cfg.project_name}.cpp -o conifer_bridge_{self._stamp}.so"
         logger.debug(f'Compiling with command {cmd}')
         try:
             ret_val = os.system(cmd)

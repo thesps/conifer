@@ -89,7 +89,7 @@ class CPPModel(ModelBase):
     conifer_include = f'-I{filedir}/include/'
 
     # Do the compile
-    cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} {json_include} {conifer_include} bridge.cpp -o conifer_bridge_{self._stamp}.so"
+    cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python -m pybind11 --includes) {ap_include} {json_include} {conifer_include} -undefined dynamic_lookup bridge.cpp -o conifer_bridge_{self._stamp}.so"
     logger.debug(f'Compiling with command {cmd}')
     try:
       ret_val = os.system(cmd)
