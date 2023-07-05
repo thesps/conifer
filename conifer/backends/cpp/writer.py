@@ -19,8 +19,6 @@ class CPPConfig(MultiPrecisionConfig):
     # TODO: proagate different precisions properly through backend
     # for now enforce that all the precisions are equal
     assert self.input_precision == self.threshold_precision, f'input & threshold precision must be equal, got: {self.input_precision} & {self.threshold_precision}'
-    assert self.threshold_precision == self.score_precision, f'threshold & score precision must be equal, got: {self.threshold_precision} & {self.score_precision}'
-
 
 class CPPModel(ModelBase):
   def __init__(self, ensembleDict, config, metadata=None):
