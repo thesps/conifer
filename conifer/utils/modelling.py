@@ -13,6 +13,8 @@ import joblib
 from tqdm import tqdm
 import warnings
 warnings.filterwarnings("ignore")
+import logging
+logger = logging.getLogger(__name__)
 
 @contextlib.contextmanager
 def tqdm_joblib(tqdm_object):
@@ -93,13 +95,6 @@ def make_model(n_trees: int, max_depth: int, max: int = 2**5):
             'init_predict' : [1],
             'norm' : 1}
 
-def vivado_synth(d):
-  cwd = os.getcwd()
-  shutil.copyfile('./vivado_synth.tcl', f'./{d}/vivado_synth.tcl')
-  os.chdir(d)
-  os.system('vivado -mode batch -source vivado_synth.tcl > vsynth.log')
-  os.chdir(cwd)
-
 def run_experiment(i, sl, N, max_depth, n_trees, repeat, config, scandir):
     odir = f'{scandir}/prj_n{n_trees}_d{max_depth}_{repeat}'
     config['OutputDir'] = odir
@@ -109,10 +104,8 @@ def run_experiment(i, sl, N, max_depth, n_trees, repeat, config, scandir):
 
     report = model.read_report()
     if config['backend'] == 'xilinxhls':
-      vivado_synth(odir)
-      vsynth_rep = conifer.backends.common.read_vsynth_report(f'{odir}/vivado_synth.rpt')
-      report['lut'] = vsynth_rep['lut']
-      report['ff'] = vsynth_rep['ff']
+      report['lut'] = report['vsynth']['lut']
+      report['ff'] = report['vsynth']['ff']
 
     return {'latency'   : report['latency'],
             'lut'       : report['lut'],
@@ -134,22 +127,23 @@ def run_scan(scandir: str,
   with tqdm_joblib(tqdm(desc="\N{evergreen tree} scan", total=len(experiments), ascii=" ▖▘▝▗▚▞█")) as progress_bar:
     results = joblib.Parallel(n_jobs=jobs)(joblib.delayed(run_experiment)(i, sl, len(experiments), max_depth, n_tree, repeat, config, scandir) for i, (max_depth, n_tree, repeat) in enumerate(experiments))
 
-  results_d = {'latency' : [], 'lut' : [], 'ff' : [], 'max_depth' : [], 'n_trees' : [], 'trial' : []}
-  for res in results:
-    for key in results_d.keys():
-      results_d[key].append(res[key])
-  r = pandas.DataFrame(results_d)
+  reports = gather_reports(scandir, hls=config['backend']=='xilinxhls')
   r.to_csv(f'{scandir}/results.csv')
 
 def gather_reports(scandir, hls=False):
   fname = 'vivado_synth.rpt' if hls else 'util.rpt'
   prjs = os.listdir(scandir)
   prjs = [prj for prj in prjs if 'prj' in prj and os.path.exists(f'{scandir}/{prj}/{fname}')]
-  results_d = {'latency' : [], 'lut' : [], 'ff' : [], 'max_depth' : [], 'n_trees' : [], 'trial' : [], 'build_time' : [], 'build_memory' : []}
+  if len(prjs) == 0:
+    logger.warn(f'Found no projects in {scandir}')
+  else:
+    logger.info(f'Found {len(prjs)} projects in {scandir}')
+  results_d = {'latency' : [], 'lut' : [], 'ff' : [],
+               'max_depth' : [], 'n_trees' : [], 'n_nodes' : [], 'n_leaves' : [], 'sparsity' : [],
+               'trial' : [], 'build_time' : [], 'build_memory' : []}
   for prj in prjs:
+    model = conifer.model.load_model(f'{scandir}/{prj}/my_prj.json')
     details = prj.split('_')
-    n_trees = int(details[1].replace('n', ''))
-    max_depth = int(details[2].replace('d', ''))
     trial = int(details[3])
     rep = conifer.backends.common.read_vsynth_report(f'{scandir}/{prj}/{fname}')
     if hls:
@@ -158,34 +152,37 @@ def gather_reports(scandir, hls=False):
       build_time = build_log['time_seconds']
       build_mem = build_log['memory_GB']
     else:
-      latency = 1 + max_depth + math.ceil(math.log2(n_trees))
+      latency = 1 + model.max_depth + math.ceil(math.log2(model.n_trees))
       build_time = 0
       build_mem = 0
     results_d['latency'].append(latency)
     results_d['lut'].append(rep['lut'])
     results_d['ff'].append(rep['ff'])
-    results_d['n_trees'].append(n_trees)
-    results_d['max_depth'].append(max_depth)
+    results_d['n_trees'].append(model.n_trees)
+    results_d['max_depth'].append(model.max_depth)
+    results_d['n_nodes'].append(model.n_nodes())
+    results_d['n_leaves'].append(model.n_leaves())
+    results_d['sparsity'].append(model.sparsity())
     results_d['trial'].append(trial)
     results_d['build_time'].append(build_time)
     results_d['build_memory'].append(build_mem)
   return pandas.DataFrame(results_d)
 
-def f_resources(X, k0, k1, k2, k3):
-  n, d = X
-  return k0 + k1 * n * (k2 + k3 * 2 ** d)
+def f_resources(X, k0, k1, k2):
+  n_trees, n_nodes, max_depth = X
+  return k0 + k1 * n_trees + k2 * n_nodes
 
 def f_latency(X, k0, k1, k2):
-  n, d = X
-  return k0 + k1 * d + k2 * np.log2(n)
+  n_trees, n_nodes, max_depth = X
+  return k0 + k1 * max_depth + k2 * np.log2(n_trees)
 
-def do_fits(results_csv: str):
+def do_fits(results: pandas.DataFrame):
   import pandas
   from scipy.optimize import curve_fit
-  d = pandas.read_csv(results_csv)
-  k_lut, _ = curve_fit(f_resources, (d.n_trees, d.max_depth), d.lut)
-  k_ff, _ = curve_fit(f_resources, (d.n_trees, d.max_depth), d.ff)
-  k_lat, _ = curve_fit(f_latency, (d.n_trees, d.max_depth), d.latency)
+  d = results
+  k_lut, _ = curve_fit(f_resources, (d.n_trees, d.n_nodes - d.n_leaves, d.max_depth), d.lut)
+  k_ff, _ = curve_fit(f_resources, (d.n_trees, d.n_nodes - d.n_leaves, d.max_depth), d.ff)
+  k_lat, _ = curve_fit(f_latency, (d.n_trees, d.n_nodes - d.n_leaves, d.max_depth), d.latency)
   return {'lut' : k_lut, 'ff' : k_ff, 'latency' : k_lat}
 
 if __name__ == '__main__':
