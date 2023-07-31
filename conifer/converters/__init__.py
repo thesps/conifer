@@ -1,24 +1,16 @@
-from conifer.converters import sklearn
-from conifer.converters import tmva
-from conifer.converters import xgboost
-from conifer.converters import onnx
-from conifer.model import make_model
-
-try:
-    from conifer.converters import tf_df
-except ImportError:
-    tf_df = None
-    print("Warning: The python package tensorflow_decision_forests is not available. Conversions "
-          "from TensorFlow Decision Forests models is not possible.")
-
 import logging
 logger = logging.getLogger(__name__)
 
-_converter_map = {'sklearn' : sklearn,
-                  'tmva'    : tmva,
-                  'xgboost' : xgboost,
-                  'onnx'    : onnx,
-                  'tf_df':  tf_df}
+_converter_map = {}
+import importlib
+for module in ['sklearn', 'tmva', 'xgboost', 'onnx', 'tf_df']:
+  try:
+    the_module = importlib.import_module(f'conifer.converters.{module}')
+    _converter_map[module] = the_module
+  except ImportError:
+    logger.warn(f'Could not import conifer {module} converter')
+
+from conifer.model import make_model
 
 def get_converter(converter):
   '''Get converter object from string'''
