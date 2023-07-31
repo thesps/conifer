@@ -40,10 +40,10 @@ def _hls_resources(n_trees: int, n_nodes: int, max_depth: int, k: "list[float]")
    return r
 
 def hls_luts(n_trees: int, n_nodes: int, max_depth: int, k: "list[float]" = _hls_lut_constants):
-   return _hls_resources(n_trees, max_depth, n_nodes, k)
+   return _hls_resources(n_trees, n_nodes, max_depth, k)
 
 def hls_ffs(n_trees: int, n_nodes: int, max_depth: int, k: "list[float]" = _hls_ff_constants):
-   return _hls_resources(n_trees, max_depth, n_nodes, k)
+   return _hls_resources(n_trees, n_nodes, max_depth, k)
 
 _estimators = {
    'vhdl' : {
