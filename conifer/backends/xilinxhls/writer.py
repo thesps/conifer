@@ -4,7 +4,7 @@ import warnings
 import numpy as np
 import copy
 from conifer.utils import _ap_include, _gcc_opts, _py_executable, copydocstring
-from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig, read_hls_report
+from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig, read_hls_report, read_vsynth_report
 from conifer.backends.boards import get_board_config, get_builder, BoardConfig, AlveoConfig, ZynqConfig
 from conifer.model import ModelBase, ConfigBase
 import datetime
@@ -466,6 +466,19 @@ class XilinxHLSModel(ModelBase):
             f.write(f'set version {conifer.__version__.major}.{conifer.__version__.minor}\n')
 
         #######################
+        # vivado_synth.tcl
+        #######################
+        f = open(os.path.join(filedir, 'hls-template/vivado_synth.tcl'), 'r')
+        fout = open('{}/vivado_synth.tcl'.format(cfg.output_dir), 'w')
+
+        txt = f.read()
+        txt = txt.format(project=f'{cfg.project_name}_prj', top=cfg.project_name, part=cfg.xilinx_part)
+        fout.write(txt)
+
+        f.close()
+        fout.close()
+
+        #######################
         # bridge.cpp
         #######################
 
@@ -535,7 +548,7 @@ class XilinxHLSModel(ModelBase):
             os.chdir(curr_dir)
 
     @copydocstring(ModelBase.build)
-    def build(self, reset=False, csim=False, synth=True, cosim=False, export=False, bitfile=False, package=False):
+    def build(self, reset=False, csim=False, synth=True, cosim=False, export=False, vsynth=False, bitfile=False, package=False):
         cwd = os.getcwd()
         os.chdir(self.config.output_dir)
         
@@ -544,6 +557,8 @@ class XilinxHLSModel(ModelBase):
             export = True
         if export:
             synth=True
+        if bitfile and vsynth:
+            logger.warn('vsynth and bitfile both set to "True". Both steps will run, but only one may be necessary')
 
         rval = True
         hls_tool = get_hls()
@@ -562,6 +577,17 @@ class XilinxHLSModel(ModelBase):
             if(success > 0):
                 logger.error("build failed, check logs")
                 rval = False
+            if success == 0 and vsynth:
+                cmd = 'vivado -mode batch -source vivado_synth.tcl > vivado_build.log'
+                start = datetime.datetime.now()
+                logger.info(f'build starting {start:%H:%M:%S}')
+                logger.debug(f'build invoking {hls_tool} with command "{cmd}"')
+                success = os.system(cmd)
+                stop = datetime.datetime.now()
+                logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
+                if(success > 0):
+                    logger.error("build failed, check logs")
+                    rval = False
             if success == 0 and bitfile:
                 if self.config.accelerator_config is None:
                     logger.error('bitfile was requested but no accelerator_config found')
@@ -594,6 +620,10 @@ class XilinxHLSModel(ModelBase):
         report['interval'] = iib
         for key in ['lut', 'ff']:
             report[key] = full_report[key]
+
+        vsynth_report = read_vsynth_report(f'{self.config.output_dir}/vivado_synth.rpt')
+        if vsynth_report is not None:
+            report['vsynth'] = {'lut' : vsynth_report['lut'], 'ff' : vsynth_report['ff']}
         return report
 
 def auto_config(granularity='simple'):
