@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,21 @@ def _json_include():
     ret = None
     logger.warn('Could not find JSON headers. JSON_ROOT not defined')
   return ret
+
+def _gcc_opts():
+  '''
+  Get extra platform specific g++ compile options
+  '''
+  if sys.platform == 'darwin':
+     return '-undefined dynamic_lookup'
+  else:
+     return ''
+  
+def _py_executable():
+  '''
+  Get the python executable 
+  '''
+  return sys.executable
 
 def copydocstring(fromfunc, sep="\n"):
   """
