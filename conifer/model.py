@@ -44,6 +44,30 @@ class DecisionTreeBase:
   def n_leaves(self):
     return len([n for n in self.feature if n == -2])
   
+  def max_depth(self):
+    parents = [0] * self.n_nodes()
+    for i in range(self.n_nodes()):
+      j = self.children_left[i]
+      if j != -1:
+        parents[j] = i
+      k = self.children_right[i]
+      if k != -1:
+        parents[k] = i
+    parents[0] = -1
+    depth = [0] * self.n_nodes()
+    max_depth = 0
+    for i in range(self.n_nodes()):
+      depth = 0
+      parent = parents[i]
+      while parent != -1:
+        depth += 1
+        parent = parents[parent]
+      max_depth = depth if depth > max_depth else max_depth
+    return max_depth
+
+  def sparsity(self):
+      return 1 - (self.n_nodes() - self.n_leaves()) / (2 ** self.max_depth() - 1)
+
   def draw(self, filename : str = None, graph=None, tree_id=None):
     '''
     Draw a pydot graph of the decision tree
@@ -194,6 +218,17 @@ class ModelBase:
                 self._metadata.append(ModelMetaData())
             else:
                 self._metadata = [metadata]
+
+    def sparsity(self):
+        s = sum([sum([tree.sparsity() for tree in tree_c]) for tree_c in self.trees])
+        n = sum([len(tree_c) for tree_c in self.trees])
+        return s / n
+
+    def n_nodes(self):
+        return sum([sum([tree.n_nodes() for tree in tree_c]) for tree_c in self.trees])
+
+    def n_leaves(self):
+        return sum([sum([tree.n_leaves() for tree in tree_c]) for tree_c in self.trees])
 
     def set_config(self, config):
         self.config = config
