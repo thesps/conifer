@@ -3,7 +3,7 @@ from shutil import copyfile
 import warnings
 import numpy as np
 import copy
-from conifer.utils import _ap_include, copydocstring
+from conifer.utils import _ap_include, _gcc_opts, _py_executable, copydocstring
 from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig, read_hls_report
 from conifer.model import ModelBase
 import datetime
@@ -452,7 +452,7 @@ class XilinxHLSModel(ModelBase):
         if ap_include is None:
             os.chdir(curr_dir)
             raise Exception("Couldn't find Xilinx ap_ headers. Source the Vivado/Vitis HLS toolchain, or set XILINX_AP_INCLUDE environment variable.")
-        cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} bridge.cpp firmware/BDT.cpp firmware/{cfg.project_name}.cpp -o conifer_bridge_{self._stamp}.so"
+        cmd = f"g++ -O3 -shared -std=c++14 -fPIC $({_py_executable()} -m pybind11 --includes) {ap_include} {_gcc_opts()} bridge.cpp firmware/BDT.cpp firmware/{cfg.project_name}.cpp -o conifer_bridge_{self._stamp}.so"
         logger.debug(f'Compiling with command {cmd}')
         try:
             ret_val = os.system(cmd)

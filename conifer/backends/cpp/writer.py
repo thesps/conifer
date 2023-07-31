@@ -2,7 +2,7 @@ import os
 import numpy as np
 from shutil import copyfile
 import copy
-from conifer.utils import _ap_include, _json_include, copydocstring
+from conifer.utils import _ap_include, _json_include, _gcc_opts, _py_executable, copydocstring
 from conifer.model import ModelBase
 from conifer.backends.common import MultiPrecisionConfig
 import logging
@@ -19,8 +19,6 @@ class CPPConfig(MultiPrecisionConfig):
     # TODO: proagate different precisions properly through backend
     # for now enforce that all the precisions are equal
     assert self.input_precision == self.threshold_precision, f'input & threshold precision must be equal, got: {self.input_precision} & {self.threshold_precision}'
-    assert self.threshold_precision == self.score_precision, f'threshold & score precision must be equal, got: {self.threshold_precision} & {self.score_precision}'
-
 
 class CPPModel(ModelBase):
   def __init__(self, ensembleDict, config, metadata=None):
@@ -89,7 +87,7 @@ class CPPModel(ModelBase):
     conifer_include = f'-I{filedir}/include/'
 
     # Do the compile
-    cmd = f"g++ -O3 -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) {ap_include} {json_include} {conifer_include} bridge.cpp -o conifer_bridge_{self._stamp}.so"
+    cmd = f"g++ -O3 -shared -std=c++14 -fPIC $({_py_executable()} -m pybind11 --includes) {ap_include} {json_include} {conifer_include} {_gcc_opts()} bridge.cpp -o conifer_bridge_{self._stamp}.so"
     logger.debug(f'Compiling with command {cmd}')
     try:
       ret_val = os.system(cmd)
