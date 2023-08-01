@@ -12,3 +12,9 @@ make_model = writer.make_model
 auto_config = writer.auto_config
 
 del SPEC_WRITER
+
+try:
+    from conifer.backends.xilinxhls import runtime
+except ImportError:
+    ZynqDriver = None
+    logger.warn('runtime module could not be imported. Interacting with accelerators will not be possible.')

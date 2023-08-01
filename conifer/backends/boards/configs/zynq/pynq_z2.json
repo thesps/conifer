@@ -1,0 +1,7 @@
+{
+ "name": "pynq-z2",
+ "xilinx_part": "xc7z020clg400-1",
+ "board_part": "tul.com.tw:pynq-z2:part0:1.0",
+ "processing_system_ip": "xilinx.com:ip:processing_system7:5.5",
+ "processing_system": "processing_system7"
+}

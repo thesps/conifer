@@ -18,6 +18,7 @@ del SPEC_XILINXHLS
 from conifer.backends import vhdl
 from conifer.backends import cpp
 from conifer.backends import fpu
+from conifer.backends import boards
 
 _backend_map = {'xilinxhls' : xilinxhls,
                 'vivadohls' : vivadohls,
