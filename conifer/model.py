@@ -118,23 +118,26 @@ class ConfigBase:
                  'project_name' : 'my_prj',
                  'backend'      : 'cpp'
                 }
+    _allow_undefined = []
 
     def __init__(self, configDict, validate=True):
         for key in self._config_fields:
             for k in [key, *self._alternates[key]]:
                 val = configDict.get(k, None)
-                if val is not None:
+                if val is not None or key in self._allow_undefined:
                     setattr(self, key, val)
         if validate:
             self._validate()
+        if getattr(self, 'output_dir', None) is not None:
+            self.output_dir = os.path.abspath(self.output_dir)
 
     def _validate(self):
-        from conifer.backends import get_backend
         vals = {}
         for key in self._config_fields:
-            vals[key] = getattr(self, key, None)
+            if key not in self._allow_undefined:
+                vals[key] = getattr(self, key, None)
         assert not (None in vals.values()), f'Missing some required configuration, have: {vals}'
-        assert get_backend(self.backend) is not None, f'Backend {self.backend} not found'
+
 
     def _to_dict(self):
         dictionary = {}

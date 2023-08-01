@@ -18,6 +18,7 @@ del SPEC_XILINXHLS
 from conifer.backends import vhdl
 from conifer.backends import cpp
 from conifer.backends import fpu
+from conifer.backends import boards
 
 class python_backend:
   '''
