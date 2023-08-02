@@ -29,7 +29,7 @@ endgroup
 apply_bd_automation -rule xilinx.com:bd_rule:${processing_system} -config {make_external "FIXED_IO, DDR" apply_board_preset "1" Master "Disable" Slave "Disable" }  [get_bd_cells processing_system_0]
 
 startgroup
-set_property -dict [list CONFIG.PCW_USE_S_AXI_HP0 {1}] [get_bd_cells processing_system_0]
+set_property -dict [list ${ps_config}] [get_bd_cells processing_system_0]
 endgroup
 
 startgroup
@@ -37,8 +37,8 @@ create_bd_cell -type ip -vlnv cern.ch:conifer:${top}:${version} ${ip_name}
 endgroup
 
 startgroup
-apply_bd_automation -rule xilinx.com:bd_rule:axi4 -config { Clk_master {Auto} Clk_slave {Auto} Clk_xbar {Auto} Master {/processing_system_0/M_AXI_GP0} Slave {/${ip_name}/s_axi_control} ddr_seg {Auto} intc_ip {New AXI Interconnect} master_apm {0}}  [get_bd_intf_pins ${ip_name}/s_axi_control]
-apply_bd_automation -rule xilinx.com:bd_rule:axi4 -config { Clk_master {Auto} Clk_slave {Auto} Clk_xbar {Auto} Master {/${ip_name}/m_axi_gmem0} Slave {/processing_system_0/S_AXI_HP0} ddr_seg {Auto} intc_ip {New AXI Interconnect} master_apm {0}}  [get_bd_intf_pins processing_system_0/S_AXI_HP0]
+apply_bd_automation -rule xilinx.com:bd_rule:axi4 -config { Clk_master {Auto} Clk_slave {Auto} Clk_xbar {Auto} Master {/processing_system_0/${ps_m_axi_port}} Slave {/${ip_name}/s_axi_control} ddr_seg {Auto} intc_ip {New AXI Interconnect} master_apm {0}}  [get_bd_intf_pins ${ip_name}/s_axi_control]
+apply_bd_automation -rule xilinx.com:bd_rule:axi4 -config { Clk_master {Auto} Clk_slave {Auto} Clk_xbar {Auto} Master {/${ip_name}/m_axi_gmem0} Slave {/processing_system_0/${ps_s_axi_port}} ddr_seg {Auto} intc_ip {New AXI Interconnect} master_apm {0}}  [get_bd_intf_pins processing_system_0/${ps_s_axi_port}]
 endgroup
 
 make_wrapper -files [get_files ./${prj_name}_vivado/project_1.srcs/sources_1/bd/design_1/design_1.bd] -top

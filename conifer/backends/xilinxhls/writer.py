@@ -567,7 +567,8 @@ class XilinxHLSModel(ModelBase):
                     rval = False
                 else:
                     rval = self.config.accelerator_builder.build()
-                    self.config.accelerator_builder.package()
+                    if rval:
+                        self.config.accelerator_builder.package()
         os.chdir(cwd)
         return rval
 
