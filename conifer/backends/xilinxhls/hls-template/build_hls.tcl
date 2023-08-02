@@ -40,7 +40,7 @@ if {$opt(reset)} {
     open_solution "solution1"
 }
 
-open_solution -reset "solution1"
+open_solution -reset "solution1" -flow_target ${flow_target}
 set_part ${part}
 create_clock -period 5 -name default
 
