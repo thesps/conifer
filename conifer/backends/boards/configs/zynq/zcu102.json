@@ -1,0 +1,10 @@
+{
+  "name": "zcu102",
+  "xilinx_part": "xczu9eg-ffvb1156-2-e",
+  "board_part": "xilinx.com:zcu102:part0:3.4",
+  "processing_system_ip": "xilinx.com:ip:zynq_ultra_ps_e:3.5",
+  "processing_system": "zynq_ultra_ps_e",
+  "ps_config": "CONFIG.PSU__USE__S_AXI_GP2 {1} CONFIG.PSU__USE__M_AXI_GP1 {0}",
+  "ps_s_axi_port": "S_AXI_HP0_FPD",
+  "ps_m_axi_port": "M_AXI_HPM0_FPD"
+ }

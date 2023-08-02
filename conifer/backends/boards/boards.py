@@ -38,14 +38,20 @@ class BoardConfig(ConfigBase):
   
 class ZynqConfig(BoardConfig):
   backend = '{pn}_builder'
-  _config_fields = BoardConfig._config_fields + ['board_part', 'processing_system_ip', 'processing_system']
+  _config_fields = BoardConfig._config_fields + ['board_part', 'processing_system_ip', 'processing_system', 'ps_config', 'ps_s_axi_port', 'ps_m_axi_port']
   _new_alts = {'board_part' : ['BoardPart'],
-                            'processing_system_ip' : ['ProcessingSystemIP'],
-                            'processing_system' : ['ProcessingSystem']}
+                'processing_system_ip' : ['ProcessingSystemIP'],
+                'processing_system' : ['ProcessingSystem'],
+                'ps_s_axi_port' : [],
+                'ps_m_axi_port' : [],
+                'ps_config' : []}
   _alternates = {**BoardConfig._alternates, **_new_alts}
   _new_defaults = {'board_part' : 'tul.com.tw:pynq-z2:part0:1.0',
-                                'processing_system_ip' : 'xilinx.com:ip:processing_system7:5.5',
-                                'processing_system' : 'processing_system7'}
+                   'processing_system_ip' : 'xilinx.com:ip:processing_system7:5.5',
+                   'processing_system' : 'processing_system7',
+                   'ps_config' : 'CONFIG.PCW_USE_S_AXI_HP0 {1}',
+                   'ps_s_axi_port' : 'S_AXI_HP0',
+                   'ps_m_axi_port' : 'M_AXI_GP0'}
   _defaults = {**BoardConfig._defaults, **_new_defaults}
   def __init__(self, configDict, validate=True):
     super(ZynqConfig, self).__init__(configDict, validate=False)
@@ -106,6 +112,9 @@ class ZynqBuilder(Builder):
     fout = open(f'{self.project_cfg.output_dir}/build_bit.tcl', 'w')
     for line in f.readlines():
       line = line.replace('${ip_name}', self.ip_name)
+      line = line.replace('${ps_config}', self.board_cfg.ps_config)
+      line = line.replace('${ps_s_axi_port}', self.board_cfg.ps_s_axi_port)
+      line = line.replace('${ps_m_axi_port}', self.board_cfg.ps_m_axi_port)
       fout.write(line)
     f.close()
     fout.close()
@@ -119,6 +128,9 @@ class ZynqBuilder(Builder):
       f.write(f'set board_part {self.board_cfg.board_part}\n')
       f.write(f'set processing_system_ip {self.board_cfg.processing_system_ip}\n')
       f.write(f'set processing_system {self.board_cfg.processing_system}\n')
+      #f.write(f'set ps_config {self.board_cfg.ps_config}\n')
+      f.write(f'set ps_s_axi_port {self.board_cfg.ps_s_axi_port}\n')
+      f.write(f'set ps_m_axi_port {self.board_cfg.ps_m_axi_port}\n')
       f.write(f'set top {self.top_name}\n')
       f.write(f'set ip_name {self.ip_name}\n')
       f.write(f'set version {conifer.__version__.major}.{conifer.__version__.minor}\n')
