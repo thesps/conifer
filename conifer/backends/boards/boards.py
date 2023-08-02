@@ -60,27 +60,39 @@ class ZynqConfig(BoardConfig):
       js = json.load(json_file)
       return ZynqConfig(js)
 
-class ZynqBuilder:
+class Builder:
   def __init__(self, project_cfg, board_cfg, top_name=None, ip_name=None):
     assert isinstance(project_cfg, ConfigBase)
-    assert isinstance(board_cfg, ZynqConfig)
+    assert isinstance(board_cfg, BoardConfig)
     self.project_cfg = project_cfg
     self.board_cfg = board_cfg
     self.top_name = top_name
     self.ip_name = ip_name
 
-    xp0 = self.project_cfg.xilinx_part
+    xp0 = getattr(self.project_cfg, 'xilinx_part', None)
     xp1 = self.board_cfg.xilinx_part
-    if  xp0 != xp1 :
+    if  xp0 is not None and xp0 != xp1 :
       logger.warn(f'Project and Board config xilinx_parts do not match ({xp0}, {xp1}), setting to {xp1}')
-    self.project_cfg.xilinx_part = xp1
+      self.project_cfg.xilinx_part = xp1
+
+  def default_cfg():
+    return BoardConfig.default_config()
+  
+  def write(self):
+    raise NotImplementedError
+  
+  def build(self):
+    raise NotImplementedError
+  
+class ZynqBuilder(Builder):
+  
+  def __init__(self, project_cfg, board_cfg, top_name=None, ip_name=None):
+    super(ZynqBuilder, self).__init__(project_cfg, board_cfg, top_name, ip_name)
+    assert isinstance(project_cfg, ConfigBase)
+    assert isinstance(board_cfg, ZynqConfig)
 
   def default_cfg():
     return ZynqConfig.default_config()
-
-  def get_tcl_params(self):
-    params =  f'set flow_target vivado\n'
-    params += f'set export_format ip_catalog\n'
 
   def write(self):
     '''
@@ -103,7 +115,7 @@ class ZynqBuilder:
     import conifer
     with open(f'{self.project_cfg.output_dir}/accelerator_parameters.tcl', 'w') as f:
       f.write(f'set prj_name {self.project_cfg.project_name}\n')
-      f.write(f'set part {self.project_cfg.xilinx_part}\n')
+      f.write(f'set part {self.board_cfg.xilinx_part}\n')
       f.write(f'set board_part {self.board_cfg.board_part}\n')
       f.write(f'set processing_system_ip {self.board_cfg.processing_system_ip}\n')
       f.write(f'set processing_system {self.board_cfg.processing_system}\n')
@@ -170,7 +182,8 @@ class AlveoConfig(BoardConfig):
   _config_fields = BoardConfig._config_fields + ['platform']
   _new_alts = {'platform' : ['Platform']}
   _alternates = {**BoardConfig._alternates, **_new_alts}
-  _new_defaults = {'platform' : 'xilinx_u200_gen3x16_xdma_2_202110_1'}
+  _new_defaults = {'platform'    : 'xilinx_u200_gen3x16_xdma_2_202110_1',
+                   'xilinx_part' : 'xcu200-fsgd2104-2-e'}
   _defaults = {**BoardConfig._defaults, **_new_defaults}
   _defaults['clock_period'] = 3
   def __init__(self, configDict, validate=True):
@@ -186,9 +199,12 @@ class AlveoConfig(BoardConfig):
       js = json.load(json_file)
       return AlveoConfig(js)
     
-class AlveoBuilder:
-  def __init__(self, cfg): 
-    self.cfg = AlveoConfig(cfg)
+class AlveoBuilder(Builder):
+  
+  def __init__(self, project_cfg, board_cfg, top_name=None, ip_name=None):
+    super(AlveoBuilder, self).__init__(project_cfg, board_cfg, top_name, ip_name)
+    assert isinstance(project_cfg, ConfigBase)
+    assert isinstance(board_cfg, AlveoConfig)
 
   def default_cfg():
     return AlveoConfig.default_config()
@@ -215,12 +231,40 @@ class AlveoBuilder:
     '''
     self.write()
     cwd = os.getcwd()
+    od = self.project_cfg.output_dir
+    pn = self.project_cfg.project_name
     os.chdir(od)
     success = True
     pn = pn
-    vitis_cmd = f'v++ -t {target} --platform {self.platform} --link {pn}/solution1/impl/export.xo -o {pn}.xclbin'
+    vitis_cmd = f'v++ -t {target} --platform {self.board_cfg.platform} --link {pn}/solution1/impl/export.xo -o {pn}.xclbin > vitis_build.log'
     logger.info(f'Building Alveo bitfile with command "{vitis_cmd}"')
     success = success and os.system(vitis_cmd)==0
     os.chdir(cwd)
     return success
+  
+  def package(self, retry: int = 6, retries: int = 10):
+    '''
+    Collect build products and compress to a zip file
+    Parameters
+    ----------
+    retry: int (optional)
+      wait time in seconds before retrying
+    retries: int (optional)
+      number of retries before exiting
+    '''
+    od = self.project_cfg.output_dir
+    pn = self.project_cfg.project_name
+    logger.info(f'Packaging bitfile to {od}/{pn}.zip')
+
+    for attempt in range(retries):
+      if os.path.exists(f'{od}/{pn}.xclbin'):
+        filedir = os.path.dirname(os.path.abspath(__file__))
+        with zipfile.ZipFile(f'{od}/{pn}.zip', 'w') as zip:
+          zip.write(f'{od}/{pn}.xclbin', f'{pn}.xclbin')
+          zip.write(f'{od}/{pn}.json', f'{pn}.json')
+          zip.write(f'{filedir}/src/LICENSE', 'LICENSE')
+        break
+      else:
+        logger.info(f'Bitfile not found, waiting {retry} seconds for retry')
+        time.sleep(retry)
   
