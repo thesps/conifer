@@ -22,27 +22,27 @@ def get_converter(converter):
 def get_available_converters():
   return [k for k in _converter_map.keys()]
 
-def convert_from_sklearn(model, config):
+def convert_from_sklearn(model, config=None):
   '''Convert a BDT from a scikit-learn model and configuration'''
   ensembleDict = sklearn.convert(model)
   return make_model(ensembleDict, config)
 
-def convert_from_tmva(model, config):
+def convert_from_tmva(model, config=None):
   '''Convert a BDT from a TMVA model and configuration'''
   ensembleDict = tmva.convert(model)
   return make_model(ensembleDict, config)
 
-def convert_from_xgboost(model, config):
+def convert_from_xgboost(model, config=None):
   '''Convert a BDT from an xgboost model and configuration'''
   ensembleDict = xgboost.convert(model)
   return make_model(ensembleDict, config)
 
-def convert_from_onnx(model, config):
+def convert_from_onnx(model, config=None):
   '''Convert a BDT from an ONNX model and configuration'''
   ensembleDict = onnx.convert(model)
   return make_model(ensembleDict, config)
 
-def convert_from_tf_df(model, config):
+def convert_from_tf_df(model, config=None):
   '''Convert a BDT from an TF-DF model and configuration'''
   ensembleDict = tf_df.convert(model)
   return make_model(ensembleDict, config)

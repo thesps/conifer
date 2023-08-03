@@ -19,12 +19,23 @@ from conifer.backends import vhdl
 from conifer.backends import cpp
 from conifer.backends import fpu
 
+class python_backend:
+  '''
+  Simple backend to make a ModelBase object
+  '''
+  def make_model(ensembleDict, config):
+    from conifer.model import ModelBase
+    return ModelBase(ensembleDict, config)
+
 _backend_map = {'xilinxhls' : xilinxhls,
                 'vivadohls' : vivadohls,
                 'vitishls'  : vitishls,
                 'vhdl'      : vhdl,
                 'cpp'       : cpp,
-                'fpu'       : fpu,}
+                'fpu'       : fpu,
+                'python'    : python_backend,
+                'py'        : python_backend,
+                }
 
 def get_backend(backend):
   '''Get backend object from string'''
