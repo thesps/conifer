@@ -113,6 +113,21 @@ class DecisionTreeBase:
 
     return graph
 
+  def apply(self, X):
+    assert len(X.shape) == 2, 'Expected 2D input'
+    y = np.zeros(X.shape[0], dtype='int')
+    for i, x in enumerate(X):
+      n = 0
+      while self.feature[n] != -2:
+        comp = x[self.feature[n]] <= self.threshold[n]
+        n = self.children_left[n] if comp else self.children_right[n]
+      y[i] = n
+    return y
+
+  def decision_function(self, X):
+    assert len(X.shape) == 2, 'Expected 2D input'
+    yi = self.apply(X)
+    return np.array(self.value)[yi]
 
 class ConfigBase:
     '''
@@ -170,7 +185,7 @@ class ModelBase:
 
     _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm']
 
-    def __init__(self, ensembleDict, configDict, metadata=None):
+    def __init__(self, ensembleDict, configDict=None, metadata=None):
         for key in ModelBase._ensemble_fields:
             val = ensembleDict.get(key, None)
             assert val is not None, f'Missing expected key {key} in ensembleDict'
@@ -178,15 +193,20 @@ class ModelBase:
         trees = ensembleDict.get('trees', None)
         assert trees is not None, f'Missing expected key {key} in ensembleDict'
         self.trees = [[DecisionTreeBase(treeDict) for treeDict in trees_class] for trees_class in trees]
-        self.config = ConfigBase(configDict)
 
-        subset_keys = ['max_depth', 'n_trees', 'n_features', 'n_classes']
-        subset_dict = {key: getattr(self, key) for key in subset_keys}
-        logger.debug(f"Converted BDT with parameters {json.dumps(subset_dict)}")
         def _make_stamp():
             import datetime
             return int(datetime.datetime.now().timestamp())
         self._stamp = _make_stamp()
+
+        if configDict is not None:
+            self.config = ConfigBase(configDict)
+        else:
+            self.config = ConfigBase({'output_dir' : '.', 'project_name' : f'conifer_prj_{self._stamp}', 'backend' : 'python'})
+
+        subset_keys = ['max_depth', 'n_trees', 'n_features', 'n_classes']
+        subset_dict = {key: getattr(self, key) for key in subset_keys}
+        logger.debug(f"Converted BDT with parameters {json.dumps(subset_dict)}")
         if metadata is None:
             self._metadata = [ModelMetaData()]
         else:
@@ -229,12 +249,16 @@ class ModelBase:
         js = json.dumps(dictionary, indent=1)
 
         cfg = self.config
-        if filename is None:
+        if filename is None and cfg is not None:
             filename = f"{cfg.output_dir}/{cfg.project_name}.json"
             directory = cfg.output_dir
+        elif filename is not None:
+            directory = os.path.dirname(filename)
+            directory = directory if directory != '' else './'
         else:
-            directory = filename.split('/')[:-1]
-        os.makedirs(directory, exist_ok=True)
+            logger.error('If model has no configuration, filename must be provided')
+        if not os.path.exists(directory):
+            os.makedirs(directory)
         with open(filename, 'w') as f:
             f.write(js)
 
@@ -296,7 +320,17 @@ class ModelBase:
         score: ndarray of shape (n_samples, n_classes) or (n_samples,)   
 
         '''
-        raise NotImplementedError
+        assert len(X.shape) == 2, 'Expected 2D input'
+        assert X.shape[1] == self.n_features, f'Wrong number of features, expected {self.n_features}, got {X.shape[1]}'
+
+        n_classes = 1 if self.n_classes == 2 else self.n_classes
+        n_samples = X.shape[0]
+        y = np.zeros((self.n_trees, n_classes, n_samples))
+        for it, trees in enumerate(self.trees):
+            for ic, tree_c in enumerate(trees):
+                y[it, ic] = tree_c.decision_function(X)
+        y = np.transpose(np.sum(y, axis=0)) + self.init_predict
+        return np.squeeze(y)
 
     def build(self, **kwargs):
         '''
@@ -361,16 +395,19 @@ class ModelMetaData:
         mmd.time = datetime.datetime.fromtimestamp(d.get('time', 0))
         return mmd
 
-def make_model(ensembleDict, config):
+def make_model(ensembleDict, config=None):
     from conifer.backends import get_backend
     backend = None
-    for k in ['backend', 'Backend']:
-        b = config.get(k, None)
-        if b is not None:
-            backend = b
-    if backend is None:
-        logger.warn('Backend not specified in configuration, loading as ModelBase. It will not be possible to write out.')
-        return ModelBase(ensembleDict, config)
+    if config is None:
+        backend = 'python'
+    else:
+        for k in ['backend', 'Backend']:
+            b = config.get(k, None)
+            if b is not None:
+                backend = b
+        if backend is None:
+            logger.warn('Backend not specified in configuration, loading as ModelBase.')
+            return ModelBase(ensembleDict, config)
     backend = get_backend(backend)
     return backend.make_model(ensembleDict, config)
 

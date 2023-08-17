@@ -28,6 +28,7 @@ Available backends:
 - VHDL - a direct-to-VHDL implementation, deeply pipelined for high clock frequencies
 - FPU - Forest Processing Unit reusable IP core for flexible BDT inference
 - C++ - intended for bit-accurate emulation on CPU with a single include header file
+- Python - intended for validation of model conversion and to allow inspection of a model without a configuration
 
 See our paper in JINST: "[Fast inference of Boosted Decision Trees in FPGAs for particle physics](https://iopscience.iop.org/article/10.1088/1748-0221/15/05/P05026)".
 
@@ -47,9 +48,8 @@ cfg = conifer.backends.xilinxhls.auto_config()
 # Change the bit precision (print the config to see everything modifiable)
 cfg['Precision'] = 'ap_fixed<12,4>' 
 
-# Create the conifer model
-model = conifer.model(clf, conifer.converters.sklearn,
-                      conifer.backends.xilinxhls, cfg)
+# Convert the sklearn model to a conifer model
+model = conifer.converters.convert_from_sklearn(clf, cfg)
 # Write the HLS project and compile the C++-Python bridge                      
 model.compile()
 
