@@ -65,3 +65,11 @@ def test_backend_equality(test):
   y_a = backend_predict(test.model, name_a, test.X, test.y_shape, test.backend_a, test.config_a)
   y_b = backend_predict(test.model, name_b, test.X, test.y_shape, test.backend_b, test.config_b)
   np.testing.assert_array_equal(y_a, y_b)
+
+def test_py_backend():
+   clf, X, _ = model0
+   model = conifer.converters.convert_from_sklearn(clf)
+   assert model.config.backend == 'python'
+   y_skl = clf.decision_function(X)
+   y_cnf = model.decision_function(X)
+   np.testing.assert_allclose(y_skl, y_cnf, rtol=1e-6, atol=1e-6)
