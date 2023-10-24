@@ -10,7 +10,7 @@ pip install conifer
 
 Building FPGA firmware requires tools from Xilinx - a High Level Synthesis tool and Vivado, depending on the choice of backend. We recommend the most recent version Vivado ML and Vitis HLS 2022.2.
 
-Using the C++ backends requires JSON header files from (https://github.com/nlohmann/json)[here]. Clone or download the repository, and set the environment variable `JSON_ROOT` to the JSON include path. Xilinx's arbitrary precision header files (e.g. `ap_fixed.h`) are required to use these type for emulation. They are automatically found if you have source the Xilinx HLS toolchain, but you can also find them (https://github.com/Xilinx/HLS_arbitrary_Precision_Types)[here]. If using the C++ backend without a Vivado installation, clone or download Xilinx's repository, and set the environment variable `XILINX_HLS` to the include path.
+Using the C++ backends requires JSON header files from [here](https://github.com/nlohmann/json). Clone or download the repository, and set the environment variable `JSON_ROOT` to the JSON include path. Xilinx's arbitrary precision header files (e.g. `ap_fixed.h`) are required to use these type for emulation. They are automatically found if you have source the Xilinx HLS toolchain, but you can also find them [here](https://github.com/Xilinx/HLS_arbitrary_Precision_Types). If using the C++ backend without a Vivado installation, clone or download Xilinx's repository, and set the environment variable `XILINX_HLS` to the include path.
 
 # About
 Conifer converts from popular BDT training frameworks, and can emit code projects in different FPGA languages.
