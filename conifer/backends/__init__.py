@@ -2,19 +2,6 @@ import sys
 import importlib.util
 
 from conifer.backends import xilinxhls
-
-SPEC_XILINXHLS = importlib.util.find_spec('.xilinxhls', __name__)
-
-vivadohls = importlib.util.module_from_spec(SPEC_XILINXHLS)
-vivadohls._tool = 'vivadohls'
-SPEC_XILINXHLS.loader.exec_module(vivadohls)
-
-vitishls = importlib.util.module_from_spec(SPEC_XILINXHLS)
-vitishls._tool = 'vitishls'
-SPEC_XILINXHLS.loader.exec_module(vitishls)
-
-del SPEC_XILINXHLS
-
 from conifer.backends import vhdl
 from conifer.backends import cpp
 from conifer.backends import fpu
@@ -29,8 +16,6 @@ class python_backend:
     return ModelBase(ensembleDict, config)
 
 _backend_map = {'xilinxhls' : xilinxhls,
-                'vivadohls' : vivadohls,
-                'vitishls'  : vitishls,
                 'vhdl'      : vhdl,
                 'cpp'       : cpp,
                 'fpu'       : fpu,
