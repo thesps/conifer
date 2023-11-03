@@ -32,13 +32,10 @@ def get_hls():
 
     tool_exe = None
 
-    if '_tool' in globals():
-        tool_exe = get_tool_exe_in_path(_tool)
-    else:
-        for tool in _TOOLS.keys():
-            tool_exe = get_tool_exe_in_path(tool)
-            if tool_exe != None:
-                break
+    for tool in _TOOLS.keys():
+        tool_exe = get_tool_exe_in_path(tool)
+        if tool_exe != None:
+            break
 
     return tool_exe
 
