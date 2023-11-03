@@ -2,6 +2,7 @@ from conifer.model import DecisionTreeBase, ConfigBase
 import numpy as np
 import xml.etree.ElementTree as ET
 import re
+import os
 
 class BottomUpDecisionTree(DecisionTreeBase):
   _tree_fields = DecisionTreeBase._tree_fields + ['parent', 'depth', 'iLeaf']
@@ -109,29 +110,33 @@ def read_hls_report(filename: str) -> dict:
   ----------
   dictionary of extracted report contents
   '''
-  report = {}
-  xml = ET.parse(filename)
-  PE = xml.find('PerformanceEstimates')
-  if PE is not None:
-    SoOL = PE.find('SummaryOfOverallLatency')
-    if SoOL is not None:
-      report['latency_best'] = SoOL.find('Best-caseLatency')
-      report['latency_worst'] = SoOL.find('Worst-caseLatency')
-      report['interval_best'] = SoOL.find('Interval-min')
-      report['interval_worst'] = SoOL.find('Interval-max')
-  AE = xml.find('AreaEstimates')
-  if AE is not None:
-    R = AE.find('Resources')
-    if R is not None:
-      report['lut'] = R.find('LUT')
-      report['ff'] = R.find('FF')
-      report['dsp'] = R.find('DSP')
-      report['bram18'] = R.find('BRAM_18K')
+  
+  if os.path.exists(filename):
+    report = {}
+    xml = ET.parse(filename)
+    PE = xml.find('PerformanceEstimates')
+    if PE is not None:
+      SoOL = PE.find('SummaryOfOverallLatency')
+      if SoOL is not None:
+        report['latency_best'] = SoOL.find('Best-caseLatency')
+        report['latency_worst'] = SoOL.find('Worst-caseLatency')
+        report['interval_best'] = SoOL.find('Interval-min')
+        report['interval_worst'] = SoOL.find('Interval-max')
+    AE = xml.find('AreaEstimates')
+    if AE is not None:
+      R = AE.find('Resources')
+      if R is not None:
+        report['lut'] = R.find('LUT')
+        report['ff'] = R.find('FF')
+        report['dsp'] = R.find('DSP')
+        report['bram18'] = R.find('BRAM_18K')
 
-  for key in report.keys():
-    if key is not None:
-      report[key] = int(report[key].text)
-  return report
+    for key in report.keys():
+      if key is not None:
+        report[key] = int(report[key].text)
+    return report
+  else:
+    return None
 
 def read_hls_log(filename: str) -> dict:
   '''
@@ -145,8 +150,9 @@ def read_hls_log(filename: str) -> dict:
   ----------
   dictionary of extracted log contents
   '''
-  report = {}
-  with open(filename) as f:
+  if os.path.exists(filename):
+    report = {}
+    f = open(filename, 'r')
     for line in f.readlines():
       if 'HLS 200-112' in line: # build summary line
         search = 'Total elapsed time: ([0-9]+)\.*([0-9]*) seconds'
@@ -173,12 +179,16 @@ def read_hls_log(filename: str) -> dict:
           report['memory_GB'] = mem / div
         else:
           report['memory_GB'] = None
-  return report
+          report['time_seconds'] = None
+    return report
+  else:
+    return None
 
 def read_vsynth_report(filename):
-  report = {}
   section = 0
-  with open(filename) as f:
+  if os.path.exists(filename):
+    report = {}
+    f = open(filename, 'r')
     for line in f.readlines():
       # track which report section the line is in for filtering
       if '1. CLB Logic' in line:
@@ -201,5 +211,6 @@ def read_vsynth_report(filename):
         report['bram18'] = int(line.split('|')[2])
       elif section == 3 and 'DSPs' in line:
         report['dsp'] = int(line.split('|')[2])
-
-  return report
+    return report
+  else:
+    return None
