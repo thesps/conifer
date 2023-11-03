@@ -1,20 +1,10 @@
-import sys
-import importlib.util
+import logging
+logger = logging.getLogger(__name__)
 
-SPEC_WRITER = importlib.util.find_spec('.writer', __name__)
-
-writer = importlib.util.module_from_spec(SPEC_WRITER)
-if '_tool' in locals() != None:
-    writer._tool = _tool
-SPEC_WRITER.loader.exec_module(writer)
-
-make_model = writer.make_model
-auto_config = writer.auto_config
-
-del SPEC_WRITER
-
+from conifer.backends.xilinxhls.writer import make_model, auto_config
 try:
     from conifer.backends.xilinxhls import runtime
 except ImportError:
     ZynqDriver = None
+    AlveoDriver = None
     logger.warn('runtime module could not be imported. Interacting with accelerators will not be possible.')
