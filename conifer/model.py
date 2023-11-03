@@ -151,6 +151,7 @@ class ConfigBase:
                     setattr(self, key, val)
         if validate:
             self._validate()
+        self.output_dir = os.path.abspath(self.output_dir)
 
     def _validate(self):
         from conifer.backends import get_backend
@@ -191,7 +192,7 @@ class ModelBase:
             assert val is not None, f'Missing expected key {key} in ensembleDict'
             setattr(self, key, val)
         trees = ensembleDict.get('trees', None)
-        assert trees is not None, f'Missing expected key {key} in ensembleDict'
+        assert trees is not None, f'Missing expected key trees in ensembleDict'
         self.trees = [[DecisionTreeBase(treeDict) for treeDict in trees_class] for trees_class in trees]
 
         def _make_stamp():
@@ -217,7 +218,7 @@ class ModelBase:
                 self._metadata = [metadata]
 
     def sparsity(self):
-        s = sum([sum([tree.sparsity() for tree in tree_c]) for tree_c in self.trees])
+        s = sum([sum([1 - (tree.n_nodes() - tree.n_leaves()) / (2 ** self.max_depth - 1) for tree in tree_c]) for tree_c in self.trees])
         n = sum([len(tree_c) for tree_c in self.trees])
         return s / n
 
