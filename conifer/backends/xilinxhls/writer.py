@@ -469,7 +469,7 @@ class XilinxHLSModel(ModelBase):
         fout = open('{}/vivado_synth.tcl'.format(cfg.output_dir), 'w')
 
         txt = f.read()
-        txt = txt.format(project=f'{cfg.project_name}_prj', top=cfg.project_name, part=cfg.xilinx_part)
+        txt = txt.format(project=f'{cfg.project_name}', top=cfg.project_name, part=cfg.xilinx_part)
         fout.write(txt)
 
         f.close()
@@ -578,7 +578,7 @@ class XilinxHLSModel(ModelBase):
                 cmd = 'vivado -mode batch -source vivado_synth.tcl > vivado_build.log'
                 start = datetime.datetime.now()
                 logger.info(f'build starting {start:%H:%M:%S}')
-                logger.debug(f'build invoking {hls_tool} with command "{cmd}"')
+                logger.debug(f'build invoking vivado with command "{cmd}"')
                 success = os.system(cmd)
                 stop = datetime.datetime.now()
                 logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
@@ -603,20 +603,21 @@ class XilinxHLSModel(ModelBase):
         ----------
         dictionary of extracted report contents
         '''
-        report_file = f'{self.config.output_dir}/{self.config.project_name}_prj/solution1/syn/report/{self.config.project_name}_csynth.xml'
-        full_report = read_hls_report(report_file)
-        lb, lw = full_report['latency_best'], full_report['latency_worst']
-        if lb != lw:
-            logger.warn(f'Model has different best/worst latency ({lb} and {lw})')
-        iib, iiw = full_report['interval_best'], full_report['interval_worst']
-        if lb != lw:
-            logger.warn(f'Model has different best/worst interval ({iib} and {iiw})')
-
+        report_file = f'{self.config.output_dir}/{self.config.project_name}/solution1/syn/report/{self.config.project_name}_csynth.xml'
         report = {}
-        report['latency'] = lb
-        report['interval'] = iib
-        for key in ['lut', 'ff']:
-            report[key] = full_report[key]
+        hls_report = read_hls_report(report_file)
+        if hls_report is not None:
+            lb, lw = hls_report['latency_best'], hls_report['latency_worst']
+            if lb != lw:
+                logger.warn(f'Model has different best/worst latency ({lb} and {lw})')
+            iib, iiw = hls_report['interval_best'], hls_report['interval_worst']
+            if lb != lw:
+                logger.warn(f'Model has different best/worst interval ({iib} and {iiw})')
+
+            report['latency'] = lb
+            report['interval'] = iib
+            for key in ['lut', 'ff']:
+                report[key] = hls_report[key]
 
         vsynth_report = read_vsynth_report(f'{self.config.output_dir}/vivado_synth.rpt')
         if vsynth_report is not None:
