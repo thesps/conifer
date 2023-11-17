@@ -273,6 +273,10 @@ class Experiment:
     self.make_model()
     self.model.write()
 
+  def save(self):
+    self.make_model()
+    self.model.save()
+
   def run(self, shrink=False):
     self.write()
     success = self.model.build()
@@ -357,7 +361,7 @@ class Scan:
     time = np.sum([e.estimate_build_time() for e in experiments]) 
     mem = np.max([e.estimate_build_memory() for e in experiments])
     disk= np.sum([e.estimate_disk_space() for e in experiments])
-    table = self._summary_table(unstarted, completed, failed, time, mem, disk)
+    table = self._summary_table(time, mem, disk)
 
     table_len = int(np.ceil(len(table)/3))
     summary = '-' * table_len + '\n'
@@ -374,10 +378,19 @@ class Scan:
     filedir = os.path.basename(os.path.dirname(__file__))
     pool = Pool(njobs)
     r = list(tqdm(pool.imap(write_experiment, self.experiments), desc='\N{evergreen tree} writing scan ', total=len(self.experiments)))
-    shutil.copyfile(f'{filedir}/run_scan.sh', f'{self.scandir}/run_scan.sh')
+    #shutil.copyfile(f'{filedir}/run_scan.sh', f'{self.scandir}/run_scan.sh')
+
+  def save(self, njobs=1):
+    filedir = os.path.basename(os.path.dirname(__file__))
+    pool = Pool(njobs)
+    r = list(tqdm(pool.imap(save_experiment, self.experiments), desc='\N{evergreen tree} writing scan ', total=len(self.experiments)))
+    #shutil.copyfile(f'{filedir}/run_scan.sh', f'{self.scandir}/run_scan.sh')
 
 def write_experiment(experiment):
   experiment.write()
+
+def save_experiment(experiment):
+  experiment.save()
 
 def gather_report(prjdir):
   model = conifer.model.load_model(f'{prjdir}/my_prj.json')
