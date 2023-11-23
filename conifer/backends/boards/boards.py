@@ -144,15 +144,21 @@ class ZynqBuilder(Builder):
   def get_maxi64(self):
     return False
 
-  def build(self):
+  def build(self, vivado_opts=None):
     '''
     Build Zynq project
+
+    Parameters
+    ----------
+    vivado_opts: string (optional)
+      additional options to pass to vivado command
     '''
     self.write()
     cwd = os.getcwd()
     os.chdir(self.project_cfg.output_dir)
     success = True
-    cmd = 'vivado -mode batch -source build_bit.tcl > vivado_build.log'
+    vivado_opts = '' if vivado_opts is None else vivado_opts
+    cmd = f'vivado -mode batch -source build_bit.tcl {vivado_opts} > vivado_build.log'
     logger.info(f'Building Zynq bitfile with command "{cmd}"')
     success = success and os.system(cmd)==0
     os.chdir(cwd)
@@ -161,6 +167,7 @@ class ZynqBuilder(Builder):
   def package(self, retry: int = 6, retries: int = 10):
     '''
     Collect build products and compress to a zip file
+
     Parameters
     ----------
     retry: int (optional)
@@ -233,13 +240,17 @@ class AlveoBuilder(Builder):
   def write(self):
     return
 
-  def build(self, target='hw'):
+  def build(self, target = 'hw', vitis_opts : str = None):
     '''
     Build Alveo project
+
     Parameters
     ----------
     target: string (optional)
       v++ target
+    
+    vitis_opts: string (optional)
+      additional options to pass to v++ command
     '''
     self.write()
     cwd = os.getcwd()
@@ -248,7 +259,8 @@ class AlveoBuilder(Builder):
     os.chdir(od)
     success = True
     pn = pn
-    vitis_cmd = f'v++ -t {target} --platform {self.board_cfg.platform} --link {pn}/solution1/impl/export.xo -o {pn}.xclbin > vitis_build.log'
+    vitis_opts = '' if vitis_opts is None else vitis_opts
+    vitis_cmd = f'v++ -t {target} --platform {self.board_cfg.platform} --link {pn}/solution1/impl/export.xo -o {pn}.xclbin {vitis_opts} > vitis_build.log'
     logger.info(f'Building Alveo bitfile with command "{vitis_cmd}"')
     success = success and os.system(vitis_cmd)==0
     os.chdir(cwd)

@@ -545,7 +545,7 @@ class XilinxHLSModel(ModelBase):
             os.chdir(curr_dir)
 
     @copydocstring(ModelBase.build)
-    def build(self, reset=False, csim=False, synth=True, cosim=False, export=False, vsynth=False, bitfile=False, package=False):
+    def build(self, reset=False, csim=False, synth=True, cosim=False, export=False, vsynth=False, bitfile=False, package=False, **bitfile_kwargs):
         cwd = os.getcwd()
         os.chdir(self.config.output_dir)
         
@@ -590,7 +590,7 @@ class XilinxHLSModel(ModelBase):
                     logger.error('bitfile was requested but no accelerator_config found')
                     rval = False
                 else:
-                    rval = self.config.accelerator_builder.build()
+                    rval = self.config.accelerator_builder.build(**bitfile_kwargs)
                     if rval:
                         self.config.accelerator_builder.package()
         os.chdir(cwd)
