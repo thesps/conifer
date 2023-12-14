@@ -1,0 +1,8 @@
+pytest
+onnxruntime
+scipy
+onnxmltools
+scikit-learn
+xgboost==1.7.6
+pybind11
+ydf
