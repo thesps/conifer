@@ -1,5 +1,5 @@
 import pytest
-import util
+from tests import util
 import onnxmltools
 import onnx
 
