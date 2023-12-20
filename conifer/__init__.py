@@ -2,12 +2,11 @@ from __future__ import absolute_import
 from importlib.metadata import version, PackageNotFoundError
 from packaging.version import Version
 
-# TODO: Make it possible to run conifer from a git clone without having conifer installed.
 try:
     __version__ = Version(version("conifer"))
-except PackageNotFoundError:
-    # package is not installed
-    pass
+except (PackageNotFoundError, ImportError):
+    # Conifer package is not installed
+    __version__ = Version("0.0.0")
 
 from conifer import converters
 from conifer import backends

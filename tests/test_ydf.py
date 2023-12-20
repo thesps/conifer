@@ -1,4 +1,5 @@
-from typing import Tuple
+"""Test conifer import of ydf models."""
+
 import dataclasses
 
 import conifer
@@ -17,7 +18,9 @@ class Dataset:
 
 
 @pytest.fixture(params=["hastie", "iris"])
-def build_dataset(request) -> Dataset:
+def toy_dataset(request) -> Dataset:
+    """Buids a toy dataset."""
+
     if request.param == "hastie":
         X, y = make_hastie_10_2(random_state=0, n_samples=4000)
         return Dataset(X[:2000], y[:2000] == 1, X[2000:])
@@ -30,18 +33,14 @@ def build_dataset(request) -> Dataset:
         raise ValueError("Unknown dataset")
 
 
-@pytest.fixture(
-    params=[
-        "exact",
-        # "oblique", # TODO: Enable when supported.
-    ]
-)
-def build_ydf_model(build_dataset, request) -> ydf.GenericModel:
-    dataset = build_dataset
+@pytest.fixture(params=["exact"])
+def toy_ydf_model(toy_dataset, request) -> ydf.GenericModel:
+    """Trains a YDF model on a toy dataset."""
+
     if request.param == "exact":
         extra_kwargs = {}
     elif request.param == "oblique":
-        extra_kwargs = {"split_axis": "SPARSE_OBLIQUE"}
+        extra_kwargs = {"split_axis": "SPARSE_OBLIQUE"}  # TODO: Test when supported.
     else:
         assert False
 
@@ -53,62 +52,63 @@ def build_ydf_model(build_dataset, request) -> ydf.GenericModel:
         apply_link_function=False,
         **extra_kwargs,
     )
-    model = learner.train({"x": dataset.X, "y": dataset.y})
+    model = learner.train({"x": toy_dataset.X, "y": toy_dataset.y})
     return model
 
 
-@pytest.fixture
-def hls_convert(build_ydf_model, tmp_path):
-    ydf_model = build_ydf_model
-
-    # Create a conifer config
-    cfg = conifer.backends.xilinxhls.auto_config()
-    cfg["Precision"] = "ap_fixed<32,16,AP_RND,AP_SAT>"
-    # Set the output directory to something unique
-    cfg["OutputDir"] = str(tmp_path)
-    cfg["XilinxPart"] = "xcu250-figd2104-2L-e"
-
-    # Create and compile the model
-    model = conifer.converters.convert_from_ydf(ydf_model, cfg)
-    model.compile()
-    return model
-
-
-@pytest.fixture
-def vhdl_convert(build_ydf_model, tmp_path):
-    ydf_model = build_ydf_model
-
+def test_vhdl_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     # Create a conifer config
     cfg = conifer.backends.vhdl.auto_config()
     cfg["Precision"] = "ap_fixed<32,16>"
-    # Set the output directory to something unique
     cfg["OutputDir"] = str(tmp_path)
     cfg["XilinxPart"] = "xcu250-figd2104-2L-e"
 
     # Create and compile the model
-    model = conifer.converters.convert_from_ydf(ydf_model, cfg)
-    model.compile()
-    return model
+    conifer_model = conifer.converters.convert_from_ydf(toy_ydf_model, cfg)
+    conifer_model.compile()
 
-
-def test_build_vhdl(vhdl_convert):
+    # Check predictions
     # TODO: Check equality of predictions.
-    _ = vhdl_convert
-    assert True
+    # conifer_pred = conifer_model.decision_function(toy_dataset.X_test)
+    # ydf_pred = np.squeeze(toy_ydf_model.predict({"x": toy_dataset.X_test}))
+    # assert np.all(np.isclose(conifer_pred, ydf_pred, rtol=1e-2, atol=1e-2))
 
 
-def test_predict_hls(hls_convert, build_ydf_model, build_dataset):
-    dataset = build_dataset
-    hls_model = hls_convert
-    ydf_model = build_ydf_model
+def test_hls_toy_model(toy_dataset, toy_ydf_model, tmp_path):
+    # Create a conifer config
+    cfg = conifer.backends.xilinxhls.auto_config()
+    cfg["Precision"] = "ap_fixed<32,16,AP_RND,AP_SAT>"
+    cfg["OutputDir"] = str(tmp_path)
+    cfg["XilinxPart"] = "xcu250-figd2104-2L-e"
 
-    hls_pred = hls_model.decision_function(dataset.X_test)
-    tf_df_pred = np.squeeze(ydf_model.predict({"x": dataset.X_test}))
+    # Create and compile the model
+    conifer_model = conifer.converters.convert_from_ydf(toy_ydf_model, cfg)
+    conifer_model.compile()
 
-    assert np.all(np.isclose(hls_pred, tf_df_pred, rtol=1e-2, atol=1e-2))
+    # Check predictions
+    conifer_pred = conifer_model.decision_function(toy_dataset.X_test)
+    ydf_pred = np.squeeze(toy_ydf_model.predict({"x": toy_dataset.X_test}))
+    np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-3, rtol=1e-3)
 
 
-def test_toy_model():
+def test_cpp_toy_model(toy_dataset, toy_ydf_model, tmp_path):
+    # Create a conifer config
+    cfg = conifer.backends.cpp.auto_config()
+    cfg["Precision"] = "double"
+    cfg["OutputDir"] = str(tmp_path)
+
+    # Create and compile the model
+    conifer_model = conifer.converters.convert_from_ydf(toy_ydf_model, cfg)
+    conifer_model.compile()
+
+    # Check predictions
+    conifer_pred = np.squeeze(conifer_model.decision_function(toy_dataset.X_test))
+    ydf_pred = np.squeeze(toy_ydf_model.predict({"x": toy_dataset.X_test}))
+    np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-3, rtol=1e-3)
+
+
+def test_four_nodes_model():
+    # Train a model with 4 nodes
     dataset = {
         "x1": np.array([0, 0, 1, 1]),
         "x2": np.array([0, 1, 0, 1]),
@@ -122,6 +122,7 @@ def test_toy_model():
         min_examples=1,
     ).train(dataset)
 
+    # Check the model structure.
     assert (
         model.get_tree(0).pretty(model.data_spec())
         == """\
@@ -134,9 +135,10 @@ def test_toy_model():
     )
     assert model.initial_predictions() == [-1.0986123085021973]
 
-    cfg = conifer.backends.xilinxhls.auto_config()
+    # Injest the model in Conifer.
     conifer_model = conifer.converters.ydf.convert(model)
 
+    # Check the Conifer model.
     assert conifer_model == {
         "max_depth": 2,
         "n_trees": 1,

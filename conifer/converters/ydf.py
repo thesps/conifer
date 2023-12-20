@@ -1,8 +1,9 @@
 """Convertion from Yggdrasil Decision Forests format."""
 
 from typing import List, Any, Dict, Union
-import ydf
 import dataclasses
+
+import ydf
 
 FeatureMapping = Dict[int, int]
 ConiferModel = Dict[str, Any]

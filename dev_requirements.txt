@@ -3,6 +3,6 @@ onnxruntime
 scipy
 onnxmltools
 scikit-learn
-xgboost==1.7.6
+xgboost<2.0.0
 pybind11
 ydf
