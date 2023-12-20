@@ -110,8 +110,8 @@ print(fpu.get_info())
     - Clone Arbitrary Precision: `git clone https://github.com/Xilinx/HLS_arbitrary_Precision_Types`
     - Set the env variables `JSON_ROOT` and `XILINX_AP_INCLUDE` as the `include` directory in them respectively e.g.
     ```shell
-    export XILINX_AP_INCLUDE=<current dir>/HLS_arbitrary_Precision_Types/include
-    export JSON_ROOT=<current dir>/json/include
+    export XILINX_AP_INCLUDE=$(pwd)/HLS_arbitrary_Precision_Types/include
+    export JSON_ROOT=$(pwd)/json/include
     ```
 1. Go into the Conifer project directory: `cd conifer`
 1. Install the python development dependencies: `pip install -r dev_requirements.txt`
