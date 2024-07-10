@@ -357,10 +357,8 @@ class ModelBase:
             import matplotlib.pyplot as plt
         except ImportError:
             raise Exception("matplotlib not found. Please install matplotlib")
-        value = np.array([tree['value'] for trees in self._ensembleDict['trees']
-                         for tree in trees]).flatten()
-        threshold = np.array(
-            [tree['threshold'] for trees in self._ensembleDict['trees'] for tree in trees]).flatten()
+        value = np.concatenate([np.array(tree['value']) for trees in self._ensembleDict['trees'] for tree in trees])
+        threshold = np.concatenate([np.array(tree['threshold']) for trees in self._ensembleDict['trees'] for tree in trees])
         hv, bv = np.histogram(value, bins=bins)
         wv = bv[1] - bv[0]
         ht, bt = np.histogram(threshold, bins=bins)
