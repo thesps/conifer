@@ -47,6 +47,7 @@ def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor]):
             tree = treeToDict(tree, feature_names)
             treesl.append(tree)
         ensembleDict['trees'].append(treesl)
+    ensembleDict["feature_names"] = feature_names
     return ensembleDict
 
 def treeToDict(tree : pandas.DataFrame, feature_names):
