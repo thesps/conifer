@@ -132,7 +132,7 @@ public:
         values.at(i) += reduce<U, OpAdd<U>>(values_trees.at(i), add);
       }else{
         values.at(i) = std::accumulate(values_trees.at(i).begin(), values_trees.at(i).end(), U(init_predict_.at(i)));
-      }               
+      }
     }
 
     return values;

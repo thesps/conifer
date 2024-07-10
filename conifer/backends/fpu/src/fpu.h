@@ -79,7 +79,7 @@ T dynamic_scaler(float x, float s){
   #pragma HLS pipeline
   float y_f = x * s;
   return (T) y_f;
-} 
+}
 
 template<class T, class U, int FEATBITS, int ADDRBITS, int CLASSBITS, int NVARS, int NNODES, int NTE>
 void FPU_df(T X[NVARS], U& y, DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[NTE][NNODES]){

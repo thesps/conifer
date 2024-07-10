@@ -74,7 +74,7 @@ begin
 
   -- do all the node activations
   -- the root node is always active
-  activation(0) <= true; 
+  activation(0) <= true;
   GenAct:
   for i in 1 to nNodes-1 generate
     -- the root node is always active
@@ -85,7 +85,7 @@ begin
         if rising_edge(clk) then
           activation(i) <= comparisonPipe(depth(i))(iParent(i)) and activation(iParent(i));
         end if;
-      end process;    
+      end process;
     end generate LeftChild;
     RightChild:
     if i = iChildRight(iParent(i)) generate
@@ -94,7 +94,7 @@ begin
         if rising_edge(clk) then
           activation(i) <= (not comparisonPipe(depth(i))(iParent(i))) and activation(iParent(i));
         end if;
-      end process;    
+      end process;
     end generate RightChild;
   end generate GenAct;
 

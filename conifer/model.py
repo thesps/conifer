@@ -26,108 +26,108 @@ def _check_pydot():
         return True
     except OSError:
         return False
-    
+
 class DecisionTreeBase:
-  '''
-  Conifer DecisionTreeBase representation class
-  '''
-  _tree_fields = ['feature', 'threshold', 'value', 'children_left', 'children_right']
-  def __init__(self, treeDict):
-    for key in DecisionTreeBase._tree_fields:
-      val = treeDict.get(key, None)
-      assert val is not None, f"Missing expected key {key} in treeDict"
-      setattr(self, key, val)
-
-  def n_nodes(self):
-    return len(self.feature)
-
-  def n_leaves(self):
-    return len([n for n in self.feature if n == -2])
-  
-  def max_depth(self):
-    parents = [0] * self.n_nodes()
-    for i in range(self.n_nodes()):
-      j = self.children_left[i]
-      if j != -1:
-        parents[j] = i
-      k = self.children_right[i]
-      if k != -1:
-        parents[k] = i
-    parents[0] = -1
-    depth = [0] * self.n_nodes()
-    max_depth = 0
-    for i in range(self.n_nodes()):
-      depth = 0
-      parent = parents[i]
-      while parent != -1:
-        depth += 1
-        parent = parents[parent]
-      max_depth = depth if depth > max_depth else max_depth
-    return max_depth
-
-  def sparsity(self):
-      return 1 - (self.n_nodes() - self.n_leaves()) / (2 ** self.max_depth() - 1)
-
-  def draw(self, filename : str = None, graph=None, tree_id=None):
     '''
-    Draw a pydot graph of the decision tree
-
-    Parameters
-    ----------
-    filename: string
-        filename to save to, with any extension supported by pydot write
-
-    graph:
-        existing pydot graph to add to
-
-    tree_id:
-        ID of the tree within an ensemble
-
-    Returns
-    ----------
-    pydot Dot graph object
+    Conifer DecisionTreeBase representation class
     '''
-    if not _check_pydot():
-        raise ImportError('Could not import pydot. Install Graphviz and pydot to draw trees')
-    graph = pydot.Dot(graph_type='graph') if graph is None else graph
-    tree_id = '' if tree_id is None else tree_id
-    sg = pydot.Cluster(tree_id, label=tree_id, peripheries=0 if tree_id=='' else 1)
-    graph.add_subgraph(sg)
-    for i in range(self.n_nodes()):
-      node_id = f'{tree_id}_{i}'
-      l = f'{tree_id}_{self.children_left[i]}'
-      r = f'{tree_id}_{self.children_right[i]}'
-      label = f'x[{self.feature[i]}] < {self.threshold[i]:.2f}' if self.feature[i] != -2 else f'{self.value[i]:.2f}'
-      sg.add_node(pydot.Node(node_id, label=label))
-      if self.children_left[i] != -1:
-        sg.add_edge(pydot.Edge(node_id, l,))
-      if self.children_right[i] != -1:
-        sg.add_edge(pydot.Edge(node_id, r,))
-    if filename is not None:
-        _, extension = os.path.splitext(filename)
-        if not extension:
-            extension = 'png'
-        else:
-            extension = extension[1:]
-        graph.write(filename, format=extension)
+    _tree_fields = ['feature', 'threshold', 'value', 'children_left', 'children_right']
+    def __init__(self, treeDict):
+        for key in DecisionTreeBase._tree_fields:
+        val = treeDict.get(key, None)
+        assert val is not None, f"Missing expected key {key} in treeDict"
+        setattr(self, key, val)
 
-    return graph
+    def n_nodes(self):
+        return len(self.feature)
 
-  def apply(self, X):
-    assert len(X.shape) == 2, 'Expected 2D input'
-    y = np.zeros(X.shape[0], dtype='int')
-    for i, x in enumerate(X):
-      n = 0
-      while self.feature[n] != -2:
-        comp = x[self.feature[n]] < self.threshold[n]
-        n = self.children_left[n] if comp else self.children_right[n]
-      y[i] = n
-    return y
+    def n_leaves(self):
+        return len([n for n in self.feature if n == -2])
 
-  def decision_function(self, X):
-    assert len(X.shape) == 2, 'Expected 2D input'
-    yi = self.apply(X)
-    return np.array(self.value)[yi]
+    def max_depth(self):
+        parents = [0] * self.n_nodes()
+        for i in range(self.n_nodes()):
+        j = self.children_left[i]
+        if j != -1:
+            parents[j] = i
+        k = self.children_right[i]
+        if k != -1:
+            parents[k] = i
+        parents[0] = -1
+        depth = [0] * self.n_nodes()
+        max_depth = 0
+        for i in range(self.n_nodes()):
+        depth = 0
+        parent = parents[i]
+        while parent != -1:
+            depth += 1
+            parent = parents[parent]
+        max_depth = depth if depth > max_depth else max_depth
+        return max_depth
+
+    def sparsity(self):
+        return 1 - (self.n_nodes() - self.n_leaves()) / (2 ** self.max_depth() - 1)
+
+    def draw(self, filename : str = None, graph=None, tree_id=None):
+        '''
+        Draw a pydot graph of the decision tree
+
+        Parameters
+        ----------
+        filename: string
+            filename to save to, with any extension supported by pydot write
+
+        graph:
+            existing pydot graph to add to
+
+        tree_id:
+            ID of the tree within an ensemble
+
+        Returns
+        ----------
+        pydot Dot graph object
+        '''
+        if not _check_pydot():
+            raise ImportError('Could not import pydot. Install Graphviz and pydot to draw trees')
+        graph = pydot.Dot(graph_type='graph') if graph is None else graph
+        tree_id = '' if tree_id is None else tree_id
+        sg = pydot.Cluster(tree_id, label=tree_id, peripheries=0 if tree_id=='' else 1)
+        graph.add_subgraph(sg)
+        for i in range(self.n_nodes()):
+        node_id = f'{tree_id}_{i}'
+        l = f'{tree_id}_{self.children_left[i]}'
+        r = f'{tree_id}_{self.children_right[i]}'
+        label = f'x[{self.feature[i]}] < {self.threshold[i]:.2f}' if self.feature[i] != -2 else f'{self.value[i]:.2f}'
+        sg.add_node(pydot.Node(node_id, label=label))
+        if self.children_left[i] != -1:
+            sg.add_edge(pydot.Edge(node_id, l,))
+        if self.children_right[i] != -1:
+            sg.add_edge(pydot.Edge(node_id, r,))
+        if filename is not None:
+            _, extension = os.path.splitext(filename)
+            if not extension:
+                extension = 'png'
+            else:
+                extension = extension[1:]
+            graph.write(filename, format=extension)
+
+        return graph
+
+    def apply(self, X):
+        assert len(X.shape) == 2, 'Expected 2D input'
+        y = np.zeros(X.shape[0], dtype='int')
+        for i, x in enumerate(X):
+        n = 0
+        while self.feature[n] != -2:
+            comp = x[self.feature[n]] < self.threshold[n]
+            n = self.children_left[n] if comp else self.children_right[n]
+        y[i] = n
+        return y
+
+    def decision_function(self, X):
+        assert len(X.shape) == 2, 'Expected 2D input'
+        yi = self.apply(X)
+        return np.array(self.value)[yi]
 
 class ConfigBase:
     '''
@@ -280,7 +280,7 @@ class ModelBase:
         Compilation is carried out by the model backend
         '''
         raise NotImplementedError
-    
+
     def draw(self, filename=None):
         '''
         Draw a pydot graph of the decision tree
@@ -314,15 +314,15 @@ class ModelBase:
         '''
         Compute the decision function of `X`.
         The backend performs the actual computation
-        
+
         Parameters
         ----------
         X: array-like of shape (n_samples, n_features)
             Input sample
-        
+
         Returns
-        ----------    
-        score: ndarray of shape (n_samples, n_classes) or (n_samples,)   
+        ----------
+        score: ndarray of shape (n_samples, n_classes) or (n_samples,)
 
         '''
         assert len(X.shape) == 2, 'Expected 2D input'
@@ -344,11 +344,11 @@ class ModelBase:
         Parameters
         ----------
         kwargs: keyword arguments of backend build method
-        
+
         Returns
-        ----------    
+        ----------
         success: bool
-                 True if the build completed successfuly, otherwise False  
+                 True if the build completed successfuly, otherwise False
         '''
         raise NotImplementedError
 
