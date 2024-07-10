@@ -49,7 +49,7 @@ begin
       begin
         -- Compare feature for this node to threshold for this node
         if rising_edge(clk) then
-          comparison(i) <= X(iFeature(i)) <= threshold(i);
+          comparison(i) <= X(iFeature(i)) < threshold(i);
         end if;
       end process;
     end generate NonLeaf;

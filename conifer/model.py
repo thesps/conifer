@@ -97,7 +97,7 @@ class DecisionTreeBase:
       node_id = f'{tree_id}_{i}'
       l = f'{tree_id}_{self.children_left[i]}'
       r = f'{tree_id}_{self.children_right[i]}'
-      label = f'x[{self.feature[i]}] <= {self.threshold[i]:.2f}' if self.feature[i] != -2 else f'{self.value[i]:.2f}'
+      label = f'x[{self.feature[i]}] < {self.threshold[i]:.2f}' if self.feature[i] != -2 else f'{self.value[i]:.2f}'
       sg.add_node(pydot.Node(node_id, label=label))
       if self.children_left[i] != -1:
         sg.add_edge(pydot.Edge(node_id, l,))
@@ -119,7 +119,7 @@ class DecisionTreeBase:
     for i, x in enumerate(X):
       n = 0
       while self.feature[n] != -2:
-        comp = x[self.feature[n]] <= self.threshold[n]
+        comp = x[self.feature[n]] < self.threshold[n]
         n = self.children_left[n] if comp else self.children_right[n]
       y[i] = n
     return y

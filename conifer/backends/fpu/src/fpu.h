@@ -68,7 +68,7 @@ void TreeEngine(T X[NVARS], DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[
   auto node = nodes[i];
   node_loop : while(!node.is_leaf){
     #pragma HLS pipeline
-    i = X[node.feature] <= node.threshold ? node.child_left : node.child_right;
+    i = X[node.feature] < node.threshold ? node.child_left : node.child_right;
     node = nodes[i];
   }
   y = node.score;

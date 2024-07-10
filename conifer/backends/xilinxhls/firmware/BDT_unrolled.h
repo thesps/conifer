@@ -83,7 +83,7 @@ public:
       // Only non-leaf nodes do comparisons
       // negative values mean is a leaf (sklearn: -2)
       if(feature[i] >= 0){
-        comparison[i] = x[feature[i]] <= threshold[i];
+        comparison[i] = x[feature[i]] < threshold[i];
       }else{
         comparison[i] = true;
       }

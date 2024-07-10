@@ -63,7 +63,7 @@ public:
     /* Do the prediction */
     int i = 0;
     while(feature[i] != -2){ // continue until reaching leaf
-      bool comparison = x[feature[i]] <= threshold_[i];
+      bool comparison = x[feature[i]] < threshold_[i];
       i = comparison ? children_left[i] : children_right[i];
     }
     return value_[i];
