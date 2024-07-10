@@ -219,6 +219,8 @@ class ModelBase:
             else:
                 self._metadata = [metadata]
 
+        self._ensembleDict = ensembleDict
+
     def sparsity(self):
         s = sum([sum([1 - (tree.n_nodes() - tree.n_leaves()) / (2 ** self.max_depth - 1) for tree in tree_c]) for tree_c in self.trees])
         n = sum([len(tree_c) for tree_c in self.trees])
