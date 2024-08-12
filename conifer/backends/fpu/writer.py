@@ -401,7 +401,7 @@ class FPUBuilder:
     self.write_params()
     self.write_tcl()
 
-  def build(self, csynth=True, bitfile=True):
+  def build(self, csynth=True, bitfile=True, **build_kwargs):
     '''
     Build FPU project
     Parameters
@@ -420,7 +420,7 @@ class FPUBuilder:
       logger.info(f'Building FPU HLS with command "{cmd}"')
       success = success and os.system(cmd)==0
     if success and bitfile:
-      success = success and self.board_builder.build()
+      success = success and self.board_builder.build(**build_kwargs)
     os.chdir(cwd)
     return success
   

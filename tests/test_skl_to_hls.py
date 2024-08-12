@@ -1,5 +1,5 @@
 import pytest
-import util
+from tests import util
 
 def test_skl_hls_predict(predict):
     import numpy as np

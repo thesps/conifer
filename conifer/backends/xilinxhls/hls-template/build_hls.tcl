@@ -42,7 +42,7 @@ if {$opt(reset)} {
 
 open_solution -reset "solution1" -flow_target ${flow_target}
 set_part ${part}
-create_clock -period 5 -name default
+create_clock -period ${clock_period} -name default
 
 config_interface -m_axi_addr64=${m_axi_addr64}
 

@@ -36,3 +36,22 @@ def get_builder(project_config, board_config, **kwargs):
   builder = __builders.get(type(board_config), None)
   assert builder is not None, f'Could not find builder for {type(board_config)} from {list(__builders.keys())}'
   return builder(project_config, board_config, **kwargs)
+
+def register_board_config(name : str, config : BoardConfig):
+  '''
+  Register a new board for building accelerators
+
+  Parameters
+  ----------
+  name: str
+      Name of new board
+  config: BoardConfig
+      Configuration for new board
+  '''
+  if name in __configs.keys():
+    logger.error(f'board configuration with name "{name}" is already registered') 
+  else:
+    assert isinstance(config, BoardConfig), f'Expected BoardConfig object, got {type(config)}'
+    assert type(config) in __builders.keys(), f'Cannot get builder for {type(config)}, expected one of {__builders.keys()}'
+    logger.info('registering board "{name}"')
+    __configs[name] = config

@@ -139,7 +139,7 @@ class XilinxHLSModel(ModelBase):
                     newline = ''
                     for it, trees in enumerate(self.trees):
                         for ic, tree in enumerate(trees):
-                            newline += f'  scores[{it}][{ic}] = tree_{it}_{ic}.decision_function(x);\n'
+                            newline += f'  scores[{ic}][{it}] = tree_{ic}_{it}.decision_function(x);\n'
                 else:
                     newline = line
                 fout.write(newline)
@@ -227,7 +227,7 @@ class XilinxHLSModel(ModelBase):
             for iclass, tree in enumerate(trees):
                 fout.write(f'static const BDT::Tree<{itree*nc+iclass}, {tree.n_nodes()}, {tree.n_leaves()}')
                 fout.write(f', input_arr_t, score_t, threshold_t>')
-                fout.write(f' tree_{itree}_{iclass} = {{\n')
+                fout.write(f' tree_{iclass}_{itree} = {{\n')
                 # loop over fields
                 for ifield, field in enumerate(tree_fields):
                     newline = '    {'
@@ -545,7 +545,7 @@ class XilinxHLSModel(ModelBase):
             os.chdir(curr_dir)
 
     @copydocstring(ModelBase.build)
-    def build(self, reset=False, csim=False, synth=True, cosim=False, export=False, vsynth=False, bitfile=False, package=False):
+    def build(self, reset=False, csim=False, synth=True, cosim=False, export=False, vsynth=False, bitfile=False, package=False, **bitfile_kwargs):
         cwd = os.getcwd()
         os.chdir(self.config.output_dir)
         
@@ -590,7 +590,7 @@ class XilinxHLSModel(ModelBase):
                     logger.error('bitfile was requested but no accelerator_config found')
                     rval = False
                 else:
-                    rval = self.config.accelerator_builder.build()
+                    rval = self.config.accelerator_builder.build(**bitfile_kwargs)
                     if rval:
                         self.config.accelerator_builder.package()
         os.chdir(cwd)

@@ -5,7 +5,7 @@ import onnxmltools
 import onnx
 import numpy as np
 import conifer
-import util
+from tests import util
 import pytest
 
 iris = load_iris()
