@@ -26,7 +26,7 @@ def _check_pydot():
         return True
     except OSError:
         return False
-
+    
 class DecisionTreeBase:
   '''
   Conifer DecisionTreeBase representation class
@@ -43,7 +43,7 @@ class DecisionTreeBase:
 
   def n_leaves(self):
     return len([n for n in self.feature if n == -2])
-
+  
   def max_depth(self):
     parents = [0] * self.n_nodes()
     for i in range(self.n_nodes()):
@@ -219,8 +219,6 @@ class ModelBase:
             else:
                 self._metadata = [metadata]
 
-        self._ensembleDict = ensembleDict
-
     def sparsity(self):
         s = sum([sum([1 - (tree.n_nodes() - tree.n_leaves()) / (2 ** self.max_depth - 1) for tree in tree_c]) for tree_c in self.trees])
         n = sum([len(tree_c) for tree_c in self.trees])
@@ -280,7 +278,7 @@ class ModelBase:
         Compilation is carried out by the model backend
         '''
         raise NotImplementedError
-
+    
     def draw(self, filename=None):
         '''
         Draw a pydot graph of the decision tree
@@ -314,15 +312,15 @@ class ModelBase:
         '''
         Compute the decision function of `X`.
         The backend performs the actual computation
-
+        
         Parameters
         ----------
         X: array-like of shape (n_samples, n_features)
             Input sample
-
+        
         Returns
-        ----------
-        score: ndarray of shape (n_samples, n_classes) or (n_samples,)
+        ----------    
+        score: ndarray of shape (n_samples, n_classes) or (n_samples,)   
 
         '''
         assert len(X.shape) == 2, 'Expected 2D input'
@@ -344,11 +342,11 @@ class ModelBase:
         Parameters
         ----------
         kwargs: keyword arguments of backend build method
-
+        
         Returns
-        ----------
+        ----------    
         success: bool
-                 True if the build completed successfuly, otherwise False
+                 True if the build completed successfuly, otherwise False  
         '''
         raise NotImplementedError
 
@@ -357,8 +355,10 @@ class ModelBase:
             import matplotlib.pyplot as plt
         except ImportError:
             raise Exception("matplotlib not found. Please install matplotlib")
-        value = np.concatenate([np.array(tree['value']) for trees in self._ensembleDict['trees'] for tree in trees])
-        threshold = np.concatenate([np.array(tree['threshold']) for trees in self._ensembleDict['trees'] for tree in trees])
+        value = np.array([tree['value'] for trees in self._ensembleDict['trees']
+                         for tree in trees]).flatten()
+        threshold = np.array(
+            [tree['threshold'] for trees in self._ensembleDict['trees'] for tree in trees]).flatten()
         hv, bv = np.histogram(value, bins=bins)
         wv = bv[1] - bv[0]
         ht, bt = np.histogram(threshold, bins=bins)
