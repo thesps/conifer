@@ -5,8 +5,10 @@ import json
 class ZynqDriver:
   def __init__(self, bitfile, fpu_name=None, batch_size=1):
     self.overlay = pynq.Overlay(bitfile)
-    self.fpus = [getattr(self.overlay, at) for at in dir(self.overlay) if 'FPU' in at]
-    fpu_name = 'FPU_0' if fpu_name is None else fpu_name
+    self.fpus = [at for at in dir(self.overlay) if 'FPU' in at]
+    if fpu_name is None:
+      assert len(self.fpus) > 0, "No FPUs found in bitfile"
+    fpu_name = self.fpus[0] if fpu_name is None else fpu_name
     self.fpu = getattr(self.overlay, fpu_name, None)
     assert self.fpu is not None, f'No FPU {fpu_name} found in bitfle'
     info = json.loads(self.get_info())

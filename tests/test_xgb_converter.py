@@ -75,12 +75,7 @@ def test_xgb(params):
     model = get_model_function(d, get_model_kwargs)
   else:
     model = get_model_function(X, y, get_model_kwargs)
-  cfg = conifer.backends.cpp.auto_config()
-  cfg['Precision'] = 'double'
-  # Set the output directory to something unique
-  cfg['OutputDir'] = f'prj_xgb_converter_{test_idx}_{int(datetime.datetime.now().timestamp())}'
-  cnf_model = conifer.converters.convert_from_xgboost(model, cfg)
-  cnf_model.compile()
+  cnf_model = conifer.converters.convert_from_xgboost(model)
   y_cnf = np.squeeze(transform(cnf_model.decision_function(X), **transform_kwargs))
   X_xgb = X if data_fmt == 'np' else d
   y_xgb = getattr(model, predictor)(X_xgb)

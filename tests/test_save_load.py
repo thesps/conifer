@@ -1,4 +1,4 @@
-import util
+from tests import util
 import numpy as np
 import conifer
 import json

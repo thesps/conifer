@@ -1,0 +1,10 @@
+{
+ "name": "pynq-z2",
+ "xilinx_part": "xc7z020clg400-1",
+ "board_part": "tul.com.tw:pynq-z2:part0:1.0",
+ "processing_system_ip": "xilinx.com:ip:processing_system7:5.5",
+ "processing_system": "processing_system7",
+ "ps_config": "CONFIG.PCW_USE_S_AXI_HP0 {1}",
+ "ps_s_axi_port": "S_AXI_HP0",
+ "ps_m_axi_port": "M_AXI_GP0"
+}

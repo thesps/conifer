@@ -3,14 +3,13 @@ import math
 import numpy as np
 import json
 import shutil
-import time
 import os
-import zipfile
-from typing import List
+from typing import List, Union
 import logging
 logger = logging.getLogger(__name__)
 from conifer.model import ModelBase, ConfigBase, ModelMetaData
 from conifer.utils import copydocstring
+from conifer.backends.boards import get_board_config, get_builder, BoardConfig, ZynqConfig, AlveoConfig
 
 class FPUInterfaceNode:
   '''
@@ -135,7 +134,6 @@ class FPUConfig(ConfigBase):
     return copy.deepcopy(FPUConfig._defaults)
 
   def generate_codename(self):
-    import conifer
     template = 'fpu_{te}TE_{n}N_{f}F_{tt}T_{st}S_{ds}DS'
     codename = template.format(te = self.tree_engines,
                                n = self.nodes,
@@ -147,19 +145,30 @@ class FPUConfig(ConfigBase):
 
 class FPUBuilderConfig(FPUConfig):
   backend = 'fpu_builder'
-  _config_fields = ConfigBase._config_fields + FPUConfig._config_fields + ['part', 'clock_period']
-  _fpu_builder_alts = {'part' : ['Part'], 'clock_period' : ['ClockPeriod']}
+  _config_fields = ConfigBase._config_fields + FPUConfig._config_fields + ['board', 'clock_period']
+  _fpu_builder_alts = {'board' : ['Board'], 'clock_period' : ['ClockPeriod']}
   _alternates = {**ConfigBase._alternates, **FPUConfig._alternates, **_fpu_builder_alts}
-  _fpu_builder_defaults = {'part' : 'xc7z020clg400-1', 'clock_period' : 10}
+  _fpu_builder_defaults = {'board' : 'pynq-z2', 'clock_period' : 10}
   _defaults = {**ConfigBase._defaults, **FPUConfig._defaults, **_fpu_builder_defaults}
   def __init__(self, configDict, validate=True):
     super(FPUBuilderConfig, self).__init__(configDict, validate=False)
+    if isinstance(self.board, str):
+      self.board_config = get_board_config(self.board)
+    elif isinstance(self.board, dict):
+      self.board_config = get_board_config(self.board.get('name', None))
+    elif isinstance(self.board, BoardConfig):
+      self.board_config = self.board
     if validate:
       self._validate()
 
   def default_config():
     return copy.deepcopy(FPUBuilderConfig._defaults) 
   
+  def top_name(self):
+    top_names = {ZynqConfig  : 'FPU_Zynq',
+                 AlveoConfig : 'FPU_Alveo',
+                 }
+    return top_names.get(type(self.board_config), None)
 
 class FPUModelConfig(ConfigBase):
   backend = 'fpu'
@@ -337,6 +346,9 @@ class FPUBuilder:
     self.cfg = FPUBuilderConfig(cfg)
     for key, value in FPUBuilderConfig.default_config().items():
       setattr(self, key, getattr(self.cfg, key, value))
+    top_name = self.cfg.top_name()
+    ip_name = f'{top_name}_0'
+    self.board_builder = get_builder(self.cfg, self.cfg.board_config, top_name=top_name, ip_name=ip_name)
     self.output_dir = os.path.abspath(self.output_dir)
     self._metadata = ModelMetaData()
 
@@ -344,7 +356,6 @@ class FPUBuilder:
     return FPUBuilderConfig.default_config()
 
   def write_params(self):
-    import conifer
     with open(f'{self.output_dir}/parameters.h', 'w') as f:
       f.write('#ifndef CONIFER_FPU_PARAMS_H_\n#define CONIFER_FPU_PARAMS_H_\n')
       f.write('#include "fpu.h"\n')
@@ -366,77 +377,31 @@ class FPUBuilder:
       f.write(f'static const int theInfoLength = {len(info)};\n')
       f.write('#endif\n')
 
+  def write_tcl(self):
+    import conifer
+    with open(f'{self.output_dir}/hls_parameters.tcl', 'w') as f:
+      f.write(f'set prj_name {self.project_name}\n')
+      f.write(f'set top {self.cfg.top_name()}\n')
+      f.write(f'set part {self.cfg.board_config.xilinx_part}\n')
+      f.write(f'set clock_period {self.clock_period}\n')
+      f.write(f'set flow_target {self.board_builder.get_flow_target()}\n')
+      f.write(f'set export_format {self.board_builder.get_export_format()}\n')
+      f.write(f'set m_axi_addr64 {str(self.board_builder.get_maxi64()).lower()}\n')
+      f.write(f'set version {conifer.__version__.major}.{conifer.__version__.minor}\n')
+
   def write(self):
     filedir = os.path.dirname(os.path.abspath(__file__))
     logger.info(f"Writing project to {self.output_dir}")
     os.makedirs(self.output_dir, exist_ok=True)
+    shutil.copyfile(f'{filedir}/src/build_hls.tcl', f'{self.output_dir}/build_hls.tcl')
     shutil.copyfile(f'{filedir}/src/fpu.cpp', f'{self.output_dir}/fpu.cpp')
     shutil.copyfile(f'{filedir}/src/fpu.h', f'{self.output_dir}/fpu.h')
     with open(f'{self.output_dir}/{self.project_name}.json', 'w') as f:
       json.dump(self.cfg._to_dict(), f)
     self.write_params()
-
-  def build(self, csynth=True):
-    raise NotImplementedError
-
-  def package(self):
-    raise NotImplementedError
-
-class ZynqFPUBuilderConfig(FPUBuilderConfig):
-  backend = 'fpu_builder'
-  _config_fields = FPUBuilderConfig._config_fields + ['board_part', 'processing_system_ip', 'processing_system']
-  _zynq_fpu_builder_alts = {'board_part' : ['BoardPart'],
-                            'processing_system_ip' : ['ProcessingSystemIP'],
-                            'processing_system' : ['ProcessingSystem']}
-  _alternates = {**FPUBuilderConfig._alternates, **_zynq_fpu_builder_alts}
-  _zynq_fpu_builder_defaults = {'board_part' : 'tul.com.tw:pynq-z2:part0:1.0',
-                                'processing_system_ip' : 'xilinx.com:ip:processing_system7:5.5',
-                                'processing_system' : 'processing_system7'}
-  _defaults = {**FPUBuilderConfig._defaults, **_zynq_fpu_builder_defaults}
-  def __init__(self, configDict, validate=True):
-    super(ZynqFPUBuilderConfig, self).__init__(configDict, validate=False)
-    if validate:
-      self._validate()
-
-  def default_config():
-    return copy.deepcopy(ZynqFPUBuilderConfig._defaults) 
-
-class ZynqFPUBuilder(FPUBuilder):
-  def __init__(self, cfg): 
-    super(ZynqFPUBuilder, self).__init__(cfg)
-    self.cfg = ZynqFPUBuilderConfig(cfg)
-    for key, value in ZynqFPUBuilderConfig.default_config().items():
-      setattr(self, key, getattr(self.cfg, key, value))
-
-  def default_cfg():
-    return ZynqFPUBuilderConfig.default_config()
-
-  def write(self):
-    '''
-    Write project files
-    '''
-    super().write()
-    filedir = os.path.dirname(os.path.abspath(__file__))
-    shutil.copyfile(f'{filedir}/src/build_hls.tcl', f'{self.output_dir}/build_hls.tcl')
-    shutil.copyfile(f'{filedir}/src/build_bit.tcl', f'{self.output_dir}/build_bit.tcl')
     self.write_tcl()
 
-  def write_tcl(self):
-    import conifer
-    with open(f'{self.output_dir}/parameters.tcl', 'w') as f:
-      f.write(f'set prj_name {self.project_name}\n')
-      f.write(f'set part {self.part}\n')
-      f.write(f'set board_part {self.board_part}\n')
-      f.write(f'set processing_system_ip {self.processing_system_ip}\n')
-      f.write(f'set processing_system {self.processing_system}\n')
-      f.write(f'set clock_period {self.clock_period}\n')
-      f.write(f'set m_axi_addr64 false\n')
-      f.write(f'set top FPU_Zynq\n')
-      f.write(f'set flow_target vivado\n')
-      f.write(f'set version {conifer.__version__.major}.{conifer.__version__.minor}\n')
-      f.write(f'set export_format ip_catalog\n')
-
-  def build(self, csynth=True, bitfile=True):
+  def build(self, csynth=True, bitfile=True, **build_kwargs):
     '''
     Build FPU project
     Parameters
@@ -451,138 +416,13 @@ class ZynqFPUBuilder(FPUBuilder):
     os.chdir(self.output_dir)
     success = True
     if csynth:
-      logger.info(f"Building FPU HLS")
-      success = success and os.system('vitis_hls -f build_hls.tcl')==0
+      cmd = 'vitis_hls -f build_hls.tcl > hls_build.log'
+      logger.info(f'Building FPU HLS with command "{cmd}"')
+      success = success and os.system(cmd)==0
     if success and bitfile:
-      logger.info(f"Building FPU bitfile")
-      success = success and os.system('vivado -mode batch -source build_bit.tcl')==0
+      success = success and self.board_builder.build(**build_kwargs)
     os.chdir(cwd)
     return success
-
-  def package(self, retry: int = 6, retries: int = 10):
-    '''
-    Collect build products and compress to a zip file
-    Parameters
-    ----------
-    retry: int (optional)
-      wait time in seconds before retrying
-    retries: int (optional)
-      number of retries before exiting
-    '''
-    logger.info(f'Packaging FPU bitfile to {self.output_dir}/{self.project_name}.zip')
-
-    for attempt in range(retries):
-      if os.path.exists(f'{self.output_dir}/{self.project_name}_vivado/fpu.xsa'):
-        with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}_vivado/fpu.xsa', 'r') as zip:
-          zip.extractall(f'{self.output_dir}/{self.project_name}_vivado/package')
-        os.makedirs(f'{self.output_dir}/package', exist_ok=True)
-        shutil.copyfile(f'{self.output_dir}/{self.project_name}_vivado/package/fpu.bit', f'{self.output_dir}/package/fpu.bit')
-        shutil.copyfile(f'{self.output_dir}/{self.project_name}_vivado/package/design_1.hwh', f'{self.output_dir}/package/fpu.hwh')
-        shutil.copyfile(f'{self.output_dir}/{self.project_name}.json', f'{self.output_dir}/package/fpu.json')
-        filedir = os.path.dirname(os.path.abspath(__file__))
-        with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}.zip', 'w') as zip:
-          zip.write(f'{self.output_dir}/package/fpu.bit', 'fpu.bit')
-          zip.write(f'{self.output_dir}/package/fpu.hwh', 'fpu.hwh')
-          zip.write(f'{self.output_dir}/package/fpu.json', 'fpu.json')
-          zip.write(f'{filedir}/src/LICENSE', 'LICENSE')
-        break
-      else:
-        logger.info(f'Bitfile not found, waiting {retry} seconds for retry')
-        time.sleep(retry)      
-
-class AlveoFPUBuilderConfig(FPUBuilderConfig):
-  backend = 'fpu_builder'
-  _config_fields = FPUBuilderConfig._config_fields + ['platform']
-  _alveo_fpu_builder_alts = {'platform' : ['Platform']}
-  _alternates = {**FPUBuilderConfig._alternates, **_alveo_fpu_builder_alts}
-  _alveo_fpu_builder_defaults = {'platform' : 'xilinx_u200_gen3x16_xdma_2_202110_1'}
-  _defaults = {**FPUBuilderConfig._defaults, **_alveo_fpu_builder_defaults}
-  _defaults['clock_period'] = 3
-  def __init__(self, configDict, validate=True):
-    super(AlveoFPUBuilderConfig, self).__init__(configDict, validate=False)
-    if validate:
-      self._validate()
-
-  def default_config():
-    return copy.deepcopy(AlveoFPUBuilderConfig._defaults) 
-
-class AlveoFPUBuilder(FPUBuilder):
-  def __init__(self, cfg): 
-    super(AlveoFPUBuilder, self).__init__(cfg)
-    self.cfg = AlveoFPUBuilderConfig(cfg)
-    for key, value in AlveoFPUBuilderConfig.default_config().items():
-      setattr(self, key, getattr(self.cfg, key, value))
-
-  def default_cfg():
-    return AlveoFPUBuilderConfig.default_config()
-
-  def write(self):
-    '''
-    Write project files
-    '''
-    super().write()
-    filedir = os.path.dirname(os.path.abspath(__file__))
-    shutil.copyfile(f'{filedir}/src/build_hls.tcl', f'{self.output_dir}/build_hls.tcl')
-    shutil.copyfile(f'{filedir}/src/build_bit.tcl', f'{self.output_dir}/build_bit.tcl')
-    self.write_tcl()
-
-  def write_tcl(self):
-    import conifer
-    with open(f'{self.output_dir}/parameters.tcl', 'w') as f:
-      f.write(f'set prj_name {self.project_name}\n')
-      f.write(f'set part {self.part}\n')
-      f.write(f'set clock_period {self.clock_period}\n')
-      f.write(f'set m_axi_addr64 true\n')
-      f.write(f'set top FPU_Alveo\n')
-      f.write(f'set flow_target vitis\n')
-      f.write(f'set version {conifer.__version__.major}.{conifer.__version__.minor}\n')
-      f.write(f'set export_format xo\n')
-
-  def build(self, csynth=True, bitfile=True):
-    '''
-    Build FPU project
-    Parameters
-    ----------
-    csynth: boolean (optional)
-      Run HLS C Synthesis
-    bitfile: boolean (optional)
-      Run v++ linkage (Place and Route)
-    '''
-    self.write()
-    cwd = os.getcwd()
-    os.chdir(self.output_dir)
-    success = True
-    if csynth:
-      logger.info(f"Building FPU HLS")
-      success = success and os.system('vitis_hls -f build_hls.tcl')==0
-    if success and bitfile:
-      logger.info(f"Building FPU bitfile")
-      pn = self.project_name
-      vitis_cmd = f'v++ -t hw --platform {self.platform} --link {pn}/solution1/impl/export.xo -o {pn}.xclbin'
-      success = success and os.system(vitis_cmd)==0
-    os.chdir(cwd)
-    return success
-
-  def package(self, retry: int = 6, retries: int = 10):
-    '''
-    Collect build products and compress to a zip file
-    Parameters
-    ----------
-    retry: int (optional)
-      wait time in seconds before retrying
-    retries: int (optional)
-      number of retries before exiting
-    '''
-    logger.info(f'Packaging FPU bitfile to {self.output_dir}/{self.project_name}.zip')
-
-    for attempt in range(retries):
-      if os.path.exists(f'{self.output_dir}/{self.project_name}.xclbin'):
-        filedir = os.path.dirname(os.path.abspath(__file__))
-        with zipfile.ZipFile(f'{self.output_dir}/{self.project_name}.zip', 'w') as zip:
-          zip.write(f'{self.output_dir}/{self.project_name}.xclbin', f'{self.project_name}.xclbin')
-          zip.write(f'{self.output_dir}/{self.project_name}.json', f'{self.project_name}.json')
-          zip.write(f'{filedir}/src/LICENSE', 'LICENSE')
-        break
-      else:
-        logger.info(f'Bitfile not found, waiting {retry} seconds for retry')
-        time.sleep(retry)
+  
+  def package(self):
+    self.board_builder.package()

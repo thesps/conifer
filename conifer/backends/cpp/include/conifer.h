@@ -87,9 +87,9 @@ class BDT{
 
 private:
 
-  int n_classes;
-  int n_trees;
-  int n_features;
+  unsigned int n_classes;
+  unsigned int n_trees;
+  unsigned int n_features;
   std::vector<double> init_predict;
   std::vector<U> init_predict_;
   // vector of decision trees: outer dimension tree, inner dimension class
@@ -110,8 +110,8 @@ public:
     if(n_classes == 2) n_classes = 1;
     std::transform(init_predict.begin(), init_predict.end(), std::back_inserter(init_predict_),
                    [](double ip) -> U { return (U) ip; });
-    for(int i = 0; i < n_trees; i++){
-      for(int j = 0; j < n_classes; j++){
+    for(unsigned int i = 0; i < n_trees; i++){
+      for(unsigned int j = 0; j < n_classes; j++){
         trees.at(i).at(j).init_();
       }
     }
@@ -124,7 +124,7 @@ public:
     std::vector<std::vector<U>> values_trees;
     values_trees.resize(n_classes);
     values.resize(n_classes, U(0));
-    for(int i = 0; i < n_classes; i++){
+    for(unsigned int i = 0; i < n_classes; i++){
       std::transform(trees.begin(), trees.end(), std::back_inserter(values_trees.at(i)),
                      [&i, &x](auto tree_v){ return tree_v.at(i).decision_function(x); });
       if(useAddTree){

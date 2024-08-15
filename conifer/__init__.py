@@ -4,9 +4,9 @@ from packaging.version import Version
 
 try:
     __version__ = Version(version("conifer"))
-except PackageNotFoundError:
-    # package is not installed
-    pass
+except (PackageNotFoundError, ImportError):
+    # Conifer package is not installed
+    __version__ = Version("0.0.0")
 
 from conifer import converters
 from conifer import backends

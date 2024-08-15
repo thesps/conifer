@@ -12,7 +12,7 @@
 # Source location: https://github.com/thesps/conifer
 
 set tcldir [file dirname [info script]]
-source [file join $tcldir parameters.tcl]
+source [file join $tcldir hls_parameters.tcl]
 
 open_project -reset ${prj_name}
 

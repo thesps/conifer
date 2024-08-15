@@ -5,7 +5,8 @@ import numpy as np
 import copy
 from conifer.utils import _ap_include, _gcc_opts, _py_executable, copydocstring
 from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig, read_hls_report, read_vsynth_report
-from conifer.model import ModelBase
+from conifer.backends.boards import get_board_config, get_builder, BoardConfig, AlveoConfig, ZynqConfig
+from conifer.model import ModelBase, ConfigBase
 import datetime
 import logging
 logger = logging.getLogger(__name__)
@@ -39,25 +40,67 @@ def get_hls():
 
     return tool_exe
 
+class XilinxHLSAcceleratorConfig(ConfigBase):
+    _config_fields = ['interface_type', 'board']
+    _alternates = {'interface_type' : ['InterfaceType'],
+                   'board'          : ['Board']}
+    _defaults = {'interace_type' : 'float',
+                 'board'         : 'pynq-z2'}
+    def __init__(self, configDict, validate=True):
+        super(XilinxHLSAcceleratorConfig, self).__init__(configDict, validate=False)
+        if isinstance(self.board, str):
+            self.board_config = get_board_config(self.board)
+        elif isinstance(self.board, BoardConfig):
+            self.board_config = self.board
+        if validate:
+            self._validate()
+            assert self.board_config is not None, f'No board "{self.board}" found'
+
+    def _interface_pragmas(self):
+        if isinstance(self.board_config, AlveoConfig):
+            pragmas =  '#pragma HLS interface mode=m_axi port=x offset=slave bundle=gmem0\n'
+            pragmas += '#pragma HLS interface mode=m_axi port=score offset=slave bundle=gmem0\n'
+            pragmas += '#pragma HLS interface mode=s_axilite port=N\n'
+            pragmas += '#pragma HLS interface mode=s_axilite port=n_f\n'
+            pragmas += '#pragma HLS interface mode=s_axilite port=n_c\n'
+        elif isinstance(self.board_config, ZynqConfig):
+            pragmas =  '#pragma HLS interface mode=m_axi port=x offset=slave bundle=gmem0\n'
+            pragmas += '#pragma HLS interface mode=m_axi port=score offset=slave bundle=gmem0\n'
+            pragmas += '#pragma HLS interface mode=s_axilite port=x bundle=control\n'
+            pragmas += '#pragma HLS interface mode=s_axilite port=score bundle=control\n'
+            pragmas += '#pragma HLS interface mode=s_axilite port=N bundle=control\n'
+            pragmas += '#pragma HLS interface mode=s_axilite port=n_f bundle=control\n'
+            pragmas += '#pragma HLS interface mode=s_axilite port=n_c bundle=control\n'
+            pragmas += '#pragma HLS interface mode=s_axilite port=return bundle=control\n'
+        else:
+            logger.error(f'Board {self.board_config.name} not supported by this backend')
+        return pragmas
+
 class XilinxHLSConfig(MultiPrecisionConfig):
     backend = 'xilinxhls'
-    _config_fields = MultiPrecisionConfig._config_fields + ['xilinx_part', 'clock_period', 'unroll']
-    _xhls_alts = {'xilinx_part'  : ['XilinxPart'],
-                  'clock_period' : ['ClockPeriod'],
-                  'unroll'       : ['Unroll']
+    _config_fields = MultiPrecisionConfig._config_fields + ['xilinx_part', 'clock_period', 'unroll', 'accelerator_config']
+    _xhls_alts = {'xilinx_part'        : ['XilinxPart'],
+                  'clock_period'       : ['ClockPeriod'],
+                  'unroll'             : ['Unroll'],
+                  'accelerator_config' : ['AcceleratorConfig'],
                   }
     _alternates = {**MultiPrecisionConfig._alternates, **_xhls_alts}
-    _xhls_defaults = {'precision'    : 'ap_fixed<18,8>',
-                      'xilinx_part'  : 'xcvu9p-flgb2104-2L-e',
-                      'clock_period' : 5,
-                      'unroll'     : True
+    _xhls_defaults = {'precision'          : 'ap_fixed<18,8>',
+                      'xilinx_part'        : 'xcvu9p-flgb2104-2L-e',
+                      'clock_period'       : 5,
+                      'unroll'             : True,
+                      'accelerator_config' : None
                       }
+    _allow_undefined = [*MultiPrecisionConfig._allow_undefined] + ['accelerator_config']
     _defaults = {**MultiPrecisionConfig._defaults, **_xhls_defaults}
     def __init__(self, configDict, validate=True):
         super(XilinxHLSConfig, self).__init__(configDict, validate=False)
         if validate:
             self._validate()
-
+        if self.accelerator_config is not None:
+            self.accelerator_config = XilinxHLSAcceleratorConfig(self.accelerator_config)
+            self.accelerator_builder = get_builder(self, self.accelerator_config.board_config,
+                                                   top_name=f'{self.project_name}_accelerator', ip_name=f'conifer_{self.project_name}')
     def default_config():
         return copy.deepcopy(XilinxHLSConfig._defaults)
 
@@ -96,7 +139,7 @@ class XilinxHLSModel(ModelBase):
                     newline = ''
                     for it, trees in enumerate(self.trees):
                         for ic, tree in enumerate(trees):
-                            newline += f'  scores[{it}][{ic}] = tree_{it}_{ic}.decision_function(x);\n'
+                            newline += f'  scores[{ic}][{it}] = tree_{ic}_{it}.decision_function(x);\n'
                 else:
                     newline = line
                 fout.write(newline)
@@ -138,6 +181,12 @@ class XilinxHLSModel(ModelBase):
         fout.write('typedef {} score_t;\n'.format(score_precision))
         fout.write('typedef score_t score_arr_t[n_classes];\n')
 
+        if self.config.accelerator_config is not None:
+            fout.write(f'typedef {self.config.accelerator_config.interface_type} accelerator_input_t;\n')
+            fout.write(f'typedef {self.config.accelerator_config.interface_type} accelerator_output_t;\n')
+        else:
+            fout.write(f'typedef float accelerator_input_t;\n')
+            fout.write(f'typedef float accelerator_output_t;\n')
         if self.config.unroll:
             self._write_parameters_h_unrolled(fout)
         else:
@@ -178,7 +227,7 @@ class XilinxHLSModel(ModelBase):
             for iclass, tree in enumerate(trees):
                 fout.write(f'static const BDT::Tree<{itree*nc+iclass}, {tree.n_nodes()}, {tree.n_leaves()}')
                 fout.write(f', input_arr_t, score_t, threshold_t>')
-                fout.write(f' tree_{itree}_{iclass} = {{\n')
+                fout.write(f' tree_{iclass}_{itree} = {{\n')
                 # loop over fields
                 for ifield, field in enumerate(tree_fields):
                     newline = '    {'
@@ -247,6 +296,8 @@ class XilinxHLSModel(ModelBase):
     @copydocstring(ModelBase.write)
     def write(self):
 
+        import conifer
+
         self.save()
         cfg = self.config
 
@@ -264,20 +315,25 @@ class XilinxHLSModel(ModelBase):
         # myproject.cpp
         ###################
 
+        f = open(os.path.join(filedir, 'hls-template/firmware/myproject.cpp'), 'r')
         fout = open(
             '{}/firmware/{}.cpp'.format(cfg.output_dir, cfg.project_name), 'w')
-        fout.write('#include "BDT.h"\n')
-        fout.write('#include "parameters.h"\n')
-        fout.write('#include "{}.h"\n'.format(cfg.project_name))
+        for line in f.readlines():
+            if '// conifer insert pragmas' in line:
+                line =  '  #pragma HLS array_partition variable=x\n'
+                line += '  #pragma HLS array_partition variable=score\n'
+                if cfg.unroll:
+                    line += '  #pragma HLS pipeline\n'
+                    line += '  #pragma HLS unroll\n'
+            if '// conifer insert accelerator pragmas' in line:
+                if cfg.accelerator_config is not None:
+                    line = cfg.accelerator_config._interface_pragmas()
+                else:
+                    line = ''
+            line = line.replace('myproject', cfg.project_name)
 
-        fout.write(
-            'void {}(input_arr_t x, score_arr_t score){{\n'.format(cfg.project_name))
-        fout.write('\t#pragma HLS array_partition variable=x\n')
-        fout.write('\t#pragma HLS array_partition variable=score\n')
-        if(cfg.unroll):
-            fout.write('\t#pragma HLS pipeline\n')
-            fout.write('\t#pragma HLS unroll\n')
-        fout.write('\tbdt.decision_function(x, score);\n}')
+            fout.write(line)
+        f.close()
         fout.close()
 
         #######################
@@ -379,30 +435,43 @@ class XilinxHLSModel(ModelBase):
         fout.close()
 
         #######################
-        # build_prj.tcl
+        # build_hls.tcl
         #######################
 
         bdtdir = os.path.abspath(os.path.join(filedir, "../bdt_utils"))
         relpath = os.path.relpath(bdtdir, start=cfg.output_dir)
 
-        f = open(os.path.join(filedir, 'hls-template/build_prj.tcl'), 'r')
-        fout = open('{}/build_prj.tcl'.format(cfg.output_dir), 'w')
+        copyfile(os.path.join(filedir, 'hls-template/build_hls.tcl'),
+                 '{}/build_hls.tcl'.format(cfg.output_dir))
 
-        for line in f.readlines():
+        #######################
+        # hls_parameters.tcl
+        #######################
 
-            line = line.replace('nnet_utils', relpath)
-            line = line.replace('myproject', cfg.project_name)
+        with open(f'{cfg.output_dir}/hls_parameters.tcl', 'w') as f:
+            top = cfg.project_name if cfg.accelerator_config is None else f'{cfg.project_name}_accelerator'
+            f.write(f'set top {top}\n')
+            f.write(f'set prj_name {cfg.project_name}\n')
+            f.write(f'set part {cfg.xilinx_part}\n')
+            f.write(f'set clock_period {cfg.clock_period}\n')
+            ft = 'vivado' if cfg.accelerator_config is None else cfg.accelerator_builder.get_flow_target()
+            f.write(f'set flow_target {ft}\n')
+            ef = 'ip_catalog' if cfg.accelerator_config is None else cfg.accelerator_builder.get_export_format()
+            f.write(f'set export_format {ef}\n')
+            axi64 = 'false' if cfg.accelerator_config is None else str(cfg.accelerator_builder.get_maxi64()).lower()
+            f.write(f'set m_axi_addr64 {axi64}\n')
+            f.write(f'set version {conifer.__version__.major}.{conifer.__version__.minor}\n')
 
-            if 'set_part {xc7vx690tffg1927-2}' in line:
-                line = 'set_part {{{}}}\n'.format(cfg.xilinx_part)
-            elif 'create_clock -period 5 -name default' in line:
-                line = 'create_clock -period {} -name default\n'.format(
-                    cfg.clock_period)
-            # Remove some lines
-            elif ('weights' in line) or ('-tb firmware/weights' in line):
-                line = ''
+        #######################
+        # vivado_synth.tcl
+        #######################
+        f = open(os.path.join(filedir, 'hls-template/vivado_synth.tcl'), 'r')
+        fout = open('{}/vivado_synth.tcl'.format(cfg.output_dir), 'w')
 
-            fout.write(line)
+        txt = f.read()
+        txt = txt.format(project=f'{cfg.project_name}', top=cfg.project_name, part=cfg.xilinx_part)
+        fout.write(txt)
+
         f.close()
         fout.close()
 
@@ -436,6 +505,9 @@ class XilinxHLSModel(ModelBase):
         fin.close()
         fout.close()
         os.remove(f"{cfg.output_dir}/bridge_tmp.cpp")
+
+        if self.config.accelerator_config is not None:
+            self.config.accelerator_builder.write()
 
     @copydocstring(ModelBase.decision_function)
     def decision_function(self, X, trees=False):
@@ -486,17 +558,25 @@ class XilinxHLSModel(ModelBase):
             os.chdir(curr_dir)
 
     @copydocstring(ModelBase.build)
-    def build(self, reset=False, csim=False, synth=True, cosim=False, export=False, vsynth=True):
+    def build(self, reset=False, csim=False, synth=True, cosim=False, export=False, vsynth=False, bitfile=False, package=False, **bitfile_kwargs):
         cwd = os.getcwd()
         os.chdir(self.config.output_dir)
         
+        # make sure necessary preceding steps have run
+        if bitfile:
+            export = True
+        if export:
+            synth=True
+        if bitfile and vsynth:
+            logger.warn('vsynth and bitfile both set to "True". Both steps will run, but only one may be necessary')
+
         rval = True
         hls_tool = get_hls()
         if hls_tool is None:
             logger.error("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
             rval = False
         else:
-            cmd = '{hls_tool} -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}" > build.log'\
+            cmd = '{hls_tool} -f build_hls.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}" > build.log'\
                 .format(hls_tool=hls_tool, reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
             start = datetime.datetime.now()
             logger.info(f'build starting {start:%H:%M:%S}')
@@ -507,17 +587,25 @@ class XilinxHLSModel(ModelBase):
             if(success > 0):
                 logger.error("build failed, check logs")
                 rval = False
-            if(vsynth):
+            if success == 0 and vsynth:
                 cmd = 'vivado -mode batch -source vivado_synth.tcl > vivado_build.log'
                 start = datetime.datetime.now()
                 logger.info(f'build starting {start:%H:%M:%S}')
-                logger.debug(f'build invoking {hls_tool} with command "{cmd}"')
+                logger.debug(f'build invoking vivado with command "{cmd}"')
                 success = os.system(cmd)
                 stop = datetime.datetime.now()
                 logger.info(f'build finished {stop:%H:%M:%S} - took {str(stop-start)}')
                 if(success > 0):
                     logger.error("build failed, check logs")
                     rval = False
+            if success == 0 and bitfile:
+                if self.config.accelerator_config is None:
+                    logger.error('bitfile was requested but no accelerator_config found')
+                    rval = False
+                else:
+                    rval = self.config.accelerator_builder.build(**bitfile_kwargs)
+                    if rval:
+                        self.config.accelerator_builder.package()
         os.chdir(cwd)
         return rval
 
@@ -528,20 +616,21 @@ class XilinxHLSModel(ModelBase):
         ----------
         dictionary of extracted report contents
         '''
-        report_file = f'{self.config.output_dir}/{self.config.project_name}_prj/solution1/syn/report/{self.config.project_name}_csynth.xml'
-        full_report = read_hls_report(report_file)
-        lb, lw = full_report['latency_best'], full_report['latency_worst']
-        if lb != lw:
-            logger.warn(f'Model has different best/worst latency ({lb} and {lw})')
-        iib, iiw = full_report['interval_best'], full_report['interval_worst']
-        if lb != lw:
-            logger.warn(f'Model has different best/worst interval ({iib} and {iiw})')
-
+        report_file = f'{self.config.output_dir}/{self.config.project_name}/solution1/syn/report/{self.config.project_name}_csynth.xml'
         report = {}
-        report['latency'] = lb
-        report['interval'] = iib
-        for key in ['lut', 'ff']:
-            report[key] = full_report[key]
+        hls_report = read_hls_report(report_file)
+        if hls_report is not None:
+            lb, lw = hls_report['latency_best'], hls_report['latency_worst']
+            if lb != lw:
+                logger.warn(f'Model has different best/worst latency ({lb} and {lw})')
+            iib, iiw = hls_report['interval_best'], hls_report['interval_worst']
+            if lb != lw:
+                logger.warn(f'Model has different best/worst interval ({iib} and {iiw})')
+
+            report['latency'] = lb
+            report['interval'] = iib
+            for key in ['lut', 'ff']:
+                report[key] = hls_report[key]
 
         vsynth_report = read_vsynth_report(f'{self.config.output_dir}/vivado_synth.rpt')
         if vsynth_report is not None:
@@ -563,7 +652,8 @@ def auto_config(granularity='simple'):
               'OutputDir': 'my-conifer-prj',
               'XilinxPart': 'xcvu9p-flgb2104-2L-e',
               'ClockPeriod': '5',
-              'Unroll' : True}
+              'Unroll' : True,
+              'AcceleratorConfig' : None}
     if granularity == 'full':
         config['InputPrecision'] = 'ap_fixed<18,8>'
         config['ThresholdPrecision'] = 'ap_fixed<18,8>'

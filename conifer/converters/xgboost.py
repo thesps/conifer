@@ -1,8 +1,11 @@
-import numpy as np
 import json
 import xgboost as xgb
 import pandas
+from packaging import version
 from typing import Union
+import logging
+logger = logging.getLogger(__name__)
+__xgb_version = version.parse(xgb.__version__)
 
 def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor]):
     assert isinstance(bdt, (xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor))
@@ -11,19 +14,23 @@ def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor]):
     elif isinstance(bdt, (xgb.XGBClassifier, xgb.XGBRegressor)):
       bst = bdt.get_booster()
     meta = json.loads(bst.save_config())
-    updater = meta.get('learner').get('gradient_booster').get('gbtree_train_param').get('updater').split(',')[0]
-    max_depth = int(meta.get('learner').get('gradient_booster').get('updater').get(updater).get('train_param').get('max_depth'))
+    if __xgb_version >= version.parse('2'):
+      logger.warning(f'xgboost versions >= 2.0.0 are not yet fully supported. You have xgboost {__xgb_version}')
+      max_depth = int(meta.get('learner').get('gradient_booster').get('tree_train_param').get('max_depth'))
+    else:
+      updater = meta.get('learner').get('gradient_booster').get('gbtree_train_param').get('updater').split(',')[0]
+      max_depth = int(meta.get('learner').get('gradient_booster').get('updater').get(updater).get('train_param').get('max_depth'))
     n_classes = int(meta.get('learner').get('learner_model_param').get('num_class'))
     fn_classes = 1 if n_classes == 0 else n_classes # the number of learners
     n_classes = 2 if n_classes == 0 else n_classes # the actual number of classes
     n_trees = int(int(meta.get('learner').get('gradient_booster').get('gbtree_model_param').get('num_trees')) / fn_classes)
-    n_features = int(meta['learner']['learner_model_param']['num_feature'])
+    n_features = int(meta.get('learner').get('learner_model_param').get('num_feature'))
     ensembleDict = {'max_depth' : max_depth,
                     'n_trees' : n_trees,
                     'n_classes' : n_classes,
                     'n_features' : n_features,
                     'trees' : [],
-                    'init_predict' : [0] * n_classes,
+                    'init_predict' : [0] * fn_classes,
                     'norm' : 1}
     
     feature_names = {}

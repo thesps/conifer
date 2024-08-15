@@ -1,6 +1,9 @@
 #################
 #    HLS4ML
 #################
+set tcldir [file dirname [info script]]
+source [file join $tcldir hls_parameters.tcl]
+
 array set opt {
     reset      0
     csim       1
@@ -20,17 +23,16 @@ file mkdir tb_data
 set CSIM_RESULTS "./tb_data/csim_results.log"
 
 if {$opt(reset)} {
-    open_project -reset myproject_prj
+    open_project -reset ${prj_name}
 } else {
-    open_project myproject_prj
+    open_project ${prj_name}
 }
 
-set_top myproject
+set_top ${top}
 add_files firmware/BDT.h -cflags "-std=c++0x"
 add_files firmware/BDT.cpp -cflags "-std=c++0x"
-add_files firmware/myproject.cpp -cflags "-std=c++0x"
-add_files -tb myproject_test.cpp -cflags "-I firmware/ -std=c++0x"
-add_files -tb firmware/weights
+add_files firmware/${prj_name}.cpp -cflags "-std=c++0x"
+add_files -tb ${prj_name}_test.cpp -cflags "-I firmware/ -std=c++0x"
 add_files -tb tb_data
 if {$opt(reset)} {
     open_solution -reset "solution1"
@@ -38,9 +40,11 @@ if {$opt(reset)} {
     open_solution "solution1"
 }
 
-open_solution -reset "solution1"
-set_part {xc7vx690tffg1927-2}
-create_clock -period 5 -name default
+open_solution -reset "solution1" -flow_target ${flow_target}
+set_part ${part}
+create_clock -period ${clock_period} -name default
+
+config_interface -m_axi_addr64=${m_axi_addr64}
 
 if {$opt(csim)} {
     csim_design
@@ -55,7 +59,7 @@ if {$opt(cosim)} {
 }
 
 if {$opt(export)} {
-    export_design -format ip_catalog
+    export_design -vendor cern.ch -library conifer -ipname ${top} -version ${version} -format ${export_format}
 }
 
 if {$opt(vsynth)} {

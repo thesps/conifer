@@ -5,8 +5,37 @@
 
 namespace BDT{
 
+/* ---
+* Balanced tree reduce implementation.
+* Reduces an array of inputs to a single value using the template binary operator 'Op',
+* for example summing all elements with OpAdd, or finding the maximum with OpMax
+* Use only when the input array is fully unrolled. Or, slice out a fully unrolled section
+* before applying and accumulate the result over the rolled dimension.
+* Required for emulation to guarantee equality of ordering.
+* --- */
+constexpr int floorlog2(int x) { return (x < 2) ? 0 : 1 + floorlog2(x / 2); }
+
+constexpr int pow2(int x) { return x == 0 ? 1 : 2 * pow2(x - 1); }
+
+template <class T, int N, class Op> T reduce(const T *x, Op op) {
+  static constexpr int leftN = pow2(floorlog2(N - 1)) > 0 ? pow2(floorlog2(N - 1)) : 0;
+  static constexpr int rightN = N - leftN > 0 ? N - leftN : 0;
+  if (N == 1) {
+    return x[0];
+  }
+  if (N == 2) {
+    return op(x[0], x[1]);
+  }
+  return op(reduce<T, leftN, Op>(x, op), reduce<T, rightN, Op>(x + leftN, op));
+}
+
+template <class T> class OpAdd {
+  public:
+    T operator()(T a, T b) { return a + b; }
+};
+
+// Number of trees given number of classes
 constexpr int fn_classes(int n_classes){
-  // Number of trees given number of classes
   return n_classes == 2 ? 1 : n_classes;
 }
 
@@ -99,23 +128,24 @@ struct BDT{
 public:
   score_t normalisation;
   score_t init_predict[fn_classes(n_classes)];
+  OpAdd<score_t> op_add;
 
-  void tree_scores(input_t x, score_t scores[n_trees][fn_classes(n_classes)]) const;
+  void tree_scores(input_t x, score_t scores[fn_classes(n_classes)][n_trees]) const;
 
   void decision_function(input_t x, score_t score[fn_classes(n_classes)]) const{
-    score_t scores[n_trees][fn_classes(n_classes)];
+    score_t scores[fn_classes(n_classes)][n_trees];
     #pragma HLS ARRAY_PARTITION variable=scores dim=0
-    for(int j = 0; j < fn_classes(n_classes); j++){
-      score[j] = init_predict[j];
-    }
+    // Get predictions scores
     tree_scores(x, scores);
-    Trees:
-    for(int i = 0; i < n_trees; i++){
-      Classes:
-      for(int j = 0; j < fn_classes(n_classes); j++){
-        score[j] += scores[i][j];
-      }
+    // Reduce
+    Reduce:
+    for(int j = 0; j < fn_classes(n_classes); j++){
+      // Init predictions
+      score[j] = init_predict[j];
+      // Sum predictions from trees via "reduce" method
+      score[j] += reduce<score_t, n_trees, OpAdd<score_t>>(scores[j], op_add);
     }
+    // Normalize predictions
     for(int j = 0; j < fn_classes(n_classes); j++){
       score[j] *= normalisation;
     }
