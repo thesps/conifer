@@ -403,6 +403,7 @@ class ModelBase:
         else:
             raise ValueError("Invalid profile type: must be 'thrs' or 'gains'")
 
+        values=np.abs(values)
         feat_split = np.concatenate([np.array(tree.feature) for tree in trees])
 
         # Initialize base position for the y-axis
