@@ -380,7 +380,7 @@ class ModelBase:
             _, ax = plt.subplots()
 
         if self.feature_map is None:
-            feature_names = ["feat_{i}" for i in range(self.n_features)]
+            feature_names = [f"feat_{i}" for i in range(self.n_features)]
             feature_ids = list(range(self.n_features))
         else:
             feature_names, feature_ids = zip(*self.feature_map.items())
