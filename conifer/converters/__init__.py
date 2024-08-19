@@ -104,6 +104,7 @@ def convert_from_tmva(model, config=None):
 def convert_from_xgboost(model, config=None):
   '''Convert a BDT from an xgboost model and configuration'''
   ensembleDict = xgboost.convert(model)
+  ensembleDict["trees"]=subtract_lsb_to_thrs(ensembleDict["trees"], config)
   return make_model(ensembleDict, config)
 
 def convert_from_onnx(model, config=None):
