@@ -48,12 +48,13 @@ def compute_float_lsb(config):
     return 2 ** (-dec_bits)
 
 
-def threshold_offset(trees, offset):
+def subtract_offset_to_thrs(trees, offset):
     """Subtract the least significant bit to the thresholds of the trees.
 
     Args:
         trees (List): ensembleDict["trees"]
-        offset (float|None): offset to subtract from the thresholds. If None, the smallest float difference is computed for each threshold float.
+        offset (float|None): offset to subtract from the thresholds.
+        If None, the smallest float difference is computed for each threshold float.
 
     Returns:
         List: ensembleDict["trees"]
@@ -61,7 +62,7 @@ def threshold_offset(trees, offset):
     assert isinstance(trees, list)
     if isinstance(trees[0], list):  # needed for multiclass
         for idx, tree in enumerate(trees):
-            trees[idx] = threshold_offset(tree, offset)
+            trees[idx] = subtract_offset_to_thrs(tree, offset)
         return trees
     for idx, tree in enumerate(trees):
         if offset is not None:
@@ -88,7 +89,7 @@ def subtract_lsb_to_thrs(trees, config):
         List: ensembleDict["trees"]
     """
     float_lsb = compute_float_lsb(config)
-    return threshold_offset(trees, float_lsb)
+    return subtract_offset_to_thrs(trees, float_lsb)
 
 
 def convert_from_sklearn(model, config=None):
