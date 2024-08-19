@@ -350,30 +350,109 @@ class ModelBase:
         '''
         raise NotImplementedError
 
-    def profile(self, bins=50, return_data=False, return_figure=True):
+    def profile(self, what, ax=None):
+        """Profile the thresholds or gains of the trees in the ensemble for each feature.
+        
+        For each feature:
+        - Orange line: median
+        - Box plot: First-third quantile (25%,75%)
+        - Black caps: 2.5% and 97.5% percentiles
+        - Gray caps: Full range
+
+        Args:
+            what ("gains"|"thrs"): choose between profiling the thresholds or the gains.
+            ax (matplotlib.axes._axes.Axes, optional): Matplotlib axes. Defaults to None.
+
+        Returns:
+            matplotlib.axes._axes.Axes: Matplotlib axes.
+        """
         try:
             import matplotlib.pyplot as plt
         except ImportError:
             raise Exception("matplotlib not found. Please install matplotlib")
-        value = np.concatenate([np.array(tree.value) for trees in self.trees for tree in trees])
-        threshold = np.concatenate([np.array(tree.threshold) for trees in self.trees for tree in trees])
-        hv, bv = np.histogram(value, bins=bins)
-        wv = bv[1] - bv[0]
-        ht, bt = np.histogram(threshold, bins=bins)
-        wt = bt[1] - bt[0]
-        figure = plt.figure()
-        plt.subplot(1, 2, 1)
-        plt.bar(bv[:-1]+wv/2, hv, width=wv)
-        plt.xlabel('Distribution of tree values (scores)')
-        plt.subplot(1, 2, 2)
-        plt.bar(bt[:-1]+wt/2, ht, width=wt)
-        plt.xlabel('Distribution of tree thresholds')
-        if return_data and return_figure:
-            return (value, threshold, figure)
-        elif return_data:
-            return (value, threshold)
-        elif return_figure:
-            return (figure)
+
+        if ax is None:
+            _, ax = plt.subplots()
+
+        if self.feature_map is None:
+            feature_names = ["feat_{i}" for i in range(self.n_features)]
+            feature_ids = list(range(self.n_features))
+        else:
+            feature_names, feature_ids = zip(*self.feature_map.items())
+
+        trees = self.trees
+        if isinstance(trees[0], list):
+            trees = sum(trees, [])  # flatten list of lists
+
+        if what == "thrs":
+            values = np.concatenate([np.array(tree.threshold) for tree in trees])
+        elif what == "gains":
+            values = np.concatenate([np.array(tree.value) for tree in trees])
+        else:
+            raise ValueError("Invalid profile type: must be 'thrs' or 'gains'")
+
+        feat_split = np.concatenate([np.array(tree.feature) for tree in trees])
+
+        # Initialize base position for the y-axis
+        base_position = 0
+
+        # Store y-tick positions and labels
+        yticks_positions = []
+        yticks_labels = []
+
+        for feature_name, feature_id in zip(feature_names, feature_ids):
+            ax.axhline(base_position + 1.05, color="black", alpha=0.2, linestyle="--", lw=1)
+            ax.axhline(base_position - 1.05, color="black", alpha=0.2, linestyle="--", lw=1)
+
+            ax.boxplot(
+                values[feat_split == feature_id],
+                positions=[base_position],
+                widths=0.75,
+                vert=False,
+                patch_artist=True,
+                boxprops={"facecolor": "dodgerblue"},
+                whiskerprops={
+                    "alpha": 0.9,
+                    "color": "gray",
+                    "linestyle": "--",
+                    "linewidth": 2.5,
+                },
+                capprops={"color": "gray", "linestyle": "--", "linewidth": 2.5},
+                notch=False,
+                whis=[0, 100],
+                showfliers=True,
+            )
+
+            ax.boxplot(
+                values[feat_split == feature_id],
+                positions=[base_position],
+                widths=0.75,
+                vert=False,
+                patch_artist=True,
+                boxprops={"facecolor": "dodgerblue"},
+                whiskerprops={"linewidth": 3},
+                capprops={"linewidth": 3},
+                medianprops={"linewidth": 3},
+                notch=False,
+                whis=[2.5, 97.5],
+                showfliers=False,
+            )
+
+            # Update y-ticks positions and labels
+            yticks_positions.append(base_position)
+            yticks_labels.append(feature_name)
+
+            # Increment base position for the next entry
+            base_position += 2.1  # Adjust spacing between histograms
+            # Set y-ticks to the middle of each "violin" and label them with the entry names
+        ax.set_yticks(yticks_positions)
+        ax.set_yticklabels(yticks_labels)
+
+        ax.set_xscale("log", base=2)
+        ax.grid(True)
+        ax.set_title("Thresholds" if what == "thrs" else "Gains")
+
+        return ax
 
 class ModelMetaData:
     def __init__(self):
