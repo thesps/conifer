@@ -384,6 +384,13 @@ class ModelBase:
             feature_ids = list(range(self.n_features))
         else:
             feature_names, feature_ids = zip(*self.feature_map.items())
+            feature_names = list(feature_names)
+            feature_ids = list(feature_ids)
+
+        # Plot the leaves scores if you are profile the gains
+        if what == "gains":
+            feature_names.append("Leaves")
+            feature_ids.append(-2)
 
         trees = self.trees
         if isinstance(trees[0], list):
