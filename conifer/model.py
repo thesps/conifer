@@ -188,10 +188,15 @@ class ModelBase:
 
     _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm']
 
+    _optional_fields = ['feature_map']
+
     def __init__(self, ensembleDict, configDict=None, metadata=None):
         for key in ModelBase._ensemble_fields:
             val = ensembleDict.get(key, None)
             assert val is not None, f'Missing expected key {key} in ensembleDict'
+            setattr(self, key, val)
+        for key in ModelBase._optional_fields:
+            val = ensembleDict.get(key, None)
             setattr(self, key, val)
         trees = ensembleDict.get('trees', None)
         assert trees is not None, f'Missing expected key trees in ensembleDict'
