@@ -373,9 +373,11 @@ class ModelBase:
         """
         try:
             import matplotlib.pyplot as plt
+            import mplhep
         except ImportError:
-            raise Exception("matplotlib not found. Please install matplotlib")
-
+            raise Exception("matplotlib or mplhep not found. Please install matplotlib and mplhep")
+        mplhep.style.use("CMS")
+        
         if ax is None:
             _, ax = plt.subplots()
 
