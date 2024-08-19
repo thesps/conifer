@@ -1,4 +1,6 @@
 import logging
+import re
+import numpy as np
 logger = logging.getLogger(__name__)
 
 _converter_map = {}
@@ -21,6 +23,73 @@ def get_converter(converter):
 
 def get_available_converters():
   return [k for k in _converter_map.keys()]
+
+
+def compute_float_lsb(config):
+    """Given a fixed point precision, compute the least significant bit.
+    If the precision is float, return None and let the other method compute
+    the smallest delta for each float.
+
+    Args:
+        config (Dict): backend configuration
+
+    Returns:
+        float|None: offset
+    """
+    if config is None or "Precision" not in config or config["Precision"] == "float":
+        # In floating point, the smallest difference depends on the magnitude of the number
+        # Use the nextafter numpy method
+        return None
+    ap_fixed = config["Precision"]
+    regex_match = re.search(r"ap_fixed<(\d+),(\d+)(,|>)", ap_fixed)
+    nbits = int(regex_match.group(1))
+    int_bits = int(regex_match.group(2))
+    dec_bits = nbits - int_bits
+    return 2 ** (-dec_bits)
+
+
+def threshold_offset(trees, offset):
+    """Subtract the least significant bit to the thresholds of the trees.
+
+    Args:
+        trees (List): ensembleDict["trees"]
+        offset (float|None): offset to subtract from the thresholds. If None, the smallest float difference is computed for each threshold float.
+
+    Returns:
+        List: ensembleDict["trees"]
+    """
+    assert isinstance(trees, list)
+    if isinstance(trees[0], list):  # needed for multiclass
+        for idx, tree in enumerate(trees):
+            trees[idx] = threshold_offset(tree, offset)
+        return trees
+    for idx, tree in enumerate(trees):
+        if offset is not None:
+            trees[idx]["threshold"] = (np.array(tree["threshold"]) - offset).tolist()
+        else:
+            trees[idx]["threshold"] = np.nextafter(
+                np.array(tree["threshold"], dtype=np.float32), -np.inf
+            ).tolist()  # Handling floats
+    return trees
+
+
+def subtract_lsb_to_thrs(trees, config):
+    """Compute and subtract the least significant bit to the thresholds of the trees.
+    Needed for the libraries with the opposite split convention to conifer.
+
+    Conifer splitting convention: <= or >
+    Others (e.g. xgboost): < or >=
+
+    Args:
+        trees (List): ensembleDict["trees"]
+        config (Dict): backend configuration
+
+    Returns:
+        List: ensembleDict["trees"]
+    """
+    float_lsb = compute_float_lsb(config)
+    return threshold_offset(trees, float_lsb)
+
 
 def convert_from_sklearn(model, config=None):
   '''Convert a BDT from a scikit-learn model and configuration'''
