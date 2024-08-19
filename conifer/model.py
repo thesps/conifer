@@ -420,7 +420,7 @@ class ModelBase:
                 capprops={"color": "gray", "linestyle": "--", "linewidth": 2.5},
                 notch=False,
                 whis=[0, 100],
-                showfliers=True,
+                showfliers=False,
             )
 
             ax.boxplot(
@@ -444,7 +444,7 @@ class ModelBase:
 
             # Increment base position for the next entry
             base_position += 2.1  # Adjust spacing between histograms
-            # Set y-ticks to the middle of each "violin" and label them with the entry names
+            
         ax.set_yticks(yticks_positions)
         ax.set_yticklabels(yticks_labels)
 
