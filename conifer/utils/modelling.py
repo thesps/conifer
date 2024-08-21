@@ -428,7 +428,7 @@ def gather_reports(scandir,):
     logger.info(f'Found {len(prjs)} projects in {scandir}')
 
   results_l = []
-  for prj in prjs:
+  for prj in tqdm(prjs, desc="\N{evergreen tree} scan", ascii=" ▖▘▝▗▚▞█"):
     results_l.append(gather_report(f'{scandir}/{prj}/'))
   results_d = {}
   for k in results_l[0].keys():
