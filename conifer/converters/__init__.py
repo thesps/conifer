@@ -1,6 +1,8 @@
 import logging
-import re
 import numpy as np
+
+import conifer
+
 logger = logging.getLogger(__name__)
 
 _converter_map = {}
@@ -40,13 +42,9 @@ def compute_float_lsb(config):
         # In floating point, the smallest difference depends on the magnitude of the number
         # Use the nextafter numpy method
         return None
-    ap_fixed = config["Precision"]
-    regex_match = re.search(r"ap_fixed<(\d+),(\d+)(,|>)", ap_fixed)
-    nbits = int(regex_match.group(1))
-    int_bits = int(regex_match.group(2))
-    dec_bits = nbits - int_bits
-    return 2 ** (-dec_bits)
-
+    precision = config["Precision"]
+    fpc = conifer.utils.FixedPointConverter(precision)
+    return fpc.from_int(1)
 
 def subtract_offset_to_thrs(trees, offset):
     """Subtract the least significant bit to the thresholds of the trees.
