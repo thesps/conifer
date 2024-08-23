@@ -32,11 +32,12 @@ class DecisionTreeBase:
   Conifer DecisionTreeBase representation class
   '''
   _tree_fields = ['feature', 'threshold', 'value', 'children_left', 'children_right']
-  def __init__(self, treeDict):
+  def __init__(self, treeDict, splitting_convention):
     for key in DecisionTreeBase._tree_fields:
       val = treeDict.get(key, None)
       assert val is not None, f"Missing expected key {key} in treeDict"
       setattr(self, key, val)
+    self.splitting_convention = splitting_convention
 
   def n_nodes(self):
     return len(self.feature)
@@ -97,7 +98,7 @@ class DecisionTreeBase:
       node_id = f'{tree_id}_{i}'
       l = f'{tree_id}_{self.children_left[i]}'
       r = f'{tree_id}_{self.children_right[i]}'
-      label = f'x[{self.feature[i]}] <= {self.threshold[i]:.2f}' if self.feature[i] != -2 else f'{self.value[i]:.2f}'
+      label = f'x[{self.feature[i]}] {self.splitting_convention} {self.threshold[i]:.2f}' if self.feature[i] != -2 else f'{self.value[i]:.2f}'
       sg.add_node(pydot.Node(node_id, label=label))
       if self.children_left[i] != -1:
         sg.add_edge(pydot.Edge(node_id, l,))
@@ -114,12 +115,13 @@ class DecisionTreeBase:
     return graph
 
   def apply(self, X):
+    comp_func = lambda arg1, arg2: arg1 < arg2 if self.splitting_convention == '<' else arg1 <= arg2
     assert len(X.shape) == 2, 'Expected 2D input'
     y = np.zeros(X.shape[0], dtype='int')
     for i, x in enumerate(X):
       n = 0
       while self.feature[n] != -2:
-        comp = x[self.feature[n]] <= self.threshold[n]
+        comp=comp_func(x[self.feature[n]],self.threshold[n])
         n = self.children_left[n] if comp else self.children_right[n]
       y[i] = n
     return y
@@ -198,7 +200,7 @@ class ModelBase:
         assert self.splitting_convention in ["<", "<="]
         trees = ensembleDict.get('trees', None)
         assert trees is not None, f'Missing expected key trees in ensembleDict'
-        self.trees = [[DecisionTreeBase(treeDict) for treeDict in trees_class] for trees_class in trees]
+        self.trees = [[DecisionTreeBase(treeDict, self.splitting_convention) for treeDict in trees_class] for trees_class in trees]
 
         def _make_stamp():
             import datetime
