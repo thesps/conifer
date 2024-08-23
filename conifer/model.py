@@ -191,7 +191,7 @@ class ModelBase:
     _optional_fields = []
 
     def __init__(self, ensembleDict, configDict=None, metadata=None):
-        if not hasattr(ensembleDict, 'feature_map'):
+        if 'feature_map' not in ensembleDict:
             ensembleDict['feature_map'] = {f"feat_{i}":i for i in range(ensembleDict['n_features'])}
         for key in ModelBase._ensemble_fields:
             val = ensembleDict.get(key, None)
