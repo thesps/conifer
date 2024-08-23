@@ -357,7 +357,7 @@ class ModelBase:
         '''
         raise NotImplementedError
 
-    def profile(self, what : Literal["scores", "thresholds", "both"], ax=None):
+    def profile(self, what : Literal["scores", "thresholds", "both"] = "both" , ax=None):
         """Profile the thresholds or scores of the trees in the ensemble for each feature.
         
         For each feature:
