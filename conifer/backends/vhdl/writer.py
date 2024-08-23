@@ -94,9 +94,20 @@ class VHDLModel(ModelBase):
     logger.info(f"Writing project to {cfg.output_dir}")
     os.makedirs('{}/firmware'.format(cfg.output_dir), exist_ok=True)
     copyfiles = ['AddReduce.vhd', 'BDT.vhd', 'BDTTestbench.vhd', 'SimulationInput.vhd', 'SimulationOutput.vhd',
-                'TestUtil.vhd', 'Tree.vhd', 'Types.vhd']
+                'TestUtil.vhd', 'Types.vhd']
     for f in copyfiles:
         copyfile('{}/firmware/{}'.format(filedir, f), '{}/firmware/{}'.format(cfg.output_dir, f))
+    
+    # Set the splitting convention
+    tree_fin= open(f'{filedir}/firmware/Tree.vhd', 'w')
+    tree_fout = open(f'{cfg.output_dir}/firmware/Tree.vhd', 'w')
+    for line in tree_fin.readlines():
+      if 'comparison(i) <= X(iFeature(i)) <= threshold(i);' in line:
+        if self.splitting_convention == '<':
+          newline=line.replace('comparison(i) <= X(iFeature(i)) <= threshold(i);', 'comparison(i) <= X(iFeature(i)) < threshold(i);')
+      else:
+          newline = line
+      tree_fout.write(newline)
 
     # binary classification only uses one set of trees
     n_classes = 1 if self.n_classes == 2 else self.n_classes
