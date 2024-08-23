@@ -395,7 +395,17 @@ class FPUBuilder:
     os.makedirs(self.output_dir, exist_ok=True)
     shutil.copyfile(f'{filedir}/src/build_hls.tcl', f'{self.output_dir}/build_hls.tcl')
     shutil.copyfile(f'{filedir}/src/fpu.cpp', f'{self.output_dir}/fpu.cpp')
-    shutil.copyfile(f'{filedir}/src/fpu.h', f'{self.output_dir}/fpu.h')
+
+    fpu_header_in = f'{filedir}/src/fpu_header.h'
+    fpu_header_out = f'{self.output_dir}/fpu_header.h'
+    for line in fpu_header_in.readlines():
+      if 'i = X[node.feature] <= node.threshold ? node.child_left : node.child_right;' in line:
+        if self.splitting_convention == '<':
+          newline=line.replace('<=', '<')
+      else:
+          newline = line
+      fpu_header_out.write(newline)
+
     with open(f'{self.output_dir}/{self.project_name}.json', 'w') as f:
       json.dump(self.cfg._to_dict(), f)
     self.write_params()
