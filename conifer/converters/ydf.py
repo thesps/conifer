@@ -2,6 +2,7 @@
 
 from typing import List, Any, Dict, Union
 import dataclasses
+from conifer.converters import splitting_conventions
 
 import ydf
 
@@ -40,6 +41,8 @@ def _convert_gbt(model: ydf.GradientBoostedTreesModel) -> ConiferModel:
         "n_features": len(column_idx_to_feature_idx),
         "init_predict": initial_predictions,
         "norm": 1,
+        "library": "ydf",
+        "splitting_convention": splitting_conventions["ydf"],
     }
 
     # Converts trees
