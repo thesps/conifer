@@ -1,8 +1,4 @@
 import logging
-import numpy as np
-
-import conifer
-
 logger = logging.getLogger(__name__)
 
 #!WARNING: just xgboost and sklearn were verified,
@@ -35,7 +31,6 @@ def get_converter(converter):
 
 def get_available_converters():
   return [k for k in _converter_map.keys()]
-
 
 def convert_from_sklearn(model, config=None):
   '''Convert a BDT from a scikit-learn model and configuration'''
