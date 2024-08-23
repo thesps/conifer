@@ -125,11 +125,17 @@ class XilinxHLSModel(ModelBase):
         filedir = os.path.dirname(os.path.abspath(__file__))
         
         if cfg.unroll:
-            copyfile(f'{filedir}/firmware/BDT_unrolled.h',
-                     f'{cfg.output_dir}/firmware/BDT.h')    
+            header_file=f'{filedir}/firmware/BDT_unrolled.h'
         else:        
-            copyfile(f'{filedir}/firmware/BDT_rolled.h',
-                     f'{cfg.output_dir}/firmware/BDT.h')
+            header_file=f'{filedir}/firmware/BDT_rolled.h'
+        fin = open(header_file, 'r')
+        fout = open(f'{cfg.output_dir}/firmware/BDT.h', 'w')
+        for line in fin.readlines():
+            if '// insert splitting convention here' in line:
+                newline = f'const char* const splitting_convention = "{self.splitting_convention}";\n'
+            else:
+                newline = line
+            fout.write(newline)
 
         if cfg.unroll:
             fin = open(f'{filedir}/hls-template/firmware/BDT_unrolled.cpp', 'r')

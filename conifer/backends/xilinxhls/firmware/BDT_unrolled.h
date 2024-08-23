@@ -2,6 +2,7 @@
 #define BDT_H__
 
 #include "ap_fixed.h"
+#include <cstring>
 
 namespace BDT{
 
@@ -13,6 +14,9 @@ namespace BDT{
 * before applying and accumulate the result over the rolled dimension.
 * Required for emulation to guarantee equality of ordering.
 * --- */
+
+// insert splitting convention here
+
 constexpr int floorlog2(int x) { return (x < 2) ? 0 : 1 + floorlog2(x / 2); }
 
 constexpr int pow2(int x) { return x == 0 ? 1 : 2 * pow2(x - 1); }
@@ -83,7 +87,11 @@ public:
       // Only non-leaf nodes do comparisons
       // negative values mean is a leaf (sklearn: -2)
       if(feature[i] >= 0){
-        comparison[i] = x[feature[i]] <= threshold[i];
+        if (!strcmp(splitting_convention,"<=")){
+          comparison[i] = x[feature[i]] <= threshold[i];
+        }else{
+          comparison[i] = x[feature[i]] < threshold[i];
+        }
       }else{
         comparison[i] = true;
       }
