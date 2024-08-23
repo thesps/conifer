@@ -124,7 +124,7 @@ class CPPModel(ModelBase):
     os.chdir(curr_dir)
     return y
 
-  def build():
+  def build(self):
     raise NotImplementedError
 
 def auto_config():
