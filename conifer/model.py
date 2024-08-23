@@ -363,8 +363,8 @@ class ModelBase:
         For each feature:
         - Orange line: median
         - Box plot: First-third quantile (25%,75%)
-        - Black caps: 2.5% and 97.5% percentiles
-        - Gray caps: Full range
+        - Gray caps and dashed line: 2.5% and 97.5% percentiles
+        - Black caps and line: full range
 
         Args:
             what ("scores"|"thresholds|both"): choose between profiling the thresholds, the scores or both.
