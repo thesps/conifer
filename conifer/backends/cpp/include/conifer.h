@@ -59,11 +59,16 @@ private:
 
 public:
 
-  U decision_function(std::vector<T> x) const{
+  U decision_function(const std::vector<T> &x, const std::string &splitting_convention) const{
     /* Do the prediction */
     int i = 0;
+    bool comparison;
     while(feature[i] != -2){ // continue until reaching leaf
-      bool comparison = x[feature[i]] <= threshold_[i];
+      if(splitting_convention == "<="){
+        comparison = x[feature[i]] <= threshold_[i];
+      } else {
+        comparison = x[feature[i]] < threshold_[i];
+      }
       i = comparison ? children_left[i] : children_right[i];
     }
     return value_[i];
@@ -118,7 +123,7 @@ public:
     }
   }
 
-  std::vector<U> decision_function(std::vector<T> x) const{
+  std::vector<U> decision_function(std::vector<T> x, const std::string splitting_convention) const{
     /* Do the prediction */
     assert("Size of feature vector mismatches expected n_features" && x.size() == n_features);
     std::vector<U> values;
@@ -127,7 +132,7 @@ public:
     values.resize(n_classes, U(0));
     for(unsigned int i = 0; i < n_classes; i++){
       std::transform(trees.begin(), trees.end(), std::back_inserter(values_trees.at(i)),
-                     [&i, &x](auto tree_v){ return tree_v.at(i).decision_function(x); });
+                     [&i, &x, &splitting_convention](auto tree_v){ return tree_v.at(i).decision_function(x, splitting_convention); });
       if(useAddTree){
         values.at(i) = init_predict_.at(i);
         values.at(i) += reduce<U, OpAdd<U>>(values_trees.at(i), add);
@@ -140,12 +145,12 @@ public:
     return values;
   }
 
-  std::vector<double> _decision_function_double(std::vector<double> x) const{
+  std::vector<double> _decision_function_double(std::vector<double> x, const std::string &splitting_convention) const{
     /* Do the prediction with data in/out as double, cast to T, U before prediction */
     std::vector<T> xt;
     std::transform(x.begin(), x.end(), std::back_inserter(xt),
                    [](double xi) -> T { return (T) xi; });
-    std::vector<U> y = decision_function(xt);
+    std::vector<U> y = decision_function(xt, splitting_convention);
     std::vector<double> yd;
     std::transform(y.begin(), y.end(), std::back_inserter(yd),
                 [](U yi) -> double { return (double) yi; });
