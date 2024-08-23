@@ -1,5 +1,6 @@
 import numpy as np
 import math
+from conifer.converters import splitting_conventions
 
 #main converter function
 def convert_bdt(onnx_clf):
@@ -8,7 +9,9 @@ def convert_bdt(onnx_clf):
                    'trees' : [],'n_features' : no_features,
                   'n_classes' : no_classes,
                   'init_predict' : base_values,
-                  'norm' : 1}
+                  'norm' : 1,
+                  'library':'onnx',
+                  'splitting_convention': splitting_conventions['onnx']}
   for trees in treelist:
     treesl = []
     for treeDict in trees:

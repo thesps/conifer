@@ -2,7 +2,11 @@
 
 from typing import List, Any, Dict, Union
 import dataclasses
+<<<<<<< HEAD
 import math
+=======
+from conifer.converters import splitting_conventions
+>>>>>>> 49e6e7b (Added library and splitting convention entries in the ensembleDict created by all the converters)
 
 import ydf
 
@@ -55,6 +59,8 @@ def _convert_forest(model: Union[ydf.GradientBoostedTreesModel, ydf.IsolationFor
         "n_features": len(column_idx_to_feature_idx),
         "init_predict": initial_predictions,
         "norm": norm,
+        "library": "ydf",
+        "splitting_convention": splitting_conventions["ydf"],
     }
 
     # Converts trees

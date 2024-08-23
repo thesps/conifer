@@ -4,6 +4,7 @@ import pandas
 from packaging import version
 from typing import Union
 import logging
+from conifer.converters import splitting_conventions
 logger = logging.getLogger(__name__)
 __xgb_version = version.parse(xgb.__version__)
 
@@ -25,6 +26,15 @@ def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor]):
     n_classes = 2 if n_classes == 0 else n_classes # the actual number of classes
     n_trees = int(int(meta.get('learner').get('gradient_booster').get('gbtree_model_param').get('num_trees')) / fn_classes)
     n_features = int(meta.get('learner').get('learner_model_param').get('num_feature'))
+    ensembleDict = {'max_depth' : max_depth,
+                    'n_trees' : n_trees,
+                    'n_classes' : n_classes,
+                    'n_features' : n_features,
+                    'trees' : [],
+                    'init_predict' : [0] * fn_classes,
+                    'norm' : 1,
+                    'library':'xgboost',
+                    'splitting_convention': splitting_conventions['xgboost']}
     
     feature_names = {}
     if bst.feature_names is None:
