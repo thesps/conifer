@@ -7,7 +7,7 @@ import copy
 import datetime
 import platform
 import getpass
-from typing import Union
+from typing import Literal
 try:
     import pydot
 except ImportError:
@@ -357,8 +357,8 @@ class ModelBase:
         '''
         raise NotImplementedError
 
-    def profile(self, what, ax=None):
-        """Profile the thresholds or gains of the trees in the ensemble for each feature.
+    def profile(self, what : Literal["scores", "thresholds", "both"], ax=None):
+        """Profile the thresholds or scores of the trees in the ensemble for each feature.
         
         For each feature:
         - Orange line: median
@@ -367,7 +367,7 @@ class ModelBase:
         - Gray caps: Full range
 
         Args:
-            what ("gains"|"thrs"): choose between profiling the thresholds or the gains.
+            what ("scores"|"thresholds|both"): choose between profiling the thresholds, the scores or both.
             ax (matplotlib.axes._axes.Axes, optional): Matplotlib axes. Defaults to None.
 
         Returns:
@@ -375,14 +375,37 @@ class ModelBase:
         """
         try:
             import matplotlib.pyplot as plt
-            import mplhep
         except ImportError:
-            raise Exception("matplotlib or mplhep not found. Please install matplotlib and mplhep")
-        mplhep.style.use("CMS")
-        
-        if ax is None:
-            _, ax = plt.subplots()
+            raise Exception("matplotlib or mplhep not found. Please install matplotlib")
 
+        plt.style.use({
+                "font.size": 26,
+                "xtick.labelsize": "small",
+                "ytick.labelsize": "small",
+                "grid.alpha": 0.8,
+                "grid.linestyle": ":",
+                "axes.linewidth": 2,
+                "savefig.transparent": False,
+        })
+        if ax is None:
+            if what == "both":
+                _, ax = plt.subplots(1,2, figsize=(20, 10))
+            else:
+                _, ax = plt.subplots(figsize=(10, 10))
+        
+        if what == "both":
+            assert len(ax) == 2, "Expected 2 axes for 'both' option"
+            plt.subplots_adjust(wspace=.0)
+            for axis, w in zip(ax,["scores", "thresholds"]):
+                axis = self._profile(w, ax=axis)
+                axis.set_ylim((-2, 2.1*self.n_features+2))
+                if w == "thresholds":
+                    axis.set_yticklabels([])
+            return ax
+        return self._profile(what, ax=ax)
+            
+            
+    def _profile(self, what : Literal["scores", "thresholds"], ax=None):
         if self.feature_map is None:
             feature_names = [f"feat_{i}" for i in range(self.n_features)]
             feature_ids = list(range(self.n_features))
@@ -391,8 +414,8 @@ class ModelBase:
             feature_names = list(feature_names)
             feature_ids = list(feature_ids)
 
-        # Plot the leaves scores if you are profile the gains
-        if what == "gains":
+        # Plot the leaves scores if you are profile the scores
+        if what == "scores":
             feature_names.append("Leaves")
             feature_ids.append(-2)
 
@@ -400,12 +423,12 @@ class ModelBase:
         if isinstance(trees[0], list):
             trees = sum(trees, [])  # flatten list of lists
 
-        if what == "thrs":
+        if what == "thresholds":
             values = np.concatenate([np.array(tree.threshold) for tree in trees])
-        elif what == "gains":
+        elif what == "scores":
             values = np.concatenate([np.array(tree.value) for tree in trees])
         else:
-            raise ValueError("Invalid profile type: must be 'thrs' or 'gains'")
+            raise ValueError("Invalid profile type: must be 'thresholds' or 'scores'")
 
         feat_split = np.concatenate([np.array(tree.feature) for tree in trees])[values != 0]
         values = np.abs(values[values != 0])
@@ -468,7 +491,7 @@ class ModelBase:
 
         ax.set_xscale("log", base=2)
         ax.grid(True)
-        ax.set_title("Thresholds" if what == "thrs" else "Gains")
+        ax.set_title("Thresholds" if what == "thresholds" else "Scores")
 
         return ax
 
