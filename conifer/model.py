@@ -376,7 +376,7 @@ class ModelBase:
         try:
             import matplotlib.pyplot as plt
         except ImportError:
-            raise Exception("matplotlib or mplhep not found. Please install matplotlib")
+            raise Exception("matplotlib not found. Please install matplotlib")
 
         plt.style.use({
                 "font.size": 26,
