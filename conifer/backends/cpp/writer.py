@@ -116,9 +116,9 @@ class CPPModel(ModelBase):
     os.chdir(cfg.output_dir)
 
     if len(X.shape) == 1:
-      y = np.array(self.bridge.decision_function(X, self.splitting_convention))
+      y = np.array(self.bridge.decision_function(X))
     elif len(X.shape) == 2:
-      y = np.array([self.bridge.decision_function(xi, self.splitting_convention) for xi in X])
+      y = np.array([self.bridge.decision_function(xi) for xi in X])
     else:
       raise Exception(f"Can't handle data shape {X.shape}, expected 1D or 2D shape")
     os.chdir(curr_dir)

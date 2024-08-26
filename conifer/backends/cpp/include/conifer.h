@@ -14,6 +14,9 @@ namespace conifer{
 * before applying and accumulate the result over the rolled dimension.
 * Required for emulation to guarantee equality of ordering.
 * --- */
+
+std::string splitting_convention;
+
 constexpr int floorlog2(int x) { return (x < 2) ? 0 : 1 + floorlog2(x / 2); }
 
 template <int B>
@@ -59,7 +62,7 @@ private:
 
 public:
 
-  U decision_function(const std::vector<T> &x, const std::string &splitting_convention) const{
+  U decision_function(const std::vector<T> &x) const{
     /* Do the prediction */
     int i = 0;
     bool comparison;
@@ -111,6 +114,7 @@ public:
     std::ifstream ifs(filename);
     nlohmann::json j = nlohmann::json::parse(ifs);
     from_json(j, *this);
+    conifer::splitting_convention = j["splitting_convention"];
     /* Do some transformation to initialise things into the proper emulation T, U types */
     if(n_classes == 2) n_classes = 1;
     std::transform(init_predict.begin(), init_predict.end(), std::back_inserter(init_predict_),
@@ -122,7 +126,7 @@ public:
     }
   }
 
-  std::vector<U> decision_function(std::vector<T> x, const std::string splitting_convention) const{
+  std::vector<U> decision_function(std::vector<T> x) const{
     /* Do the prediction */
     assert("Size of feature vector mismatches expected n_features" && x.size() == n_features);
     std::vector<U> values;
@@ -131,7 +135,7 @@ public:
     values.resize(n_classes, U(0));
     for(unsigned int i = 0; i < n_classes; i++){
       std::transform(trees.begin(), trees.end(), std::back_inserter(values_trees.at(i)),
-                     [&i, &x, &splitting_convention](auto tree_v){ return tree_v.at(i).decision_function(x, splitting_convention); });
+                     [&i, &x](auto tree_v){ return tree_v.at(i).decision_function(x); });
       if(useAddTree){
         values.at(i) = init_predict_.at(i);
         values.at(i) += reduce<U, OpAdd<U>>(values_trees.at(i), add);
@@ -143,12 +147,12 @@ public:
     return values;
   }
 
-  std::vector<double> _decision_function_double(std::vector<double> x, const std::string &splitting_convention) const{
+  std::vector<double> _decision_function_double(std::vector<double> x) const{
     /* Do the prediction with data in/out as double, cast to T, U before prediction */
     std::vector<T> xt;
     std::transform(x.begin(), x.end(), std::back_inserter(xt),
                    [](double xi) -> T { return (T) xi; });
-    std::vector<U> y = decision_function(xt, splitting_convention);
+    std::vector<U> y = decision_function(xt);
     std::vector<double> yd;
     std::transform(y.begin(), y.end(), std::back_inserter(yd),
                 [](U yi) -> double { return (double) yi; });
