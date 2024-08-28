@@ -7,7 +7,7 @@ import copy
 import datetime
 import platform
 import getpass
-from typing import Union
+from typing import Literal
 try:
     import pydot
 except ImportError:
@@ -186,12 +186,19 @@ class ModelBase:
     Primary interface to write, compile, execute, and synthesize conifer projects
     '''
 
-    _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm']
+    _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm', 'feature_map']
+
+    _optional_fields = []
 
     def __init__(self, ensembleDict, configDict=None, metadata=None):
+        if 'feature_map' not in ensembleDict:
+            ensembleDict['feature_map'] = {f"feat_{i}":i for i in range(ensembleDict['n_features'])}
         for key in ModelBase._ensemble_fields:
             val = ensembleDict.get(key, None)
             assert val is not None, f'Missing expected key {key} in ensembleDict'
+            setattr(self, key, val)
+        for key in ModelBase._optional_fields:
+            val = ensembleDict.get(key, None)
             setattr(self, key, val)
         trees = ensembleDict.get('trees', None)
         assert trees is not None, f'Missing expected key trees in ensembleDict'
@@ -350,30 +357,143 @@ class ModelBase:
         '''
         raise NotImplementedError
 
-    def profile(self, bins=50, return_data=False, return_figure=True):
+    def profile(self, what : Literal["scores", "thresholds", "both"] = "both" , ax=None):
+        """Profile the thresholds or scores of the trees in the ensemble for each feature.
+        
+        For each feature:
+        - Orange line: median
+        - Box plot: First-third quantile (25%,75%)
+        - Gray caps and dashed line: 2.5% and 97.5% percentiles
+        - Black caps and line: full range
+
+        Args:
+            what ("scores"|"thresholds|both"): choose between profiling the thresholds, the scores or both.
+            ax (matplotlib.axes._axes.Axes, optional): Matplotlib axes. Defaults to None.
+
+        Returns:
+            matplotlib.axes._axes.Axes: Matplotlib axes.
+        """
         try:
             import matplotlib.pyplot as plt
         except ImportError:
             raise Exception("matplotlib not found. Please install matplotlib")
-        value = np.concatenate([np.array(tree.value) for trees in self.trees for tree in trees])
-        threshold = np.concatenate([np.array(tree.threshold) for trees in self.trees for tree in trees])
-        hv, bv = np.histogram(value, bins=bins)
-        wv = bv[1] - bv[0]
-        ht, bt = np.histogram(threshold, bins=bins)
-        wt = bt[1] - bt[0]
-        figure = plt.figure()
-        plt.subplot(1, 2, 1)
-        plt.bar(bv[:-1]+wv/2, hv, width=wv)
-        plt.xlabel('Distribution of tree values (scores)')
-        plt.subplot(1, 2, 2)
-        plt.bar(bt[:-1]+wt/2, ht, width=wt)
-        plt.xlabel('Distribution of tree thresholds')
-        if return_data and return_figure:
-            return (value, threshold, figure)
-        elif return_data:
-            return (value, threshold)
-        elif return_figure:
-            return (figure)
+
+        plt.style.use({
+                "font.size": 26,
+                "xtick.labelsize": "small",
+                "ytick.labelsize": "small",
+                "grid.alpha": 0.8,
+                "grid.linestyle": ":",
+                "axes.linewidth": 2,
+                "savefig.transparent": False,
+        })
+        if ax is None:
+            if what == "both":
+                _, ax = plt.subplots(1,2, figsize=(20, 10))
+            else:
+                _, ax = plt.subplots(figsize=(10, 10))
+        
+        if what == "both":
+            assert len(ax) == 2, "Expected 2 axes for 'both' option"
+            plt.subplots_adjust(wspace=.0)
+            for axis, w in zip(ax,["scores", "thresholds"]):
+                axis = self._profile(w, ax=axis)
+                axis.set_ylim((-2, 2.1*self.n_features+2))
+                if w == "thresholds":
+                    axis.set_yticklabels([])
+            return ax
+        return self._profile(what, ax=ax)
+            
+            
+    def _profile(self, what : Literal["scores", "thresholds"], ax=None):
+        if self.feature_map is None:
+            feature_names = [f"feat_{i}" for i in range(self.n_features)]
+            feature_ids = list(range(self.n_features))
+        else:
+            feature_names, feature_ids = zip(*self.feature_map.items())
+            feature_names = list(feature_names)
+            feature_ids = list(feature_ids)
+
+        # Plot the leaves scores if you are profile the scores
+        if what == "scores":
+            feature_names.append("Leaves")
+            feature_ids.append(-2)
+
+        trees = self.trees
+        if isinstance(trees[0], list):
+            trees = sum(trees, [])  # flatten list of lists
+
+        if what == "thresholds":
+            values = np.concatenate([np.array(tree.threshold) for tree in trees])
+        elif what == "scores":
+            values = np.concatenate([np.array(tree.value) for tree in trees])
+        else:
+            raise ValueError("Invalid profile type: must be 'thresholds' or 'scores'")
+
+        feat_split = np.concatenate([np.array(tree.feature) for tree in trees])[values != 0]
+        values = np.abs(values[values != 0])
+
+        # Initialize base position for the y-axis
+        base_position = 0
+
+        # Store y-tick positions and labels
+        yticks_positions = []
+        yticks_labels = []
+
+        for feature_name, feature_id in zip(feature_names, feature_ids):
+            ax.axhline(base_position + 1.05, color="black", alpha=0.2, linestyle="--", lw=1)
+            ax.axhline(base_position - 1.05, color="black", alpha=0.2, linestyle="--", lw=1)
+
+            ax.boxplot(
+                values[feat_split == feature_id],
+                positions=[base_position],
+                widths=1.1,
+                vert=False,
+                patch_artist=True,
+                boxprops={"facecolor": "dodgerblue"},
+                whiskerprops={
+                    "alpha": 1,
+                    "color": "black",
+                    "linestyle": "-",
+                    "linewidth": 4,
+                },
+                capprops={"color": "black", "linestyle": "-", "linewidth": 3,},
+                medianprops={"linewidth":3},
+                notch=False,
+                whis=[0, 100],
+                showfliers=False,
+            )
+
+            ax.boxplot(
+                values[feat_split == feature_id],
+                positions=[base_position],
+                widths=0.9,
+                vert=False,
+                patch_artist=True,
+                boxprops={"alpha": 0},
+                whiskerprops={"linewidth":2, "color": "white", "linestyle": "--"},
+                capprops={"linewidth":3, "color": "grey"},
+                medianprops={"alpha":0},
+                notch=False,
+                whis=[2.5, 97.5],
+                showfliers=False,
+            )
+
+            # Update y-ticks positions and labels
+            yticks_positions.append(base_position)
+            yticks_labels.append(feature_name)
+
+            # Increment base position for the next entry
+            base_position += 2.1  # Adjust spacing between histograms
+            
+        ax.set_yticks(yticks_positions)
+        ax.set_yticklabels(yticks_labels)
+
+        ax.set_xscale("log", base=2)
+        ax.grid(True)
+        ax.set_title("Thresholds" if what == "thresholds" else "Scores")
+
+        return ax
 
 class ModelMetaData:
     def __init__(self):
