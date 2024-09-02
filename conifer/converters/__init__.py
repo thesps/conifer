@@ -1,6 +1,16 @@
 import logging
 logger = logging.getLogger(__name__)
 
+#!WARNING: just xgboost and sklearn were verified,
+#! the others are just placeholders 
+splitting_conventions = {
+  "xgboost": "<",
+  "sklearn": "<=",
+  "tmva": "<=",
+  "onnx": "<=",
+  "ydf": "<="
+}
+
 _converter_map = {}
 import importlib
 for module in ['sklearn', 'tmva', 'xgboost', 'onnx', 'ydf']:

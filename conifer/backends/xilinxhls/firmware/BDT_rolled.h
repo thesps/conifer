@@ -2,8 +2,11 @@
 #define BDT_H__
 
 #include "ap_fixed.h"
+#include <cstring>
 
 namespace BDT{
+
+// insert splitting convention here
 
 constexpr int pow2(int x){
   return x == 0 ? 1 : 2 * pow2(x - 1);
@@ -68,7 +71,11 @@ public:
       // Only non-leaf nodes do comparisons
       // negative values mean is a leaf (sklearn: -2)
       if(feature[i] >= 0){
-        comparison[i] = x[feature[i]] <= threshold[i];
+        if (!strcmp(splitting_convention,"<=")){
+          comparison[i] = x[feature[i]] <= threshold[i];
+        }else{
+          comparison[i] = x[feature[i]] < threshold[i];
+        }
       }else{
         comparison[i] = true;
       }

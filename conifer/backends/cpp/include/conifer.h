@@ -56,21 +56,28 @@ private:
   std::vector<U> value_;
   std::vector<double> threshold;
   std::vector<double> value;
+  std::string splitting_convention;
 
 public:
 
-  U decision_function(std::vector<T> x) const{
+  U decision_function(const std::vector<T> &x) const{
     /* Do the prediction */
     int i = 0;
+    bool comparison;
     while(feature[i] != -2){ // continue until reaching leaf
-      bool comparison = x[feature[i]] <= threshold_[i];
+      if(splitting_convention == "<="){
+        comparison = x[feature[i]] <= threshold_[i];
+      } else {
+        comparison = x[feature[i]] < threshold_[i];
+      }
       i = comparison ? children_left[i] : children_right[i];
     }
     return value_[i];
   }
 
-  void init_(){
+  void init_(std::string splitting_convention){
     /* Since T, U types may not be readable from the JSON, read them to double and the cast them here */
+    splitting_convention = splitting_convention;
     std::transform(threshold.begin(), threshold.end(), std::back_inserter(threshold_),
                    [](double t) -> T { return (T) t; });
     std::transform(value.begin(), value.end(), std::back_inserter(value_),
@@ -95,11 +102,12 @@ private:
   // vector of decision trees: outer dimension tree, inner dimension class
   std::vector<std::vector<DecisionTree<T,U>>> trees;
   OpAdd<U> add;
+  std::string splitting_convention;
 
 public:
 
   // Define how to read this class to/from JSON
-  NLOHMANN_DEFINE_TYPE_INTRUSIVE(BDT, n_classes, n_trees, n_features, init_predict, trees);
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(BDT, n_classes, n_trees, n_features, init_predict, trees, splitting_convention);
 
   BDT(std::string filename){
     /* Construct the BDT from conifer cpp backend JSON file */
@@ -112,7 +120,7 @@ public:
                    [](double ip) -> U { return (U) ip; });
     for(unsigned int i = 0; i < n_trees; i++){
       for(unsigned int j = 0; j < n_classes; j++){
-        trees.at(i).at(j).init_();
+        trees.at(i).at(j).init_(splitting_convention);
       }
     }
   }
