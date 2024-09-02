@@ -26,6 +26,7 @@ def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor]):
     n_classes = 2 if n_classes == 0 else n_classes # the actual number of classes
     n_trees = int(int(meta.get('learner').get('gradient_booster').get('gbtree_model_param').get('num_trees')) / fn_classes)
     n_features = int(meta.get('learner').get('learner_model_param').get('num_feature'))
+
     ensembleDict = {'max_depth' : max_depth,
                     'n_trees' : n_trees,
                     'n_classes' : n_classes,
@@ -43,6 +44,16 @@ def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor]):
     else:
       for i, feature_name in enumerate(bst.feature_names):
         feature_names[feature_name] = i
+    
+    ensembleDict = {'max_depth' : max_depth,
+                    'n_trees' : n_trees,
+                    'n_classes' : n_classes,
+                    'n_features' : n_features,
+                    'trees' : [],
+                    'init_predict' : [0] * fn_classes,
+                    'norm' : 1,
+                    'feature_map' : feature_names
+                    }
 
     trees = bst.trees_to_dataframe()
     for i in range(ensembleDict['n_trees']):
