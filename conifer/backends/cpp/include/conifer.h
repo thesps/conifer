@@ -45,6 +45,43 @@ public:
   T operator()(T a, T b) { return a + b; }
 };
 
+// Splitting operators depending on model splitting convention
+template <typename T, typename U>
+class Split {
+public:
+    virtual ~Split() = default;
+
+    // Pure virtual function to be implemented by derived classes
+    virtual bool split(const T& a, const U& b) const = 0;
+};
+
+template <typename T, typename U>
+class SplitLessThan : public Split<T, U> {
+public:
+    bool split(const T& a, const U& b) const override {
+        return a < b;
+    }
+};
+
+template <typename T, typename U>
+class SplitLessThanEqual : public Split<T, U> {
+public:
+    bool split(const T& a, const U& b) const override {
+        return a >= b;
+    }
+};
+
+template <typename T, typename U>
+std::shared_ptr<Split<T, U>> createSplitInstance(const std::string& op) {
+    if (op == "<") {
+        return std::make_shared<SplitLessThan<T, U>>();
+    } else if (op == "<=") {
+        return std::make_shared<SplitLessThanEqual<T, U>>();
+    } else {
+        throw std::invalid_argument("Invalid operator string: " + op);
+    }
+}
+
 template<class T, class U>
 class DecisionTree{
 
@@ -56,7 +93,7 @@ private:
   std::vector<U> value_;
   std::vector<double> threshold;
   std::vector<double> value;
-  std::string splitting_convention;
+  std::shared_ptr<Split<T, U>> split;
 
 public:
 
@@ -65,19 +102,15 @@ public:
     int i = 0;
     bool comparison;
     while(feature[i] != -2){ // continue until reaching leaf
-      if(splitting_convention == "<="){
-        comparison = x[feature[i]] <= threshold_[i];
-      } else {
-        comparison = x[feature[i]] < threshold_[i];
-      }
+      comparison = split->split(x[feature[i]], threshold_[i]);
       i = comparison ? children_left[i] : children_right[i];
     }
     return value_[i];
   }
 
-  void init_(std::string splitting_convention){
+  void init_(std::shared_ptr<Split<T, U>> split){
     /* Since T, U types may not be readable from the JSON, read them to double and the cast them here */
-    splitting_convention = splitting_convention;
+    this->split = split;
     std::transform(threshold.begin(), threshold.end(), std::back_inserter(threshold_),
                    [](double t) -> T { return (T) t; });
     std::transform(value.begin(), value.end(), std::back_inserter(value_),
@@ -102,28 +135,33 @@ private:
   // vector of decision trees: outer dimension tree, inner dimension class
   std::vector<std::vector<DecisionTree<T,U>>> trees;
   OpAdd<U> add;
-  std::string splitting_convention;
 
 public:
 
   // Define how to read this class to/from JSON
-  NLOHMANN_DEFINE_TYPE_INTRUSIVE(BDT, n_classes, n_trees, n_features, init_predict, trees, splitting_convention);
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(BDT, n_classes, n_trees, n_features, init_predict, trees);
 
   BDT(std::string filename){
     /* Construct the BDT from conifer cpp backend JSON file */
     std::ifstream ifs(filename);
     nlohmann::json j = nlohmann::json::parse(ifs);
     from_json(j, *this);
+    auto splitting_convention = j.value("splitting_convention", "<="); // read the splitting convention with default value of "<=" if it's unspecified
+    auto split = createSplitInstance<T,U>(splitting_convention);
     /* Do some transformation to initialise things into the proper emulation T, U types */
     if(n_classes == 2) n_classes = 1;
     std::transform(init_predict.begin(), init_predict.end(), std::back_inserter(init_predict_),
                    [](double ip) -> U { return (U) ip; });
     for(unsigned int i = 0; i < n_trees; i++){
       for(unsigned int j = 0; j < n_classes; j++){
-        trees.at(i).at(j).init_(splitting_convention);
+        trees.at(i).at(j).init_(split);
       }
     }
   }
+
+  //BDT(const BDT&) = delete;
+  //BDT& operator=(const BDT&) = delete;
+  //~BDT() = default;
 
   std::vector<U> decision_function(std::vector<T> x) const{
     /* Do the prediction */
