@@ -108,6 +108,7 @@ public:
     return value_[i];
   }
 
+
   void init_(std::shared_ptr<Split<T, U>> split){
     /* Since T, U types may not be readable from the JSON, read them to double and the cast them here */
     this->split = split;
