@@ -563,7 +563,7 @@ def load_model(filename, shared_library=None, new_config=None):
     model._metadata = metadata + model._metadata
 
     try:
-        if config["backend"] == "cpp":
+        if config["backend"] in ["cpp","xilinxhls"]:
             import importlib
             last_timestamp=int(model._metadata[-2]._to_dict()["time"])
             #look for the shared library in the same directory as the model json if not specified
