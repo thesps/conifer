@@ -532,7 +532,7 @@ def make_model(ensembleDict, config=None):
     backend = get_backend(backend)
     return backend.make_model(ensembleDict, config)
 
-def load_model(filename, new_config=None):
+def load_model(filename, shared_library=None, new_config=None):
     '''
     Load a Model from JSON file
 
@@ -561,4 +561,17 @@ def load_model(filename, new_config=None):
 
     model = make_model(js, config)
     model._metadata = metadata + model._metadata
+
+    try:
+        if config["backend"] == "cpp":
+            import importlib
+            last_timestamp=int(model._metadata[-2]._to_dict()["time"])
+            #look for the shared library in the same directory as the model json if not specified
+            shared_library_path=os.path.join(os.path.dirname(filename), f'conifer_bridge_{last_timestamp}.so') if shared_library is None else shared_library
+            spec = importlib.util.spec_from_file_location(f'conifer_bridge_{last_timestamp}', shared_library_path)
+            model.bridge = importlib.util.module_from_spec(spec).BDT(filename)
+            spec.loader.exec_module(model.bridge)
+    except Exception as e:
+        logger.warn("Was not able to load the shared library. Run model.compile(): ", e)
+
     return model
