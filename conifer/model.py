@@ -542,6 +542,8 @@ def load_model(filename, new_config=None, shared_library=None):
         filename to load from
     new_config: dictionary (optional)
         if provided, override the configuration specified in the JSON file
+    shared_library: string (optional)
+        path to the shared library to load for the model. If not provided, the shared library will be looked for in the same directory as the JSON file, using the timestamp of the last metadata entry available
     '''
     with open(filename, 'r') as json_file:
         js = json.load(json_file)
