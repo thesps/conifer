@@ -535,7 +535,7 @@ def make_model(ensembleDict, config=None):
     backend = get_backend(backend)
     return backend.make_model(ensembleDict, config)
 
-def load_model(filename, new_config=None, shared_library=None):
+def load_model(filename, new_config=None, shared_library=True):
     '''
     Load a Model from JSON file
 
@@ -545,9 +545,14 @@ def load_model(filename, new_config=None, shared_library=None):
         filename to load from
     new_config: dictionary (optional)
         if provided, override the configuration specified in the JSON file
-    shared_library: string (optional)
-        path to the shared library (or to the directory where to look for the .so file) to load for the model.
-        If not provided, the shared library will be looked for in the same directory as the JSON file, using the timestamp of the last metadata entry available
+    shared_library: string|bool (optional)
+        If True, the shared library will be looked for in the same directory as the JSON file, using the timestamp of the last metadata entry available
+        If False, the shared library will not be loaded
+        If a string, it could be:
+            - path to the shared library to load for the model
+            - path to the directory where to look for the .so file, using the timestamp of the last metadata entry available
+            
+        No shared library will be loaded if a new configuration is provided
     '''
     with open(filename, 'r') as json_file:
         js = json.load(json_file)
@@ -568,9 +573,11 @@ def load_model(filename, new_config=None, shared_library=None):
     model = make_model(js, config)
     model._metadata = metadata + model._metadata
 
-    if new_config is None:
+    if new_config is None and shared_library is not False:
         shared_library_path=None
-        if shared_library is None or not shared_library.endswith(".so"):
+        if shared_library.endswith(".so"):
+            shared_library_path=shared_library
+        else:
             from glob import glob
             shared_library_dirpath=os.path.abspath(os.path.dirname(filename)) if shared_library is None else shared_library
             timestamps=[int(md._to_dict()["time"]) for md in model._metadata[-2::-1]]
@@ -580,8 +587,6 @@ def load_model(filename, new_config=None, shared_library=None):
                 if f"conifer_bridge_{timestamp}.so" in so_files:
                     shared_library_path=os.path.join(shared_library_dirpath, f'conifer_bridge_{timestamp}.so')
                     break
-        elif shared_library.endswith(".so"):
-            shared_library_path=shared_library
 
         try:
             model.load_shared_library(filename, shared_library_path)
