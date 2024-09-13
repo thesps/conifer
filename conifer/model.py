@@ -546,7 +546,8 @@ def load_model(filename, new_config=None, shared_library=None):
     new_config: dictionary (optional)
         if provided, override the configuration specified in the JSON file
     shared_library: string (optional)
-        path to the shared library to load for the model. If not provided, the shared library will be looked for in the same directory as the JSON file, using the timestamp of the last metadata entry available
+        path to the shared library (or to the directory where to look for the .so file) to load for the model.
+        If not provided, the shared library will be looked for in the same directory as the JSON file, using the timestamp of the last metadata entry available
     '''
     with open(filename, 'r') as json_file:
         js = json.load(json_file)
@@ -568,12 +569,23 @@ def load_model(filename, new_config=None, shared_library=None):
     model._metadata = metadata + model._metadata
 
     if new_config is None:
+        shared_library_path=None
+        if shared_library is None or not shared_library.endswith(".so"):
+            from glob import glob
+            shared_library_dirpath=os.path.abspath(os.path.dirname(filename)) if shared_library is None else shared_library
+            timestamps=[int(md._to_dict()["time"]) for md in model._metadata[-2::-1]]
+            so_files=glob(os.path.join(shared_library_dirpath, 'conifer_bridge_*.so'))
+            so_files=[os.path.basename(so_file) for so_file in so_files]
+            for timestamp in timestamps:
+                if f"conifer_bridge_{timestamp}.so" in so_files:
+                    shared_library_path=os.path.join(shared_library_dirpath, f'conifer_bridge_{timestamp}.so')
+                    break
+        elif shared_library.endswith(".so"):
+            shared_library_path=shared_library
+
         try:
-            last_timestamp=int(model._metadata[-2]._to_dict()["time"])
-            #look for the shared library in the same directory as the model json if not specified
-            shared_library_path=os.path.join(os.path.dirname(filename), f'conifer_bridge_{last_timestamp}.so') if shared_library is None else shared_library
             model.load_shared_library(filename, shared_library_path)
-        except Exception as e:
-            print("An existing shared library was either not found or could not be loaded. Run model.compile(): ", e)
+        except Exception:
+            print("An existing shared library was either not found or could not be loaded. Run model.compile()")
 
     return model
