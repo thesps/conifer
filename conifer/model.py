@@ -532,7 +532,7 @@ def make_model(ensembleDict, config=None):
     backend = get_backend(backend)
     return backend.make_model(ensembleDict, config)
 
-def load_model(filename, shared_library=None, new_config=None):
+def load_model(filename, new_config=None, shared_library=None):
     '''
     Load a Model from JSON file
 
