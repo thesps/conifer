@@ -532,6 +532,9 @@ def make_model(ensembleDict, config=None):
     backend = get_backend(backend)
     return backend.make_model(ensembleDict, config)
 
+def load_shared_library(self, model_json, shared_library):
+    pass
+
 def load_model(filename, new_config=None, shared_library=None):
     '''
     Load a Model from JSON file
@@ -566,14 +569,10 @@ def load_model(filename, new_config=None, shared_library=None):
 
     if new_config is None:
         try:
-            if config["backend"] in ["cpp","xilinxhls"]:
-                import importlib
-                last_timestamp=int(model._metadata[-2]._to_dict()["time"])
-                #look for the shared library in the same directory as the model json if not specified
-                shared_library_path=os.path.join(os.path.dirname(filename), f'conifer_bridge_{last_timestamp}.so') if shared_library is None else shared_library
-                spec = importlib.util.spec_from_file_location(f'conifer_bridge_{last_timestamp}', shared_library_path)
-                model.bridge = importlib.util.module_from_spec(spec).BDT(filename)
-                spec.loader.exec_module(model.bridge)
+            last_timestamp=int(model._metadata[-2]._to_dict()["time"])
+            #look for the shared library in the same directory as the model json if not specified
+            shared_library_path=os.path.join(os.path.dirname(filename), f'conifer_bridge_{last_timestamp}.so') if shared_library is None else shared_library
+            model.load_shared_library(filename, shared_library_path)
         except Exception as e:
             print("An existing shared library was either not found or could not be loaded. Run model.compile(): ", e)
 
