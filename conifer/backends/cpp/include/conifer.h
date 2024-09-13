@@ -67,7 +67,7 @@ template <typename T, typename U>
 class SplitLessThanEqual : public Split<T, U> {
 public:
     bool split(const T& a, const U& b) const override {
-        return a >= b;
+        return a <= b;
     }
 };
 
