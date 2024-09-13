@@ -549,7 +549,7 @@ def load_model(filename, new_config=None, shared_library=True):
         If True, the shared library will be looked for in the same directory as the JSON file, using the timestamp of the last metadata entry available
         If False, the shared library will not be loaded
         If a string, it could be:
-            - path to the shared library to load for the model
+            - path to the shared library to load
             - path to the directory where to look for the .so file, using the timestamp of the last metadata entry available
             
         No shared library will be loaded if a new configuration is provided
@@ -575,11 +575,11 @@ def load_model(filename, new_config=None, shared_library=True):
 
     if new_config is None and shared_library is not False:
         shared_library_path=None
-        if shared_library.endswith(".so"):
+        if isinstance(shared_library, str) and shared_library.endswith(".so"):
             shared_library_path=shared_library
         else:
             from glob import glob
-            shared_library_dirpath=os.path.abspath(os.path.dirname(filename)) if shared_library is None else shared_library
+            shared_library_dirpath=os.path.abspath(os.path.dirname(filename)) if shared_library is True else os.path.abspath(shared_library)
             timestamps=[int(md._to_dict()["time"]) for md in model._metadata[-2::-1]]
             so_files=glob(os.path.join(shared_library_dirpath, 'conifer_bridge_*.so'))
             so_files=[os.path.basename(so_file) for so_file in so_files]
