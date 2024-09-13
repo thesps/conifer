@@ -15,6 +15,10 @@ def test_hls_save_load(hls_convert, train_skl):
   load_model.compile()
   y_hls_0, y_hls_1 = util.predict_skl(orig_model, X, y, load_model)
   np.testing.assert_array_equal(y_hls_0, y_hls_1)
+  # Re-load without recompiling to check if the shared library is loaded correctly
+  load_model2 = conifer.model.load_model(f'{orig_model.config.output_dir}/{orig_model.config.project_name}.json')
+  _, y_hls_2 = util.predict_skl(orig_model, X, y, load_model2)
+  np.testing.assert_array_equal(y_hls_0, y_hls_2)
 
 def test_hdl_save_load(vhdl_convert, train_skl):
   orig_model = vhdl_convert
