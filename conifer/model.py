@@ -495,6 +495,9 @@ class ModelBase:
 
         return ax
 
+    def load_shared_library(self, model_json, shared_library):
+        pass
+
 class ModelMetaData:
     def __init__(self):
         self.version = version
@@ -531,9 +534,6 @@ def make_model(ensembleDict, config=None):
             return ModelBase(ensembleDict, config)
     backend = get_backend(backend)
     return backend.make_model(ensembleDict, config)
-
-def load_shared_library(self, model_json, shared_library):
-    pass
 
 def load_model(filename, new_config=None, shared_library=None):
     '''
