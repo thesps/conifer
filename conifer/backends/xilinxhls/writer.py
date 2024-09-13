@@ -515,7 +515,7 @@ class XilinxHLSModel(ModelBase):
     def load_shared_library(self, model_json, shared_library):
         import importlib
         spec = importlib.util.spec_from_file_location(os.path.basename(shared_library).split(".so")[0], shared_library)
-        self.bridge = importlib.util.module_from_spec(spec).BDT(model_json)
+        self.bridge = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.bridge)
     
     @copydocstring(ModelBase.compile)
