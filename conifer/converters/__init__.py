@@ -3,7 +3,7 @@ logger = logging.getLogger(__name__)
 
 _converter_map = {}
 import importlib
-for module in ['sklearn', 'tmva', 'xgboost', 'onnx', 'ydf']:
+for module in ['sklearn', 'tmva', 'xgboost', 'onnx', 'ydf', 'lightgbm']:
   try:
     the_module = importlib.import_module(f'conifer.converters.{module}')
     _converter_map[module] = the_module
@@ -45,4 +45,8 @@ def convert_from_onnx(model, config=None):
 def convert_from_ydf(model, config=None):
   '''Convert a BDT from an Yggdrasil Decision Forests model and configuration'''
   ensembleDict = ydf.convert(model)
+  return make_model(ensembleDict, config)
+
+def convert_from_lightgbm(model, config=None):
+  ensembleDict = lightgbm.convert(model)
   return make_model(ensembleDict, config)
