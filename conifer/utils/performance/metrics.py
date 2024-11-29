@@ -48,3 +48,14 @@ def get_feature_frequency(model : ModelBase):
 def get_feature_frequency_metrics(model : ModelBase):
   feature_frequency = get_feature_frequency(model)
   return __prefix_keys(array_summary_statistics(feature_frequency), 'feature_frequency_')
+
+def get_model_metrics(model : ModelBase):
+  results_d = {'max_depth' : model.max_depth,
+               'n_trees' : model.n_trees,
+               'n_features' : model.n_features,
+               'n_nodes' : model.n_nodes() - model.n_leaves(),
+               'n_leaves' : model.n_leaves(),
+               'backend' : model.config.backend}
+  results_d.update(get_sparsity_metrics(model))
+  results_d.update(get_feature_frequency_metrics(model))
+  return results_d
