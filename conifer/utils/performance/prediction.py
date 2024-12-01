@@ -5,91 +5,151 @@ import os
 import logging
 logger = logging.getLogger(__name__)
 
-# constants derived from fitting to a scan
-_vhdl_latency_constants = np.array([2, 1, 1])
-_vhdl_lut_constants = np.array([-54.69561067, 8.03061793, 13.99964128])
-_vhdl_ff_constants = np.array([12.77986779, 33.56940453, 4.01345795])
+class PerformanceEstimator:
+  def __init__(self):
+    pass
+  def predict(self, model : ModelBase):
+    raise NotImplementedError
+  
+class VHDLLatencyEstimator(PerformanceEstimator):
+  '''
+  Estimator of VHDL backend latency
+  Model is derived from prior knowledge of implementation
+  '''
+  latency_constants = np.array([2, 1, 1])
+  def __init__(self):
+    super().__init__()
 
-def vhdl_latency(model : ModelBase, k: "list[float]" = _vhdl_latency_constants):
-  assert isinstance(model, ModelBase), f"Expected conifer.model.ModelBase, got {type(model)}"
-  k0, k1, k2 = k
-  return int(np.round(k0 + k1 * model.max_depth + k2 * np.ceil(np.log2(model.n_trees))))
+  def predict(self, model : ModelBase):
+    assert isinstance(model, ModelBase), f"Expected conifer.model.ModelBase, got {type(model)}"
+    k0, k1, k2 = VHDLLatencyEstimator.latency_constants
+    return int(np.round(k0 + k1 * model.max_depth + k2 * np.ceil(np.log2(model.n_trees))))
+  
+class VHDLLUTEstimator(PerformanceEstimator):
+  '''
+  Estimator of VHDL backend LUT usage
+  Model is derived from prior knowledge of implementation and functional fit to data
+  '''
+  lut_constants = np.array([-54.69561067, 8.03061793, 13.99964128])
+  def __init__(self):
+    super().__init__()
 
-def _vhdl_resources(model : ModelBase, k: "list[float]"):
-  assert isinstance(model, ModelBase), f"Expected conifer.model.ModelBase, got {type(model)}"
-  k0, k1, k2 = k
-  return int(np.round(k0 + k1 * model.n_trees + k2 * model.n_nodes()))
+  def predict(self, model : ModelBase):
+    assert isinstance(model, ModelBase), f"Expected conifer.model.ModelBase, got {type(model)}"
+    k0, k1, k2 = VHDLLUTEstimator.lut_constants
+    return int(np.round(k0 + k1 * model.n_trees + k2 * model.n_nodes()))
 
-def vhdl_luts(model : ModelBase, k: "list[float]" = _vhdl_lut_constants):
-  return _vhdl_resources(model, k)
+class VHDLFFEstimator(PerformanceEstimator):
+  '''
+  Estimator of VHDL backend FF usage
+  Model is derived from prior knowledge of implementation and functional fit to data
+  '''
+  ff_constants = np.array([12.77986779, 33.56940453, 4.01345795])
+  def __init__(self):
+    super().__init__()
 
-def vhdl_ffs(model : ModelBase, k: "list[float]" = _vhdl_ff_constants):
-  return _vhdl_resources(model, k)
+  def predict(self, model : ModelBase):
+    assert isinstance(model, ModelBase), f"Expected conifer.model.ModelBase, got {type(model)}"
+    k0, k1, k2 = VHDLFFEstimator.ff_constants
+    return int(np.round(k0 + k1 * model.n_trees + k2 * model.n_nodes()))
 
-hls_latency_model = None
-hls_lut_model = None
-hls_ff_model = None
-hls_estimators = {'latency' : hls_latency_model, 'lut' : hls_lut_model, 'ff' : hls_ff_model}
-hls_estimator_files = {'latency' : f'{os.path.dirname(__file__)}/performance_models/hls_latency_model.json',
-                       'lut'     : f'{os.path.dirname(__file__)}/performance_models/hls_latency_model.json', # TODO provide the proper model
-                       'ff'      : f'{os.path.dirname(__file__)}/performance_models/hls_latency_model.json'  # TODO provide the proper model
-                       }
+class HLSEstimator(PerformanceEstimator):
+  '''
+  HLS backend estimator base class
+  '''
+  _model_file = None
+  def __init__(self):
+    self.model = None
+    super(HLSEstimator, self).__init__()
 
-def _get_hls_estimator(name : str):
-  if hls_estimators[name] is None:
-    hls_estimators[name] = conifer.model.load_model(hls_estimator_files[name])
-  return hls_estimators[name]
+  def _get_model(self):
+    '''
+    Get the estimator model object
+    Load the model if not already loaded
+    '''
+    if self.model is None:
+      self.model = conifer.model.load_model(self._model_file)
+    return self.model
+  
+  def predict(self, model : ModelBase):
+    assert isinstance(model, ModelBase), f"Expected conifer.model.ModelBase, got {type(model)}"
+    X = conifer.utils.performance.metrics.get_model_metrics(model)
+    features = ['max_depth',
+                'n_trees',
+                'n_features',
+                'n_nodes',
+                'n_leaves',
+                'sparsity_mean',
+                'sparsity_std',
+                'sparsity_min',
+                'sparsity_max',
+                'sparsity_sum',
+                'sparsity_quartile_1',
+                'sparsity_quartile_3',
+                'feature_frequency_mean',
+                'feature_frequency_std',
+                'feature_frequency_min',
+                'feature_frequency_max',
+                'feature_frequency_sum',
+                'feature_frequency_quartile_1',
+                'feature_frequency_quartile_3']
+    X = np.array([[X[k] for k in features]])
+    estimator = self._get_model()
+    return estimator.decision_function(X)
+  
+class HLSLatencyEstimator(HLSEstimator):
+  '''
+  Estimator of HLS backend Latency
+  Model is derived from BDT fit to data
+  '''
+  _model_file = f'{os.path.dirname(__file__)}/performance_models/hls_latency_model.json'
 
-def _estimate_hls_performance(model : ModelBase, estimator : ModelBase):
-  assert isinstance(model, ModelBase), f"Expected conifer.model.ModelBase, got {type(model)}"
-  X = conifer.utils.performance.metrics.get_model_metrics(model)
-  features = ['max_depth',
-              'n_trees',
-              'n_features',
-              'n_nodes',
-              'n_leaves',
-              'sparsity_mean',
-              'sparsity_std',
-              'sparsity_min',
-              'sparsity_max',
-              'sparsity_sum',
-              'sparsity_quartile_1',
-              'sparsity_quartile_3',
-              'feature_frequency_mean',
-              'feature_frequency_std',
-              'feature_frequency_min',
-              'feature_frequency_max',
-              'feature_frequency_sum',
-              'feature_frequency_quartile_1',
-              'feature_frequency_quartile_3']
-  X = np.array([[X[k] for k in features]])
-  return estimator.decision_function(X)
+  def __init__(self):
+    super(HLSLatencyEstimator, self).__init__()
 
-def hls_latency(model : ModelBase):
-  return _estimate_hls_performance(model, _get_hls_estimator('latency'))
+class HLSLUTEstimator(HLSEstimator):
+  '''
+  Estimator of HLS backend LUT usage
+  Model is derived from BDT fit to data
+  '''
+  # TODO provide the real model
+  _model_file = f'{os.path.dirname(__file__)}/performance_models/hls_latency_model.json' #
 
-def hls_luts(model : ModelBase):
-  return _estimate_hls_performance(model, _get_hls_estimator('lut'))
+  def __init__(self):
+    super(HLSLUTEstimator, self).__init__()    
 
+class HLSFFEstimator(HLSEstimator):
+  '''
+  Estimator of HLS backend FF usage
+  Model is derived from BDT fit to data
+  '''
+  # TODO provide the real model
+  _model_file = f'{os.path.dirname(__file__)}/performance_models/hls_latency_model.json' #
 
-def hls_ffs(model : ModelBase):
-  return _estimate_hls_performance(model, _get_hls_estimator('ff'))
+  def __init__(self):
+    super(HLSFFEstimator, self).__init__()
+
+# make instances of all of the estimators
+vhdlLatencyEstimator = VHDLLatencyEstimator()
+vhdlLUTEstimator = VHDLLUTEstimator()
+vhdlFFEstimator = VHDLFFEstimator()
+
+hlsLatencyEstimator = HLSLatencyEstimator()
+hlsLUTEstimator = HLSLUTEstimator()
+hlsFFEstimator = HLSFFEstimator()
 
 _estimators = {
   'vhdl' : {
-    'latency' : vhdl_latency,
-    'lut'     : vhdl_luts,
-    'ff'      : vhdl_ffs
+    'latency' : vhdlLatencyEstimator,
+    'lut'     : vhdlLUTEstimator,
+    'ff'      : vhdlFFEstimator
   },
   'xilinxhls' : {
-    'latency' : hls_latency,
-    'lut'     : hls_luts,
-    'ff'      : hls_ffs
+    'latency' : hlsLatencyEstimator,
+    'lut'     : hlsLUTEstimator,
+    'ff'      : hlsFFEstimator
   }
 }
-
-_estimators['vivadohls'] = _estimators['xilinxhls']
-_estimators['vitishls'] = _estimators['xilinxhls']
 
 def performance_estimates(model : ModelBase, backend : str = None):
   '''
@@ -110,8 +170,8 @@ def performance_estimates(model : ModelBase, backend : str = None):
   if backend is None:
     backend = model.config.backend
   if backend in _estimators.keys():
-    results = {param : _estimators[backend][param](model) for param in _estimators[backend].keys()}
+    results = {param : _estimators[backend][param].predict(model) for param in _estimators[backend].keys()}
   else:
-    logger.warn(f'Performance estimates are not available for {backend} backend')
+    logger.warning(f'Performance estimates are not available for {backend} backend. Backends with estimates available are: {str(list(_estimators.keys()))}')
     results = {}
   return results
