@@ -1,8 +1,7 @@
 '''
 Module for obtaining extra model/tree metrics
 '''
-from conifer.model import ModelBase, DecisionTreeBase
-from typing import Union
+from conifer.model import ModelBase
 import numpy as np
 
 def array_summary_statistics(d):
