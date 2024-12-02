@@ -19,7 +19,8 @@ entity BDT is
     depth : intArray2DnNodes(0 to nTrees-1);
     threshold : txArray2DnNodes(0 to nTrees-1);
     value : tyArray2DnNodes(0 to nTrees-1);
-    initPredict : ty
+    initPredict : ty;
+    normalisation : ty
   );
   port(
     clk : in std_logic;  -- clock
@@ -35,6 +36,9 @@ architecture rtl of BDT is
   signal yV : tyArray(0 to 0); -- A vector container
   signal y_vld_arr : boolArray(0 to nTrees);
   signal y_vld_arr_v: boolArray(0 to 0); -- A container
+  signal yNormalisedWide : signed(ty'length * 2 -1 downto 0);
+  signal yUnnormalised : ty;
+  signal y_vld_unnormalised : boolean;
 begin
 
   yTrees(nTrees) <= initPredict;
@@ -58,7 +62,22 @@ begin
   -- Sum the output scores using the add tree-reduce
   AddTree : entity work.AddReduce
   port map(clk => clk, d => yTrees, d_vld => y_vld_arr, q => yV, q_vld => y_vld_arr_v);
-  y <= yV(0);
-  y_vld <= y_vld_arr_v(0);
+  yUnnormalised <= yV(0);
+  y_vld_unnormalised <= y_vld_arr_v(0);
 
+  -- Normalise the score, unless the normalisation is exactly equal to '1'
+  GenNormalisation:
+  if (normalisation = 1) generate
+    y <= yUnnormalised;
+    y_vld <= y_vld_unnormalised;
+  else generate
+    process(clk)
+      begin
+      if rising_edge(clk) then
+        yNormalisedWide <= yUnnormalised * normalisation;
+        y_vld <= y_vld_unnormalised;
+      end if;
+    end process;
+    y <= yNormalisedWide(norm_slice_h downto norm_slice_l);
+  end generate;
 end rtl;

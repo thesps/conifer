@@ -90,6 +90,7 @@ private:
   unsigned int n_classes;
   unsigned int n_trees;
   unsigned int n_features;
+  double norm;
   std::vector<double> init_predict;
   std::vector<U> init_predict_;
   // vector of decision trees: outer dimension tree, inner dimension class
@@ -99,7 +100,7 @@ private:
 public:
 
   // Define how to read this class to/from JSON
-  NLOHMANN_DEFINE_TYPE_INTRUSIVE(BDT, n_classes, n_trees, n_features, init_predict, trees);
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(BDT, n_classes, n_trees, n_features, norm, init_predict, trees);
 
   BDT(std::string filename){
     /* Construct the BDT from conifer cpp backend JSON file */
@@ -132,7 +133,8 @@ public:
         values.at(i) += reduce<U, OpAdd<U>>(values_trees.at(i), add);
       }else{
         values.at(i) = std::accumulate(values_trees.at(i).begin(), values_trees.at(i).end(), U(init_predict_.at(i)));
-      }               
+      }
+      values.at(i) *= (U) norm;
     }
 
     return values;

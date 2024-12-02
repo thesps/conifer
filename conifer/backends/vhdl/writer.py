@@ -78,7 +78,8 @@ class VHDLModel(ModelBase):
       depth => {},
       threshold => {},
       value => {},
-      initPredict => {}
+      initPredict => {},
+      normalisation => {}
     )
     port map(
       clk => clk,
@@ -108,6 +109,7 @@ class VHDLModel(ModelBase):
       fout[i].write(array_header_text)
       fout[i].write('package Arrays{} is\n\n'.format(i))
       fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(self._fp_converter.to_int(np.float64(self.init_predict[i]))))
+      fout[i].write('    constant normalisation : ty := to_ty({});\n'.format(self._fp_converter.to_int(np.float64(self.norm))))
 
     # Loop over fields (childrenLeft, childrenRight, threshold...)
     tree_fields = ['feature', 'threshold_int', 'value_int',
@@ -172,6 +174,7 @@ class VHDLModel(ModelBase):
                                                     '{}{}'.format(arr, 'threshold') ,
                                                     '{}{}'.format(arr, 'value'),
                                                     '{}{}'.format(arr, 'initPredict'),
+                                                    '{}{}'.format(arr, 'normalisation'),
                                                     'y({})'.format(i),
                                                     'y_vld({})'.format(i))
           fout.write(newline)
@@ -184,14 +187,16 @@ class VHDLModel(ModelBase):
     fout = open('{}/firmware/Constants.vhd'.format(cfg.output_dir), 'w')
     for line in f.readlines():
       if 'hls4ml' in line:
-        newline = "  constant nTrees : integer := {};\n".format(self.n_trees)
+        newline =  "  constant nTrees : integer := {};\n".format(self.n_trees)
         newline += "  constant maxDepth : integer := {};\n".format(self.max_depth)
-        newline +=  "  constant nNodes : integer := {};\n".format(2 ** (self.max_depth + 1) - 1)
+        newline += "  constant nNodes : integer := {};\n".format(2 ** (self.max_depth + 1) - 1)
         newline += "  constant nLeaves : integer := {};\n".format(2 ** self.max_depth)
         newline += "  constant nFeatures : integer := {};\n".format(self.n_features)
         newline += "  constant nClasses : integer := {};\n\n".format(n_classes)
         newline += "  subtype tx is signed({} downto 0);\n".format(self._fp_converter.width - 1)
         newline += "  subtype ty is signed({} downto 0);\n".format(self._fp_converter.width - 1)
+        newline += "  constant norm_slice_h : integer := {};\n".format(self._fp_converter.width * 2 - self._fp_converter.fractional_bits - 1)
+        newline += "  constant norm_slice_l : integer := {};\n".format(self._fp_converter.fractional_bits)
         fout.write(newline)
       else:
         fout.write(line)
