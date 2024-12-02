@@ -95,7 +95,7 @@ class HLSEstimator(PerformanceEstimator):
                 'feature_frequency_quartile_3']
     X = np.array([[X[k] for k in features]])
     estimator = self._get_model()
-    return estimator.decision_function(X)
+    return int(np.round(estimator.decision_function(X)))
   
 class HLSLatencyEstimator(HLSEstimator):
   '''
@@ -112,8 +112,7 @@ class HLSLUTEstimator(HLSEstimator):
   Estimator of HLS backend LUT usage
   Model is derived from BDT fit to data
   '''
-  # TODO provide the real model
-  _model_file = f'{os.path.dirname(__file__)}/performance_models/hls_latency_model.json' #
+  _model_file = f'{os.path.dirname(__file__)}/performance_models/hls_lut_model.json'
 
   def __init__(self):
     super(HLSLUTEstimator, self).__init__()    
@@ -123,8 +122,7 @@ class HLSFFEstimator(HLSEstimator):
   Estimator of HLS backend FF usage
   Model is derived from BDT fit to data
   '''
-  # TODO provide the real model
-  _model_file = f'{os.path.dirname(__file__)}/performance_models/hls_latency_model.json' #
+  _model_file = f'{os.path.dirname(__file__)}/performance_models/hls_ff_model.json'
 
   def __init__(self):
     super(HLSFFEstimator, self).__init__()
