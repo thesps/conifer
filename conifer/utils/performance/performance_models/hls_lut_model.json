@@ -39312,15 +39312,15 @@
   ]
  ],
  "config": {
-  "output_dir": "/Users/sionisummers/Work/hls4ml/conifer",
-  "project_name": "conifer_prj_1733135467",
+  "output_dir": "conifer",
+  "project_name": "hls_lut_model",
   "backend": "python"
  },
  "metadata": [
   {
    "version": "1.6.dev10+g5ac32ec.d20241121",
-   "host": "thesps-mpb-4.local",
-   "user": "sionisummers",
+   "host": "conifer",
+   "user": "conifer",
    "time": 1733135467.519321
   }
  ]
