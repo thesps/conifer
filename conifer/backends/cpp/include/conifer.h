@@ -136,10 +136,6 @@ public:
     }
   }
 
-  //BDT(const BDT&) = delete;
-  //BDT& operator=(const BDT&) = delete;
-  //~BDT() = default;
-
   std::vector<U> decision_function(std::vector<T> x) const{
     /* Do the prediction */
     assert("Size of feature vector mismatches expected n_features" && x.size() == n_features);
