@@ -7,7 +7,7 @@ import copy
 import datetime
 import platform
 import getpass
-from typing import Union
+from typing import Union, Literal
 try:
     import pydot
 except ImportError:
@@ -37,7 +37,9 @@ class DecisionTreeBase:
       val = treeDict.get(key, None)
       assert val is not None, f"Missing expected key {key} in treeDict"
       setattr(self, key, val)
+    assert splitting_convention in ["<", "<="]
     self.splitting_convention = splitting_convention
+    self.split_function = lambda arg1, arg2: arg1 < arg2 if splitting_convention == '<' else arg1 <= arg2
 
   def n_nodes(self):
     return len(self.feature)
@@ -115,13 +117,12 @@ class DecisionTreeBase:
     return graph
 
   def apply(self, X):
-    comp_func = lambda arg1, arg2: arg1 < arg2 if self.splitting_convention == '<' else arg1 <= arg2
     assert len(X.shape) == 2, 'Expected 2D input'
     y = np.zeros(X.shape[0], dtype='int')
     for i, x in enumerate(X):
       n = 0
       while self.feature[n] != -2:
-        comp=comp_func(x[self.feature[n]],self.threshold[n])
+        comp=self.split_function(x[self.feature[n]],self.threshold[n])
         n = self.children_left[n] if comp else self.children_right[n]
       y[i] = n
     return y
@@ -195,7 +196,6 @@ class ModelBase:
             val = ensembleDict.get(key, None)
             assert val is not None, f'Missing expected key {key} in ensembleDict'
             setattr(self, key, val)
-        assert self.splitting_convention in ["<", "<="]
         trees = ensembleDict.get('trees', None)
         assert trees is not None, f'Missing expected key trees in ensembleDict'
         self.trees = [[DecisionTreeBase(treeDict, self.splitting_convention) for treeDict in trees_class] for trees_class in trees]
