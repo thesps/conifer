@@ -99,7 +99,7 @@ class VHDLModel(ModelBase):
         copyfile('{}/firmware/{}'.format(filedir, f), '{}/firmware/{}'.format(cfg.output_dir, f))
     
     # Set the splitting convention
-    tree_fin= open(f'{filedir}/firmware/Tree.vhd', 'w')
+    tree_fin= open(f'{filedir}/firmware/Tree.vhd', 'r')
     tree_fout = open(f'{cfg.output_dir}/firmware/Tree.vhd', 'w')
     for line in tree_fin.readlines():
       if 'comparison(i) <= X(iFeature(i)) <= threshold(i);' in line:
