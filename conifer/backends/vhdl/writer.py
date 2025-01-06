@@ -195,7 +195,7 @@ class VHDLModel(ModelBase):
         newline += "  constant nClasses : integer := {};\n\n".format(n_classes)
         newline += "  subtype tx is signed({} downto 0);\n".format(self._fp_converter.width - 1)
         newline += "  subtype ty is signed({} downto 0);\n".format(self._fp_converter.width - 1)
-        newline += "  constant norm_slice_h : integer := {};\n".format(self._fp_converter.width * 2 - self._fp_converter.fractional_bits - 1)
+        newline += "  constant norm_slice_h : integer := {};\n".format(self._fp_converter.width * 2 - self._fp_converter.integer_bits - 1)
         newline += "  constant norm_slice_l : integer := {};\n".format(self._fp_converter.fractional_bits)
         fout.write(newline)
       else:
