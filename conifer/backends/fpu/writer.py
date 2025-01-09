@@ -396,7 +396,6 @@ class FPUBuilder:
     shutil.copyfile(f'{filedir}/src/build_hls.tcl', f'{self.output_dir}/build_hls.tcl')
     shutil.copyfile(f'{filedir}/src/fpu.cpp', f'{self.output_dir}/fpu.cpp')
     shutil.copyfile(f'{filedir}/src/fpu.h', f'{self.output_dir}/fpu.h')
-
     with open(f'{self.output_dir}/{self.project_name}.json', 'w') as f:
       json.dump(self.cfg._to_dict(), f)
     self.write_params()
