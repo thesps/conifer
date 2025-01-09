@@ -125,17 +125,11 @@ class XilinxHLSModel(ModelBase):
         filedir = os.path.dirname(os.path.abspath(__file__))
         
         if cfg.unroll:
-            header_file=f'{filedir}/firmware/BDT_unrolled.h'
-        else:        
-            header_file=f'{filedir}/firmware/BDT_rolled.h'
-        fin = open(header_file, 'r')
-        fout = open(f'{cfg.output_dir}/firmware/BDT.h', 'w')
-        for line in fin.readlines():
-            if '// insert splitting convention here' in line:
-                newline = f'const char* const splitting_convention = "{self.splitting_convention}";\n'
-            else:
-                newline = line
-            fout.write(newline)
+            copyfile(f'{filedir}/firmware/BDT_unrolled.h',
+                     f'{cfg.output_dir}/firmware/BDT.h')
+        else:
+            copyfile(f'{filedir}/firmware/BDT_rolled.h',
+                     f'{cfg.output_dir}/firmware/BDT.h')
 
         if cfg.unroll:
             fin = open(f'{filedir}/hls-template/firmware/BDT_unrolled.cpp', 'r')
@@ -145,7 +139,7 @@ class XilinxHLSModel(ModelBase):
                     newline = ''
                     for it, trees in enumerate(self.trees):
                         for ic, tree in enumerate(trees):
-                            newline += f'  scores[{ic}][{it}] = tree_{ic}_{it}.decision_function(x);\n'
+                            newline += f'  scores[{ic}][{it}] = tree_{ic}_{it}.decision_function(x, split_fn);\n'
                 else:
                     newline = line
                 fout.write(newline)
@@ -175,6 +169,7 @@ class XilinxHLSModel(ModelBase):
             self.n_classes))
         fout.write('static const bool unroll = {};\n'.format(
             str(cfg.unroll).lower()))
+        fout.write(f'const char* const splitting_convention = "{self.splitting_convention}";\n')
 
         input_precision = cfg.input_precision
         fout.write('typedef {} input_t;\n'.format(input_precision))

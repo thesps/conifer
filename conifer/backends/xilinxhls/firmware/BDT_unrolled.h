@@ -3,6 +3,7 @@
 
 #include "ap_fixed.h"
 #include <cstring>
+#include <functional>
 
 namespace BDT{
 
@@ -54,7 +55,7 @@ public:
   int children_right[n_nodes];
   int parent[n_nodes];
 
-  score_t decision_function(input_t x) const{
+  score_t decision_function(input_t x, std::function<bool(input_t, threshold_t)> split_fn) const{
     #pragma HLS pipeline II = 1
     #pragma HLS ARRAY_PARTITION variable=feature
     #pragma HLS ARRAY_PARTITION variable=threshold
@@ -87,11 +88,7 @@ public:
       // Only non-leaf nodes do comparisons
       // negative values mean is a leaf (sklearn: -2)
       if(feature[i] >= 0){
-        if (!strcmp(splitting_convention,"<=")){
-          comparison[i] = x[feature[i]] <= threshold[i];
-        }else{
-          comparison[i] = x[feature[i]] < threshold[i];
-        }
+        comparison[i] = split_fn(x[feature[i]], threshold[i]);
       }else{
         comparison[i] = true;
       }
