@@ -1,6 +1,14 @@
 import logging
 logger = logging.getLogger(__name__)
 
+splitting_conventions = {
+  "xgboost": "<",
+  "sklearn": "<=",
+  "tmva": "<=",
+  "onnx": "<=",
+  "ydf": "<="
+}
+
 _converter_map = {}
 import importlib
 for module in ['sklearn', 'tmva', 'xgboost', 'onnx', 'ydf']:
