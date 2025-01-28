@@ -2,11 +2,8 @@
 
 from typing import List, Any, Dict, Union
 import dataclasses
-<<<<<<< HEAD
 import math
-=======
 from conifer.converters import splitting_conventions
->>>>>>> 49e6e7b (Added library and splitting convention entries in the ensembleDict created by all the converters)
 
 import ydf
 
