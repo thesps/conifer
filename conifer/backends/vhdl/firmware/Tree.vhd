@@ -34,6 +34,14 @@ architecture rtl of tree is
   signal activation : boolArray(0 to nNodes-1) := (others => false);
   signal vld_pipe : boolArray(0 to maxdepth + 3) := (others => false);
 
+  component Split is
+  port(
+    a : in tx;
+    b : in tx;
+    q : out boolean
+  );
+  end component;
+
 begin
 
   -- propagate the valid signal
@@ -45,11 +53,16 @@ begin
   GenComp:
   for i in 0 to nNodes-1 generate
     NonLeaf: if iFeature(i) /= -2 generate
-      process(clk)
+        signal comparison_result : boolean;
       begin
         -- Compare feature for this node to threshold for this node
+        -- Split module is defined in PkgSplit
+        TheSplit : entity work.Split
+        port map(X(iFeature(i)), threshold(i), comparison_result);
+      process(clk)
+      begin
         if rising_edge(clk) then
-          comparison(i) <= X(iFeature(i)) <= threshold(i);
+          comparison(i) <= comparison_result;
         end if;
       end process;
     end generate NonLeaf;

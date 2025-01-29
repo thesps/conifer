@@ -3,6 +3,7 @@ vlib msimbdtlib/BDT
 vmap BDT msimbdtlib/BDT
 
 vcom -2008 -work BDT ./firmware/Constants.vhd
+vcom -2008 -work BDT ./firmware/Split.vhd
 vcom -2008 -work BDT ./firmware/Types.vhd
 vcom -2008 -work BDT ./firmware/Tree.vhd
 vcom -2008 -work BDT ./firmware/AddReduce.vhd

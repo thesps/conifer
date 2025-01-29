@@ -5,7 +5,7 @@ use ieee.numeric_std.all;
 
 package Constants is
 
--- hls4ml_insert_constants
+  -- conifer insert constants
 
   function to_tx(x : integer) return tx;
   function to_ty(y : integer) return ty;

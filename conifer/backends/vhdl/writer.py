@@ -194,7 +194,7 @@ class VHDLModel(ModelBase):
     f = open(os.path.join(filedir, './firmware/Constants.vhd'), 'r')
     fout = open('{}/firmware/Constants.vhd'.format(cfg.output_dir), 'w')
     for line in f.readlines():
-      if 'hls4ml' in line:
+      if 'conifer insert constants' in line:
         newline = "  constant nTrees : integer := {};\n".format(self.n_trees)
         newline += "  constant maxDepth : integer := {};\n".format(self.max_depth)
         newline +=  "  constant nNodes : integer := {};\n".format(2 ** (self.max_depth + 1) - 1)
@@ -203,9 +203,23 @@ class VHDLModel(ModelBase):
         newline += "  constant nClasses : integer := {};\n\n".format(n_classes)
         newline += "  subtype tx is signed({} downto 0);\n".format(self._fp_converter.width - 1)
         newline += "  subtype ty is signed({} downto 0);\n".format(self._fp_converter.width - 1)
-        fout.write(newline)
+        newline += "  constant norm_slice_h : integer := {};\n".format(self._fp_converter.width * 2 - self._fp_converter.integer_bits - 1)
+        newline += "  constant norm_slice_l : integer := {};\n".format(self._fp_converter.fractional_bits)
       else:
-        fout.write(line)
+        newline = line
+      fout.write(newline)
+    f.close()
+    fout.close()
+
+    f = open(os.path.join(filedir, './firmware/Split.vhd'), 'r')
+    fout = open('{}/firmware/Split.vhd'.format(cfg.output_dir), 'w')
+    for line in f.readlines():
+      if 'conifer insert split' in line:
+        newline = f"  TheSplit : entity work.{'split_lte' if self.splitting_convention == '<=' else 'split_lt'}\n"
+        newline += "  port map(a, b, q);\n"
+      else:
+        newline = line
+      fout.write(newline)
     f.close()
     fout.close()
 
