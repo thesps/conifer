@@ -1,4 +1,5 @@
 ghdl -a --std=08 --work=BDT ./firmware/Constants.vhd
+ghdl -a --std=08 --work=BDT ./firmware/Split.vhd
 ghdl -a --std=08 --work=BDT ./firmware/Types.vhd
 ghdl -a --std=08 --work=BDT ./firmware/Tree.vhd
 ghdl -a --std=08 --work=BDT ./firmware/AddReduce.vhd
