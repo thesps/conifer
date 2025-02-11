@@ -4,14 +4,19 @@ from conifer.converters import splitting_conventions
 
 #main converter function
 def convert_bdt(onnx_clf):
-  treelist,max_depth,base_values,no_features,no_classes=convert_graph(onnx_clf)
+  treelist,max_depth,base_values,no_features,no_classes, splitting_convention=convert_graph(onnx_clf)
+  #default splitting convention is from conifer.converters.splitting_conventions IF defined by the user, otherwise read if from the model
+  splitting_convention = splitting_conventions.get('onnx', splitting_convention)
+  if splitting_convention is None:
+    raise ValueError( "Different splitting conventions found in different nodes. This is not supported by conifer. You can manually set the splitting convention to apply to all the nodes adding it to the dictionary conifer.converters.splitting_conventions['onnx']='<your splitting convention>' (< or <=)")
+
   ensembleDict = {'max_depth' : max_depth, 'n_trees' : len(treelist),
                    'trees' : [],'n_features' : no_features,
                   'n_classes' : no_classes,
                   'init_predict' : base_values,
                   'norm' : 1,
                   'library':'onnx',
-                  'splitting_convention': splitting_conventions['onnx']}
+                  'splitting_convention': splitting_convention}
   for trees in treelist:
     treesl = []
     for treeDict in trees:
@@ -55,10 +60,14 @@ def convert_graph(onnx_clf):
   treelist=[]
   max_childern=0
 
+  splitting_conventions=set()
   #create tree dictionary items from onnx graphical representation using numpy array slicing
   for tree_id in np.unique(tree_ids):
     dict_tree={}
     mode=modes[tree_ids==tree_id]
+    modes_set = set(mode)
+    modes_set.discard(b'LEAF')
+    splitting_conventions.update(modes_set)
     dict_tree['children_left']=children_left[tree_ids==tree_id]
     dict_tree['children_right']=children_right[tree_ids==tree_id]
     dict_tree['feature']=feature[tree_ids==tree_id]
@@ -74,6 +83,16 @@ def convert_graph(onnx_clf):
     treelist.append(dict_tree)
     max_childern=max(max_childern,len(dict_tree['children_left']))
 
+  if len(splitting_conventions) != 1:
+    splitting_convention = None
+  else:
+    splitting_convention = splitting_conventions.pop()
+    if splitting_convention in [b'BRANCH_LEQ', b'BRANCH_GT']:
+      splitting_convention = '<='
+    elif splitting_convention in [b'BRANCH_LT', b'BRANCH_GTE']:
+      splitting_convention = '<'
+    else:
+      raise ValueError(f"Unknown splitting convention {splitting_convention}")
 
   #finding depth of tree through maximum number of childern in the left branch of tree
   max_depth=math.ceil(math.log2(max_childern)-1)
@@ -90,4 +109,4 @@ def convert_graph(onnx_clf):
   else:
     treelist=treelist.reshape(treelist.shape[0],1)
 
-  return treelist, max_depth, base_values, no_features, no_classes
+  return treelist, max_depth, base_values, no_features, no_classes, splitting_convention
