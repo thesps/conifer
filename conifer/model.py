@@ -189,12 +189,19 @@ class ModelBase:
     Primary interface to write, compile, execute, and synthesize conifer projects
     '''
 
-    _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm', "library", "splitting_convention"]
+    _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm', 'library', 'splitting_convention', 'feature_map']
+
+    _optional_fields = []
 
     def __init__(self, ensembleDict, configDict=None, metadata=None):
+        if 'feature_map' not in ensembleDict:
+            ensembleDict['feature_map'] = {f"feat_{i}":i for i in range(ensembleDict['n_features'])}
         for key in ModelBase._ensemble_fields:
             val = ensembleDict.get(key, None)
             assert val is not None, f'Missing expected key {key} in ensembleDict'
+            setattr(self, key, val)
+        for key in ModelBase._optional_fields:
+            val = ensembleDict.get(key, None)
             setattr(self, key, val)
         trees = ensembleDict.get('trees', None)
         assert trees is not None, f'Missing expected key trees in ensembleDict'
