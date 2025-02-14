@@ -2,6 +2,8 @@
 #define BDT_H__
 
 #include "ap_fixed.h"
+#include <cstring>
+#include <functional>
 
 namespace BDT{
 
@@ -50,7 +52,8 @@ public:
   int children_right[n_nodes];
   int parent[n_nodes];
 
-  score_t decision_function(input_t x) const{
+  template<typename T, typename U>
+  score_t decision_function(input_t x, bool (*split_fn)(const T*, const U*)) const{
     #pragma HLS pipeline II = 1
     #pragma HLS ARRAY_PARTITION variable=feature
     #pragma HLS ARRAY_PARTITION variable=threshold
@@ -83,7 +86,7 @@ public:
       // Only non-leaf nodes do comparisons
       // negative values mean is a leaf (sklearn: -2)
       if(feature[i] >= 0){
-        comparison[i] = x[feature[i]] <= threshold[i];
+        comparison[i] = split_fn(&x[feature[i]], &threshold[i]);
       }else{
         comparison[i] = true;
       }

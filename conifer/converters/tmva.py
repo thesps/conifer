@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 import numpy as np
+from conifer.converters import splitting_conventions
 
 def getOptionValue(bdt, optionName):
     for option in bdt.getroot().find('Options') :
@@ -16,7 +17,9 @@ def convert(bdt):
                   'n_features' : n_features,
                   'n_classes' : n_classes, 'trees' : [],
                   'init_predict' : [0.],
-                  'norm' : 0, 'boost_type' : BoostType}
+                  'norm' : 0, 'boost_type' : BoostType,
+                  'library':'tmva',
+                  'splitting_convention': splitting_conventions['tmva']}
   for trees in bdt.find('Weights'):
     treesl = []
     #for tree in trees:

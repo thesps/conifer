@@ -111,7 +111,7 @@ class XilinxHLSModel(ModelBase):
         self.config = XilinxHLSConfig(config)
         trees = ensembleDict.get('trees', None)
         assert trees is not None, f'Missing expected key trees in ensembleDict'
-        self.trees = [[BottomUpDecisionTree(treeDict) for treeDict in trees_class] for trees_class in trees]
+        self.trees = [[BottomUpDecisionTree(treeDict, self.splitting_convention) for treeDict in trees_class] for trees_class in trees]
         if not self.config.unroll:
             for trees_class in self.trees:
                 for tree in trees_class:
@@ -126,8 +126,8 @@ class XilinxHLSModel(ModelBase):
         
         if cfg.unroll:
             copyfile(f'{filedir}/firmware/BDT_unrolled.h',
-                     f'{cfg.output_dir}/firmware/BDT.h')    
-        else:        
+                     f'{cfg.output_dir}/firmware/BDT.h')
+        else:
             copyfile(f'{filedir}/firmware/BDT_rolled.h',
                      f'{cfg.output_dir}/firmware/BDT.h')
 
@@ -139,7 +139,7 @@ class XilinxHLSModel(ModelBase):
                     newline = ''
                     for it, trees in enumerate(self.trees):
                         for ic, tree in enumerate(trees):
-                            newline += f'  scores[{ic}][{it}] = tree_{ic}_{it}.decision_function(x);\n'
+                            newline += f'  scores[{ic}][{it}] = tree_{ic}_{it}.decision_function(x, split_fn);\n'
                 else:
                     newline = line
                 fout.write(newline)
@@ -169,6 +169,7 @@ class XilinxHLSModel(ModelBase):
             self.n_classes))
         fout.write('static const bool unroll = {};\n'.format(
             str(cfg.unroll).lower()))
+        fout.write(f'const char* const splitting_convention = "{self.splitting_convention}";\n')
 
         input_precision = cfg.input_precision
         fout.write('typedef {} input_t;\n'.format(input_precision))

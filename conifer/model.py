@@ -7,7 +7,7 @@ import copy
 import datetime
 import platform
 import getpass
-from typing import Literal
+from typing import Union, Literal
 try:
     import pydot
 except ImportError:
@@ -32,11 +32,14 @@ class DecisionTreeBase:
   Conifer DecisionTreeBase representation class
   '''
   _tree_fields = ['feature', 'threshold', 'value', 'children_left', 'children_right']
-  def __init__(self, treeDict):
+  def __init__(self, treeDict, splitting_convention):
     for key in DecisionTreeBase._tree_fields:
       val = treeDict.get(key, None)
       assert val is not None, f"Missing expected key {key} in treeDict"
       setattr(self, key, val)
+    assert splitting_convention in ["<", "<="]
+    self.splitting_convention = splitting_convention
+    self.split_function = lambda arg1, arg2: arg1 < arg2 if splitting_convention == '<' else arg1 <= arg2
 
   def n_nodes(self):
     return len(self.feature)
@@ -97,7 +100,7 @@ class DecisionTreeBase:
       node_id = f'{tree_id}_{i}'
       l = f'{tree_id}_{self.children_left[i]}'
       r = f'{tree_id}_{self.children_right[i]}'
-      label = f'x[{self.feature[i]}] <= {self.threshold[i]:.2f}' if self.feature[i] != -2 else f'{self.value[i]:.2f}'
+      label = f'x[{self.feature[i]}] {self.splitting_convention} {self.threshold[i]:.2f}' if self.feature[i] != -2 else f'{self.value[i]:.2f}'
       sg.add_node(pydot.Node(node_id, label=label))
       if self.children_left[i] != -1:
         sg.add_edge(pydot.Edge(node_id, l,))
@@ -119,7 +122,7 @@ class DecisionTreeBase:
     for i, x in enumerate(X):
       n = 0
       while self.feature[n] != -2:
-        comp = x[self.feature[n]] <= self.threshold[n]
+        comp=self.split_function(x[self.feature[n]],self.threshold[n])
         n = self.children_left[n] if comp else self.children_right[n]
       y[i] = n
     return y
@@ -186,7 +189,7 @@ class ModelBase:
     Primary interface to write, compile, execute, and synthesize conifer projects
     '''
 
-    _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm', 'feature_map']
+    _ensemble_fields = ['n_classes', 'n_features', 'n_trees', 'max_depth', 'init_predict', 'norm', 'library', 'splitting_convention', 'feature_map']
 
     _optional_fields = []
 
@@ -202,7 +205,7 @@ class ModelBase:
             setattr(self, key, val)
         trees = ensembleDict.get('trees', None)
         assert trees is not None, f'Missing expected key trees in ensembleDict'
-        self.trees = [[DecisionTreeBase(treeDict) for treeDict in trees_class] for trees_class in trees]
+        self.trees = [[DecisionTreeBase(treeDict, self.splitting_convention) for treeDict in trees_class] for trees_class in trees]
 
         def _make_stamp():
             import datetime
