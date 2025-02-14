@@ -342,7 +342,7 @@ class ModelBase:
         for it, trees in enumerate(self.trees):
             for ic, tree_c in enumerate(trees):
                 y[it, ic] = tree_c.decision_function(X)
-        y = np.transpose(np.sum(y, axis=0)) + self.init_predict
+        y = (np.transpose(np.sum(y, axis=0)) + self.init_predict) * self.norm
         return np.squeeze(y)
 
     def build(self, **kwargs):

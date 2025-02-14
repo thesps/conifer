@@ -47,10 +47,13 @@ model0 = f_train_skl()
 # compare pairs of backends with different precision at different rounding modes
 hls_cpp_precisions = ['ap_fixed<16,6>', 'ap_fixed<8,4,AP_TRN,AP_WRAP>', 'ap_fixed<8,4,AP_RND,AP_WRAP>', 'ap_fixed<8,4,AP_RND_ZERO,AP_WRAP>',
                       'ap_fixed<8,4,AP_RND,AP_SAT>', 'ap_fixed<18,8>', 'ap_fixed<18,8,AP_RND_CONV,AP_SAT>']
+hls_hdl_precisions = ['ap_fixed<16,6>', 'ap_fixed<18,8>', 'ap_fixed<12,6>']
 # compare configs with mixed precision
 mixed_precision_cfg = {'InputPrecision' : 'ap_fixed<16,6>', 'ScorePrecision' : 'ap_fixed<12,5>'}
 
 tests = [*[Tester(*model0, 'xilinxhls', 'cpp', {'Precision' : p}, {'Precision' : p}) for p in hls_cpp_precisions],
+         *[Tester(*model0, 'xilinxhls', 'vhdl', {'Precision' : p}, {'Precision' : p}) for p in hls_hdl_precisions],
+         Tester(*model0, 'xilinxhls', 'cpp', mixed_precision_cfg, mixed_precision_cfg),
          Tester(*model0, 'xilinxhls', 'vhdl', mixed_precision_cfg, mixed_precision_cfg),
          Tester(*model0, 'xilinxhls', 'xilinxhls', {'Unroll' : True}, {'Unroll' : False})]
 

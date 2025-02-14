@@ -23,7 +23,7 @@ def get_tool_exe_in_path(tool):
 
     tool_exe = _TOOLS[tool]
 
-    if os.system('which {} > /dev/null 2>/dev/null'.format(tool_exe)) != 0:
+    if os.system('type {} > /dev/null 2>/dev/null'.format(tool_exe)) != 0:
         return None
 
     return tool_exe
