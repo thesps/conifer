@@ -7,6 +7,8 @@
   29387.65625
  ],
  "norm": 1.0,
+ "library" : "ydf",
+ "splitting_convention": "<",
  "feature_map": {
   "feat_0": 0,
   "feat_1": 1,
