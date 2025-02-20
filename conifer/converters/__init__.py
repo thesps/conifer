@@ -1,6 +1,15 @@
 import logging
 logger = logging.getLogger(__name__)
 
+#the splitting convention for onnx models is defined in the model itself. https://github.com/onnx/onnx/blob/a6b828cdabfb5c0f8795d82e6a3851224acecd10/onnx/defs/traditionalml/defs.cc#L1051-L1057
+# User can impose a different splitting convention by setting it in the dictionary splitting_conventions['onnx']='<splitting convention>'
+splitting_conventions = {
+  "xgboost": "<",  #https://github.com/dmlc/xgboost/blob/9715661c09e61fad15c58ffd059fc0db87fa5d44/plugin/sycl/predictor/predictor.cc#L131C1-L147C2
+  "sklearn": "<=", #https://github.com/scikit-learn/scikit-learn/blob/d8932866b6f4b2dee508a54b79f1122ff5f5459d/sklearn/ensemble/_gradient_boosting.pyx#L68-L73
+  "tmva": "<=",    #https://github.com/root-project/root/blob/87f151c3a55a33380937a31be65e1f102796770f/tmva/tmva/src/BinarySearchTreeNode.cxx#L120-L133
+  "ydf": "<"       #https://github.com/google/yggdrasil-decision-forests/blob/12a83b84859089c508eb4c53b210f49e7bd44c49/yggdrasil_decision_forests/port/python/ydf/model/tree/condition.py#L81-L94
+}
+
 _converter_map = {}
 import importlib
 for module in ['sklearn', 'tmva', 'xgboost', 'onnx', 'ydf']:

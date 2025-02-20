@@ -45,6 +45,19 @@ public:
   T operator()(T a, T b) { return a + b; }
 };
 
+template <typename T, typename U>
+std::function<bool (T, U)> createSplit(const std::string& op) {
+    std::function<bool (T, U)> split;
+    if (op == "<") {
+        split = [](const T& a, const U& b) { return a < b; };
+    } else if (op == "<=") {
+        split = [](const T& a, const U& b) { return a <= b; };
+    } else {
+        throw std::invalid_argument("Invalid operator string: " + op);
+    }
+    return split;
+}
+
 template<class T, class U>
 class DecisionTree{
 
@@ -56,21 +69,24 @@ private:
   std::vector<U> value_;
   std::vector<double> threshold;
   std::vector<double> value;
+  std::function<bool (T, U)> split;
 
 public:
 
-  U decision_function(std::vector<T> x) const{
+  U decision_function(const std::vector<T> &x) const{
     /* Do the prediction */
     int i = 0;
+    bool comparison;
     while(feature[i] != -2){ // continue until reaching leaf
-      bool comparison = x[feature[i]] <= threshold_[i];
+      comparison = split(x[feature[i]], threshold_[i]);
       i = comparison ? children_left[i] : children_right[i];
     }
     return value_[i];
   }
 
-  void init_(){
+  void init_(std::function<bool (T, U)> split){
     /* Since T, U types may not be readable from the JSON, read them to double and the cast them here */
+    this->split = split;
     std::transform(threshold.begin(), threshold.end(), std::back_inserter(threshold_),
                    [](double t) -> T { return (T) t; });
     std::transform(value.begin(), value.end(), std::back_inserter(value_),
@@ -107,13 +123,15 @@ public:
     std::ifstream ifs(filename);
     nlohmann::json j = nlohmann::json::parse(ifs);
     from_json(j, *this);
+    auto splitting_convention = j.value("splitting_convention", "<="); // read the splitting convention with default value of "<=" if it's unspecified
+    auto split = createSplit<T,U>(splitting_convention);
     /* Do some transformation to initialise things into the proper emulation T, U types */
     if(n_classes == 2) n_classes = 1;
     std::transform(init_predict.begin(), init_predict.end(), std::back_inserter(init_predict_),
                    [](double ip) -> U { return (U) ip; });
     for(unsigned int i = 0; i < n_trees; i++){
       for(unsigned int j = 0; j < n_classes; j++){
-        trees.at(i).at(j).init_();
+        trees.at(i).at(j).init_(split);
       }
     }
   }

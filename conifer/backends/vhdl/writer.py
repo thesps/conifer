@@ -42,7 +42,7 @@ class VHDLModel(ModelBase):
     self._fp_converter = FixedPointConverter(self.config.input_precision)
     trees = ensembleDict.get('trees', None)
     assert trees is not None, f'Missing expected key trees in ensembleDict'
-    self.trees = [[BottomUpDecisionTree(treeDict) for treeDict in trees_class] for trees_class in trees]
+    self.trees = [[BottomUpDecisionTree(treeDict, self.splitting_convention) for treeDict in trees_class] for trees_class in trees]
     for trees_class in self.trees:
       for tree in trees_class:
         tree.padTree(self.max_depth)
@@ -95,9 +95,20 @@ class VHDLModel(ModelBase):
     logger.info(f"Writing project to {cfg.output_dir}")
     os.makedirs('{}/firmware'.format(cfg.output_dir), exist_ok=True)
     copyfiles = ['AddReduce.vhd', 'BDT.vhd', 'BDTTestbench.vhd', 'SimulationInput.vhd', 'SimulationOutput.vhd',
-                'TestUtil.vhd', 'Tree.vhd', 'Types.vhd']
+                'TestUtil.vhd', 'Types.vhd']
     for f in copyfiles:
         copyfile('{}/firmware/{}'.format(filedir, f), '{}/firmware/{}'.format(cfg.output_dir, f))
+    
+    # Set the splitting convention
+    tree_fin= open(f'{filedir}/firmware/Tree.vhd', 'r')
+    tree_fout = open(f'{cfg.output_dir}/firmware/Tree.vhd', 'w')
+    for line in tree_fin.readlines():
+      if 'comparison(i) <= X(iFeature(i)) <= threshold(i);' in line:
+        if self.splitting_convention == '<':
+          newline=line.replace('comparison(i) <= X(iFeature(i)) <= threshold(i);', 'comparison(i) <= X(iFeature(i)) < threshold(i);')
+      else:
+          newline = line
+      tree_fout.write(newline)
 
     # binary classification only uses one set of trees
     n_classes = 1 if self.n_classes == 2 else self.n_classes
@@ -186,8 +197,8 @@ class VHDLModel(ModelBase):
     f = open(os.path.join(filedir, './firmware/Constants.vhd'), 'r')
     fout = open('{}/firmware/Constants.vhd'.format(cfg.output_dir), 'w')
     for line in f.readlines():
-      if 'hls4ml' in line:
-        newline =  "  constant nTrees : integer := {};\n".format(self.n_trees)
+      if 'conifer insert constants' in line:
+        newline = "  constant nTrees : integer := {};\n".format(self.n_trees)
         newline += "  constant maxDepth : integer := {};\n".format(self.max_depth)
         newline += "  constant nNodes : integer := {};\n".format(2 ** (self.max_depth + 1) - 1)
         newline += "  constant nLeaves : integer := {};\n".format(2 ** self.max_depth)
@@ -195,11 +206,23 @@ class VHDLModel(ModelBase):
         newline += "  constant nClasses : integer := {};\n\n".format(n_classes)
         newline += "  subtype tx is signed({} downto 0);\n".format(self._fp_converter.width - 1)
         newline += "  subtype ty is signed({} downto 0);\n".format(self._fp_converter.width - 1)
-        newline += "  constant norm_slice_h : integer := {};\n".format(self._fp_converter.width * 2 - self._fp_converter.fractional_bits - 1)
+        newline += "  constant norm_slice_h : integer := {};\n".format(self._fp_converter.width * 2 - self._fp_converter.integer_bits - 1)
         newline += "  constant norm_slice_l : integer := {};\n".format(self._fp_converter.fractional_bits)
-        fout.write(newline)
       else:
-        fout.write(line)
+        newline = line
+      fout.write(newline)
+    f.close()
+    fout.close()
+
+    f = open(os.path.join(filedir, './firmware/Split.vhd'), 'r')
+    fout = open('{}/firmware/Split.vhd'.format(cfg.output_dir), 'w')
+    for line in f.readlines():
+      if 'conifer insert split' in line:
+        newline = f"  TheSplit : entity work.{'split_lte' if self.splitting_convention == '<=' else 'split_lt'}\n"
+        newline += "  port map(a, b, q);\n"
+      else:
+        newline = line
+      fout.write(newline)
     f.close()
     fout.close()
 

@@ -2,6 +2,7 @@
 
 from typing import List, Any, Dict, Union
 import dataclasses
+from conifer.converters import splitting_conventions
 import math
 
 import ydf
@@ -60,6 +61,8 @@ def _convert_forest(model: Union[ydf.GradientBoostedTreesModel, ydf.IsolationFor
         "n_features": len(column_idx_to_feature_idx),
         "init_predict": initial_predictions,
         "norm": norm,
+        "library": "ydf",
+        "splitting_convention": splitting_conventions["ydf"],
     }
 
     # Converts trees

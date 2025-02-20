@@ -6,11 +6,8 @@ import os
 
 class BottomUpDecisionTree(DecisionTreeBase):
   _tree_fields = DecisionTreeBase._tree_fields + ['parent', 'depth', 'iLeaf']
-  def __init__(self, treeDict):
-    for key in DecisionTreeBase._tree_fields:
-        val = treeDict.get(key, None)
-        assert val is not None, f"Missing expected key {key} in treeDict"
-        setattr(self, key, val)
+  def __init__(self, treeDict, splitting_convention):
+    super().__init__(treeDict, splitting_convention)
     self.addParentAndDepth()
 
   def padTree(self, max_depth):

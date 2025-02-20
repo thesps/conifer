@@ -1,11 +1,14 @@
 import numpy as np
+from conifer.converters import splitting_conventions
 
 def convert_bdt(bdt):
   ensembleDict = {'max_depth' : bdt.max_depth, 'n_trees' : bdt.n_estimators,
                   'n_features' : bdt.n_features_in_,
                   'n_classes' : bdt.n_classes_, 'trees' : [],
                   'init_predict' : bdt._raw_predict_init(np.zeros(bdt.n_features_in_).reshape(1, -1))[0].tolist(),
-                  'norm' : 1}
+                  'norm' : 1,
+                  'library':'sklearn',
+                  'splitting_convention': splitting_conventions['sklearn']}
   for trees in bdt.estimators_:
     treesl = []
     for tree in trees:
@@ -22,7 +25,9 @@ def convert_random_forest(bdt):
                   'n_features' : bdt.n_features_in_,
                   'n_classes' : bdt.n_classes_, 'trees' : [],
                   'init_predict' : [0] * bdt.n_classes_, 
-                  'norm' : 1}
+                  'norm' : 1,
+                  'library':'sklearn',
+                  'splitting_convention': splitting_conventions['sklearn']}
   for tree in bdt.estimators_:
     treesl = []
     tree = treeToDict(bdt, tree.tree_)
