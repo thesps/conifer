@@ -2,6 +2,8 @@
 
 from typing import List, Any, Dict, Union
 import dataclasses
+from conifer.converters import splitting_conventions
+import math
 
 import ydf
 
@@ -12,25 +14,39 @@ ConiferModel = Dict[str, Any]
 def convert(model: ydf.GenericModel) -> ConiferModel:
     """Converts a YDF model into a Conifer model."""
 
-    if model.task() != ydf.Task.CLASSIFICATION:
+    if model.task() not in [ydf.Task.CLASSIFICATION, ydf.Task.ANOMALY_DETECTION]:
         raise ValueError(
-            f"Classification YDF model expected. Instead, found task {model.task()!r}"
+            f"Classification or Anomaly Detection YDF model expected. Instead, found task {model.task()!r}"
         )
-    if isinstance(model, ydf.GradientBoostedTreesModel):
-        return _convert_gbt(model)
+    if isinstance(model, (ydf.GradientBoostedTreesModel, ydf.IsolationForestModel)):
+        return _convert_forest(model)
     raise ValueError(f"Not supported YDF model type {type(model)}")
 
 
-def _convert_gbt(model: ydf.GradientBoostedTreesModel) -> ConiferModel:
-    """Converts a YDF GBT model into a Conifer model."""
+def _convert_forest(model: Union[ydf.GradientBoostedTreesModel, ydf.IsolationForestModel]) -> ConiferModel:
+    """Converts a YDF model into a Conifer model."""
 
+    is_gbtm = isinstance(model, ydf.GradientBoostedTreesModel)
+    is_ifm = isinstance(model, ydf.IsolationForestModel)
     src_trees = model.get_all_trees()
     column_idx_to_feature_idx = _feature_mapping(model)
     max_depth = _get_max_depth(src_trees)
-    initial_predictions = model.initial_predictions().tolist()
-    label_classes = model.label_classes()
-    num_trees_per_iter = len(initial_predictions)
-    num_iterations = model.num_trees() // num_trees_per_iter
+
+    if is_gbtm:
+        label_classes = model.label_classes()
+        initial_predictions = model.initial_predictions().tolist()
+        num_trees_per_iter = len(initial_predictions)
+        num_iterations = model.num_trees() // num_trees_per_iter
+        norm = 1.
+    elif is_ifm:
+        label_classes = [0]
+        initial_predictions = [0]
+        num_trees_per_iter = 1
+        num_iterations = model.num_trees()
+        num_examples_per_trees = model.get_tree(tree_idx=0).root.value.num_examples_without_weight
+        norm = - 1. / (num_iterations * preiss_average_path_length(num_examples_per_trees))
+    else:
+        assert False
 
     # Conifer dictionary without the "trees" field.
     base_conifer_dict = {
@@ -39,7 +55,9 @@ def _convert_gbt(model: ydf.GradientBoostedTreesModel) -> ConiferModel:
         "n_classes": len(label_classes),
         "n_features": len(column_idx_to_feature_idx),
         "init_predict": initial_predictions,
-        "norm": 1,
+        "norm": norm,
+        "library": "ydf",
+        "splitting_convention": splitting_conventions["ydf"],
     }
 
     # Converts trees
@@ -109,24 +127,32 @@ class ConiferTreeBuilder:
     def set_tree(
         self, tree: ydf.tree.Tree, column_idx_to_feature_idx: FeatureMapping
     ) -> None:
-        self._add_node(tree.root, column_idx_to_feature_idx)
+        self._add_node(tree.root, column_idx_to_feature_idx, 0)
 
     def _add_node(
         self,
         node: ydf.tree.AbstractNode,
         column_idx_to_feature_idx: FeatureMapping,
+        depth: int,
     ) -> None:
         if node.is_leaf:
             # A leaf node
             assert isinstance(node, ydf.tree.Leaf)
 
-            if not isinstance(node.value, ydf.tree.RegressionValue):
-                raise ValueError(f"No supported leaf value {node.value!r}")
             self.feature.append(-2)
             self.threshold.append(-2.0)
             self.children_left.append(-1)
             self.children_right.append(-1)
-            self.value.append(node.value.value)
+            value = 0
+            if isinstance(node.value, ydf.tree.RegressionValue):
+                value = node.value.value
+            elif isinstance(node.value, ydf.tree.AnomalyDetectionValue):
+                num_examples = node.value.num_examples_without_weight
+                value = depth + preiss_average_path_length(num_examples)
+            else:
+                raise ValueError(f"No supported leaf value {node.value!r}")
+
+            self.value.append(value)
 
         else:
             # A non leaf node
@@ -154,7 +180,23 @@ class ConiferTreeBuilder:
 
             # Set children nodes
             self.children_left[node_idx] = self.num_nodes()
-            self._add_node(node.neg_child, column_idx_to_feature_idx)
+            self._add_node(node.neg_child, column_idx_to_feature_idx, depth+1)
 
             self.children_right[node_idx] = self.num_nodes()
-            self._add_node(node.pos_child, column_idx_to_feature_idx)
+            self._add_node(node.pos_child, column_idx_to_feature_idx, depth+1)
+
+def preiss_average_path_length(num_examples: int) -> float:
+    # Implementation from https://github.com/google/yggdrasil-decision-forests/blob/v1.10.0/yggdrasil_decision_forests/model/isolation_forest/isolation_forest.cc#L58
+    assert num_examples > 0, "num_examples must be greater than 0"
+
+    # Harmonic number approximation (from "Isolation Forest" by Liu et al.)
+    def H(x: float) -> float:
+        euler_constant = 0.5772156649
+        return math.log(x) + euler_constant
+
+    if num_examples > 2:
+        return 2.0 * H(num_examples - 1.0) - 2.0 * (num_examples - 1.0) / num_examples
+    elif num_examples == 2:
+        return 1.0
+    else:
+        return 0.0  # To be safe
