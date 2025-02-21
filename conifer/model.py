@@ -498,6 +498,9 @@ class ModelBase:
 
         return ax
 
+    def load_shared_library(self, model_json, shared_library):
+        pass
+
 class ModelMetaData:
     def __init__(self):
         self.version = version
@@ -535,7 +538,7 @@ def make_model(ensembleDict, config=None):
     backend = get_backend(backend)
     return backend.make_model(ensembleDict, config)
 
-def load_model(filename, new_config=None):
+def load_model(filename, new_config=None, shared_library=True):
     '''
     Load a Model from JSON file
 
@@ -545,6 +548,14 @@ def load_model(filename, new_config=None):
         filename to load from
     new_config: dictionary (optional)
         if provided, override the configuration specified in the JSON file
+    shared_library: string|bool (optional)
+        If True, the shared library will be looked for in the same directory as the JSON file, using the timestamp of the last metadata entry available
+        If False, the shared library will not be loaded
+        If a string, it could be:
+            - path to the shared library to load
+            - path to the directory where to look for the .so file, using the timestamp of the last metadata entry available
+            
+        No shared library will be loaded if a new configuration is provided
     '''
     with open(filename, 'r') as json_file:
         js = json.load(json_file)
@@ -564,4 +575,25 @@ def load_model(filename, new_config=None):
 
     model = make_model(js, config)
     model._metadata = metadata + model._metadata
+
+    if new_config is None and shared_library is not False:
+        shared_library_path=None
+        if isinstance(shared_library, str) and shared_library.endswith(".so"):
+            shared_library_path=shared_library
+        else:
+            from glob import glob
+            shared_library_dirpath=os.path.abspath(os.path.dirname(filename)) if shared_library is True else os.path.abspath(shared_library)
+            timestamps=[int(md._to_dict()["time"]) for md in model._metadata[-2::-1]]
+            so_files=glob(os.path.join(shared_library_dirpath, 'conifer_bridge_*.so'))
+            so_files=[os.path.basename(so_file) for so_file in so_files]
+            for timestamp in timestamps:
+                if f"conifer_bridge_{timestamp}.so" in so_files:
+                    shared_library_path=os.path.join(shared_library_dirpath, f'conifer_bridge_{timestamp}.so')
+                    break
+
+        try:
+            model.load_shared_library(filename, shared_library_path)
+        except Exception:
+            print("An existing shared library was either not found or could not be loaded. Run model.compile()")
+
     return model
