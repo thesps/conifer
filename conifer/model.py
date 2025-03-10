@@ -279,7 +279,7 @@ class ModelBase:
         '''
         Write the model files to the output directory specified in configuration
         '''
-        raise NotImplementedError
+        logger.warn('Write not implemented')
 
     def compile(self):
         '''
@@ -287,7 +287,7 @@ class ModelBase:
         Writes the project files first.
         Compilation is carried out by the model backend
         '''
-        raise NotImplementedError
+        logger.warn('Compile not implemented')
     
     def draw(self, filename=None):
         '''
@@ -358,7 +358,7 @@ class ModelBase:
         success: bool
                  True if the build completed successfuly, otherwise False  
         '''
-        raise NotImplementedError
+        logger.warn('Build not implemented')
 
     def profile(self, what : Literal["scores", "thresholds", "both"] = "both" , ax=None):
         """Profile the thresholds or scores of the trees in the ensemble for each feature.

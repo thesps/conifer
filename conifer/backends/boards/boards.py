@@ -85,10 +85,10 @@ class Builder:
     return BoardConfig.default_config()
   
   def write(self):
-    raise NotImplementedError
+    logger.warn('write() not implemented')
   
   def build(self):
-    raise NotImplementedError
+    logger.warn('build() not implemented')
   
 class ZynqBuilder(Builder):
   

@@ -124,9 +124,6 @@ class CPPModel(ModelBase):
     os.chdir(curr_dir)
     return y
 
-  def build(self):
-    raise NotImplementedError
-
 def auto_config():
     config = {'Backend' : 'cpp',
               'ProjectName': 'my_prj',
