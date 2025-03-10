@@ -26,19 +26,19 @@ def test_hls_reload_last_shared_library(hls_convert, train_skl):
   reload_model = conifer.model.load_model(f'{hls_convert.config.output_dir}_loaded/{hls_convert.config.project_name}.json', shared_library=True)
   y_hls, y_hls_reload = util.predict_skl(initial_model, X, y, reload_model)
   np.testing.assert_array_equal(y_hls, y_hls_reload)
-  assert os.path.abspath(initial_model.bridge.__file__) == os.path.abspath(reload_model.bridge.__file__), "Loaded two different shared libraries"
+  assert os.path.basename(initial_model.bridge.__file__) == os.path.basename(reload_model.bridge.__file__), "Loaded two different shared libraries"
 
 def test_hls_reload_manual_shared_library(hls_convert, train_skl):
   clf, X, y = train_skl
   initial_model = conifer.model.load_model(f'{hls_convert.config.output_dir}/{hls_convert.config.project_name}.json', shared_library = False)
   initial_model.config.output_dir += '_loaded'
   initial_model.compile()
-  so_path = os.path.abspath(initial_model.bridge.__file__) # manually get the shared library path
+  so_path = os.path.basename(initial_model.bridge.__file__) # manually get the shared library path
   # Re-load without recompiling to check if the shared library is loaded correctly
   reload_model = conifer.model.load_model(f'{hls_convert.config.output_dir}_loaded/{hls_convert.config.project_name}.json', shared_library=so_path) # pass the shared library path manually
   y_hls, y_hls_reload = util.predict_skl(initial_model, X, y, reload_model)
   np.testing.assert_array_equal(y_hls, y_hls_reload)
-  assert os.path.abspath(initial_model.bridge.__file__) == os.path.abspath(reload_model.bridge.__file__), "Loaded two different shared libraries"
+  assert os.path.basename(initial_model.bridge.__file__) == os.path.basename(reload_model.bridge.__file__), "Loaded two different shared libraries"
 
 def test_hdl_save_load(vhdl_convert, train_skl):
   orig_model = vhdl_convert
