@@ -46,7 +46,7 @@ class FixedPointConverter:
         raise Exception(f'Failed to compile FixedPointConverter {self.sani_type}.cpp')
     finally:
       os.chdir(curr_dir)
-    
+
     os.chdir(cpp_filedir)
     logger.debug(f'Importing compiled module {self.sani_type}.so')
     try:

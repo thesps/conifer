@@ -477,19 +477,6 @@ class XilinxHLSModel(ModelBase):
         fout.close()
 
         #######################
-        # vivado_synth.tcl
-        #######################
-        f = open(os.path.join(filedir, 'hls-template/vivado_synth.tcl'), 'r')
-        fout = open('{}/vivado_synth.tcl'.format(cfg.output_dir), 'w')
-
-        txt = f.read()
-        txt = txt.format(project=f'{cfg.project_name}_prj', top=cfg.project_name, part=cfg.xilinx_part)
-        fout.write(txt)
-
-        f.close()
-        fout.close()
-
-        #######################
         # bridge.cpp
         #######################
 

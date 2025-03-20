@@ -7,6 +7,8 @@
   11.9752197265625
  ],
  "norm": 1.0,
+ "library" : "ydf",
+ "splitting_convention": "<",
  "feature_map": {
   "feat_0": 0,
   "feat_1": 1,
@@ -49752,15 +49754,15 @@
   ]
  ],
  "config": {
-  "output_dir": "/Users/sionisummers/Work/hls4ml/conifer",
-  "project_name": "conifer_prj_1732202751",
+  "output_dir": "conifer",
+  "project_name": "hls_latency_model",
   "backend": "python"
  },
  "metadata": [
   {
    "version": "1.6.dev10+g5ac32ec.d20241121",
-   "host": "thesps-mpb-4.local",
-   "user": "sionisummers",
+   "host": "conifer",
+   "user": "conifer",
    "time": 1732202751.954173
   }
  ]
