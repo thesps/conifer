@@ -2,6 +2,7 @@
 
 from typing import List, Any, Dict, Union
 import dataclasses
+from conifer.converters import splitting_conventions
 import math
 
 import ydf
@@ -13,9 +14,9 @@ ConiferModel = Dict[str, Any]
 def convert(model: ydf.GenericModel) -> ConiferModel:
     """Converts a YDF model into a Conifer model."""
 
-    if model.task() not in [ydf.Task.CLASSIFICATION, ydf.Task.ANOMALY_DETECTION]:
+    if model.task() not in [ydf.Task.CLASSIFICATION, ydf.Task.REGRESSION, ydf.Task.ANOMALY_DETECTION]:
         raise ValueError(
-            f"Classification or Anomaly Detection YDF model expected. Instead, found task {model.task()!r}"
+            f"Classification, Regression, or Anomaly Detection YDF model expected. Instead, found task {model.task()!r}"
         )
     if isinstance(model, (ydf.GradientBoostedTreesModel, ydf.IsolationForestModel)):
         return _convert_forest(model)
@@ -32,13 +33,18 @@ def _convert_forest(model: Union[ydf.GradientBoostedTreesModel, ydf.IsolationFor
     max_depth = _get_max_depth(src_trees)
 
     if is_gbtm:
-        label_classes = model.label_classes()
         initial_predictions = model.initial_predictions().tolist()
         num_trees_per_iter = len(initial_predictions)
         num_iterations = model.num_trees() // num_trees_per_iter
         norm = 1.
+        if model.task() == ydf.Task.CLASSIFICATION:
+            n_classes = len(model.label_classes())
+        elif model.task() == ydf.Task.REGRESSION:
+            n_classes = 1
+        else:
+            assert False
     elif is_ifm:
-        label_classes = [0]
+        n_classes = 1
         initial_predictions = [0]
         num_trees_per_iter = 1
         num_iterations = model.num_trees()
@@ -51,10 +57,12 @@ def _convert_forest(model: Union[ydf.GradientBoostedTreesModel, ydf.IsolationFor
     base_conifer_dict = {
         "max_depth": max_depth,
         "n_trees": num_iterations,
-        "n_classes": len(label_classes),
+        "n_classes": n_classes,
         "n_features": len(column_idx_to_feature_idx),
         "init_predict": initial_predictions,
         "norm": norm,
+        "library": "ydf",
+        "splitting_convention": splitting_conventions["ydf"],
     }
 
     # Converts trees

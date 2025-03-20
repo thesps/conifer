@@ -6,7 +6,7 @@ import conifer
 import pytest
 import numpy as np
 import ydf
-from sklearn.datasets import load_iris
+from sklearn.datasets import load_iris, load_diabetes
 from sklearn.datasets import make_hastie_10_2
 
 
@@ -15,28 +15,40 @@ class Dataset:
     X: np.ndarray
     y: np.ndarray
     X_test: np.ndarray
+    kind: str
 
 
-@pytest.fixture(params=["hastie", "iris"])
+@pytest.fixture(params=["hastie", "iris", "diabetes"])
 def toy_dataset(request) -> Dataset:
     """Buids a toy dataset."""
 
     if request.param == "hastie":
         X, y = make_hastie_10_2(random_state=0, n_samples=4000)
-        return Dataset(X[:2000], y[:2000] == 1, X[2000:])
+        return Dataset(X[:2000], y[:2000] == 1, X[2000:], "classification")
 
     elif request.param == "iris":
         iris = load_iris()
-        return Dataset(iris.data, iris.target, iris.data)
-
+        return Dataset(iris.data, iris.target, iris.data, "classification")
+    
+    elif request.param == "diabetes":
+        diabetes = load_diabetes()
+        return Dataset(diabetes.data, diabetes.target, diabetes.data, "regression")
+    
     else:
         raise ValueError("Unknown dataset")
 
 
-@pytest.fixture(params=[("exact", "GradientBoostedTreesLearner"),
-                        ("exact", "IsolationForestLearner")])
+@pytest.fixture(params=[("exact", "GradientBoostedTreesLearner", ydf.Task.CLASSIFICATION),
+                        ("exact", "GradientBoostedTreesLearner", ydf.Task.REGRESSION),
+                        ("exact", "IsolationForestLearner", ydf.Task.ANOMALY_DETECTION)])
 def toy_ydf_model(toy_dataset, request) -> ydf.GenericModel:
     """Trains a YDF model on a toy dataset."""
+
+    # skip the combinations of regression dataset with [classification|anomaly detection] model
+    if toy_dataset.kind == "regression" and request.param[2] == ydf.Task.CLASSIFICATION:
+        pytest.skip("Skipping classification task on regression dataset")
+    if toy_dataset.kind == "regression" and request.param[2] == ydf.Task.ANOMALY_DETECTION:
+        pytest.skip("Skipping anomaly detection task on regression dataset")
 
     if request.param[0] == "exact":
         extra_kwargs = {}
@@ -59,6 +71,7 @@ def toy_ydf_model(toy_dataset, request) -> ydf.GenericModel:
         label="y",
         num_trees=5,
         max_depth=6,
+        task=request.param[2],
         **learner_kwargs,
         **extra_kwargs,
     )
@@ -86,7 +99,7 @@ def test_vhdl_toy_model(toy_dataset, toy_ydf_model, tmp_path):
 def test_hls_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     # Create a conifer config
     cfg = conifer.backends.xilinxhls.auto_config()
-    cfg["Precision"] = "ap_fixed<32,16,AP_RND,AP_SAT>"
+    cfg["Precision"] = "ap_fixed<32,16>"
     cfg["OutputDir"] = str(tmp_path)
     cfg["XilinxPart"] = "xcu250-figd2104-2L-e"
 
@@ -120,6 +133,18 @@ def test_cpp_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-3, rtol=1e-3)
 
 
+def test_py_toy_model(toy_dataset, toy_ydf_model, tmp_path):
+
+    # Create the model
+    conifer_model = conifer.converters.convert_from_ydf(toy_ydf_model)
+
+    # Check predictions
+    conifer_pred = np.squeeze(conifer_model.decision_function(toy_dataset.X_test))
+    if isinstance(toy_ydf_model, ydf.IsolationForestModel):
+        conifer_pred = 2**conifer_pred
+    ydf_pred = np.squeeze(toy_ydf_model.predict({"x": toy_dataset.X_test}))
+    np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-3, rtol=1e-3)
+
 def test_four_nodes_model():
     # Train a model with 4 nodes
     dataset = {
@@ -149,16 +174,18 @@ def test_four_nodes_model():
     assert model.initial_predictions() == [-1.0986123085021973]
 
     # Injest the model in Conifer.
-    conifer_model = conifer.converters.ydf.convert(model)
+    conifer_model_dict = conifer.converters.ydf.convert(model)
 
     # Check the Conifer model.
-    assert conifer_model == {
+    assert conifer_model_dict == {
         "max_depth": 2,
         "n_trees": 1,
         "n_classes": 2,
         "n_features": 2,
         "init_predict": [-1.0986123085021973],
         "norm": 1,
+        "library": "ydf",
+        "splitting_convention": conifer.converters.splitting_conventions["ydf"],
         "trees": [
             [
                 {
@@ -177,3 +204,20 @@ def test_four_nodes_model():
             ]
         ],
     }
+
+    # injest the model again into conifer for inference
+    conifer_model = conifer.converters.convert_from_ydf(model)
+
+    # create a test dataset including some examples on the threshold to check the splitting convention
+    test_dataset = {
+        "x1": np.array([0, 0, 1, 1, 0.5, 0, 0.5, 0.5, 1]),
+        "x2": np.array([0, 1, 0, 1, 0.5, 0.5, 0, 1, 0.5]),
+    }
+
+    # perform inference with ydf and conifer
+    ydf_pred = np.squeeze(model.predict(test_dataset))
+    X = np.transpose(np.array([test_dataset["x1"], test_dataset["x2"]]))
+    conifer_pred = np.squeeze(conifer_model.decision_function(X))
+
+    # assert numerical closeness
+    np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-5, rtol=1e-5)
