@@ -24,6 +24,12 @@ class CPPModel(ModelBase):
   def __init__(self, ensembleDict, config, metadata=None):
     super(CPPModel, self).__init__(ensembleDict, config, metadata)
     self.config = CPPConfig(config)
+  
+  def load_shared_library(self, model_json, shared_library):
+    import importlib
+    spec = importlib.util.spec_from_file_location(os.path.basename(shared_library).split(".so")[0], shared_library)
+    self.bridge = importlib.util.module_from_spec(spec).BDT(model_json)
+    spec.loader.exec_module(self.bridge)
 
   @copydocstring(ModelBase.write)
   def write(self):
@@ -99,10 +105,7 @@ class CPPModel(ModelBase):
 
     try:
       logger.debug(f'Importing conifer_bridge_{self._stamp} from conifer_bridge_{self._stamp}.so')
-      import importlib.util
-      spec = importlib.util.spec_from_file_location(f'conifer_bridge_{self._stamp}', f'./conifer_bridge_{self._stamp}.so')
-      self.bridge = importlib.util.module_from_spec(spec).BDT(f"{cfg.project_name}.json")
-      spec.loader.exec_module(self.bridge)
+      self.load_shared_library(f"{cfg.project_name}.json", f"./conifer_bridge_{self._stamp}.so")
     except ImportError:
       os.chdir(curr_dir)
       raise Exception("Can't import pybind11 bridge, is it compiled?")
