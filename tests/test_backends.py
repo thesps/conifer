@@ -30,7 +30,8 @@ def backend_predict(model, odir, X, y_shape, backend, backend_config):
   cfg['OutputDir'] = odir
   model = conifer.converters.convert_from_sklearn(model, cfg)
   model.compile()
-  y = model.decision_function(X).reshape(y_shape)   
+  y = model.decision_function(X).reshape(y_shape)
+  return y
 
 class Tester:
    def __init__(self, model, X, y_shape, backend_a, backend_b, config_a={}, config_b={}):
@@ -68,6 +69,7 @@ def test_backend_equality(test):
   y_a = backend_predict(test.model, name_a, test.X, test.y_shape, test.backend_a, test.config_a)
   y_b = backend_predict(test.model, name_b, test.X, test.y_shape, test.backend_b, test.config_b)
   np.testing.assert_array_equal(y_a, y_b)
+  assert((y_a is not None) and (y_b is not None)), "backend_predict returned None for the predictions: inconclusive test"
 
 def test_py_backend():
    clf, X, _ = model0
