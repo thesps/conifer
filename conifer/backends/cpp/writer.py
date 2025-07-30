@@ -54,6 +54,7 @@ class CPPModel(ModelBase):
       if '// conifer insert typedef' in line:
         newline =  f"typedef {cfg.threshold_precision} T;\n"
         newline += f"typedef {cfg.score_precision} U;\n"
+        newline += f"typedef {cfg.weight_precision} W;\n"
       elif 'PYBIND11_MODULE' in line:
         newline = line.replace('conifer_bridge', f'conifer_bridge_{self._stamp}')
       elif '// conifer insert include' in line:

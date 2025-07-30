@@ -110,7 +110,8 @@ def _feature_mapping(model: ydf.GenericModel) -> FeatureMapping:
 
 @dataclasses.dataclass
 class ConiferTreeBuilder:
-    feature: List[int] = dataclasses.field(default_factory=list)
+    feature: List[List[int]] = dataclasses.field(default_factory=list)
+    weight: List[List[float]] = dataclasses.field(default_factory=list)
     threshold: List[float] = dataclasses.field(default_factory=list)
     children_left: List[int] = dataclasses.field(default_factory=list)
     children_right: List[int] = dataclasses.field(default_factory=list)
@@ -145,6 +146,7 @@ class ConiferTreeBuilder:
             assert isinstance(node, ydf.tree.Leaf)
 
             self.feature.append(-2)
+            self.weight.append( [0 for i in range(len(column_idx_to_feature_idx))])
             self.threshold.append(-2.0)
             self.children_left.append(-1)
             self.children_right.append(-1)
@@ -169,10 +171,20 @@ class ConiferTreeBuilder:
                 feature_idx = column_idx_to_feature_idx.get(node.condition.attribute)
                 if feature_idx is None:
                     raise RuntimeError(f"Unknown feature {node.condition.attribute}")
+                weights = [0 for i in range(len(column_idx_to_feature_idx))]
+                weights[feature_idx] = 1
                 self.feature.append(feature_idx)
+                self.weight.append(weights)
                 self.threshold.append(node.condition.threshold)
             elif isinstance(node.condition, ydf.tree.NumericalSparseObliqueCondition):
-                raise ValueError("Oblique conditions are not yet supported")
+                feature_idx = [column_idx_to_feature_idx.get(feature) for feature in node.condition.attributes]
+                weights = [0 for i in range(len(column_idx_to_feature_idx))]
+                for i,feature in enumerate(feature_idx):
+                    weights[feature] = node.condition.weights[i]
+                self.feature.append(0)
+                self.weight.append(weights)
+                self.threshold.append(node.condition.threshold)
+                #raise ValueError("Oblique conditions are not yet supported")
             else:
                 raise ValueError(f"No supported YDF condition: {node.condition}")
 

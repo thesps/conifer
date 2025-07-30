@@ -45,6 +45,7 @@ def convert_graph(onnx_clf):
       attr_dict[attribute.name]=i
 
   n_estimators=max(node.attribute[attr_dict['nodes_treeids']].ints)+1
+  no_features=onnx_clf.graph.input[0].type.tensor_type.shape.dim[1].dim_value
 
   #converting flat representtaion in to numpy arrays through key value relationship
   tree_ids=np.array(node.attribute[attr_dict['nodes_treeids']].ints)
@@ -52,6 +53,14 @@ def convert_graph(onnx_clf):
   children_left=np.array(node.attribute[attr_dict['nodes_truenodeids']].ints)
   threshold=np.array(node.attribute[attr_dict['nodes_values']].floats)
   feature=np.array(node.attribute[attr_dict['nodes_featureids']].ints)
+  
+  weight_list = []
+  for i_feature in feature:
+    weights = [0 for i in range(no_features)]
+    weights[i_feature] = 1
+    weight_list.append(weights)
+  weights= np.array(weight_list)
+  
   leaf_values=np.array(node.attribute[attr_dict['class_weights']].floats)
   node_values=np.array(node.attribute[attr_dict['nodes_values']].floats)
   modes=np.array(node.attribute[attr_dict['nodes_modes']].strings)
@@ -71,8 +80,10 @@ def convert_graph(onnx_clf):
     dict_tree['children_left']=children_left[tree_ids==tree_id]
     dict_tree['children_right']=children_right[tree_ids==tree_id]
     dict_tree['feature']=feature[tree_ids==tree_id]
+    dict_tree['weight']=weights[tree_ids==tree_id]
     dict_tree['threshold']=threshold[tree_ids==tree_id]
     dict_tree['feature'][mode==b'LEAF'] = -2
+    dict_tree['weight'][mode==b'LEAF'] = [0 for i in range(no_features)]
     dict_tree['threshold'][mode==b'LEAF'] = -2
     dict_tree['children_left'][mode==b'LEAF'] = -1
     dict_tree['children_right'][mode==b'LEAF'] = -1
@@ -99,8 +110,6 @@ def convert_graph(onnx_clf):
 
   #base values and total number of features are found through onnx representation
   base_values=list(node.attribute[attr_dict['base_values']].floats)
-  no_features=onnx_clf.graph.input[0].type.tensor_type.shape.dim[1].dim_value
-  no_features=onnx_clf.graph.input[0].type.tensor_type.shape.dim[1].dim_value
   treelist=np.array(treelist)
 
   #rearranging tree list arrays for binary or multiclass 
