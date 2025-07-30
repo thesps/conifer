@@ -63,9 +63,10 @@ class MultiPrecisionConfig(ConfigBase):
   Class representing configuration with fields for separate input, threshold, and score precisions
   Precisions fall back on 'precision' if not specified
   '''
-  _config_fields = ConfigBase._config_fields + ['input_precision', 'threshold_precision', 'score_precision']
+  _config_fields = ConfigBase._config_fields + ['input_precision', 'threshold_precision', 'weight_precision','score_precision']
   _mp_alts = {'input_precision'     : ['InputPrecision'],
               'threshold_precision' : ['ThresholdPrecision'],
+              'weight_precision'    : ['WeightPrecision'],
               'score_precision'     : ['ScorePrecision']
               }
   _alternates = {**ConfigBase._alternates, **_mp_alts}
@@ -87,6 +88,12 @@ class MultiPrecisionConfig(ConfigBase):
         self.threshold_precision = self.input_precision
       else:
         self.threshold_precision = precision
+    # Default weight precision to threshold precision
+    if getattr(self, 'weight_precision', None) is None:
+      if self.threshold_precision is not None:
+        self.weight_precision = self.threshold_precision
+      else:
+        self.weight_precision = precision
     if getattr(self, 'score_precision', None) is None:
       self.score_precision = precision
     if validate:

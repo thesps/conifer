@@ -31,7 +31,7 @@ class DecisionTreeBase:
   '''
   Conifer DecisionTreeBase representation class
   '''
-  _tree_fields = ['feature', 'threshold', 'value', 'children_left', 'children_right']
+  _tree_fields = ['feature', 'weight','threshold', 'value', 'children_left', 'children_right']
   def __init__(self, treeDict, splitting_convention):
     for key in DecisionTreeBase._tree_fields:
       val = treeDict.get(key, None)
@@ -121,8 +121,8 @@ class DecisionTreeBase:
     y = np.zeros(X.shape[0], dtype='int')
     for i, x in enumerate(X):
       n = 0
-      while self.feature[n] != -2:
-        comp=self.split_function(x[self.feature[n]],self.threshold[n])
+      while any(self.feature[n]) != -2:
+        comp=self.split_function(sum(x[self.feature[n][j]] * self.weight[n][j] for j in range(len(self.feature[n]))),self.threshold[n])
         n = self.children_left[n] if comp else self.children_right[n]
       y[i] = n
     return y
@@ -259,7 +259,7 @@ class ModelBase:
         dictionary['trees'] = [[{key : getattr(tree, key) for key in DecisionTreeBase._tree_fields} for tree in trees_i] for trees_i in self.trees]
         dictionary['config'] = self.config._to_dict()
         dictionary['metadata'] = [md._to_dict() for md in self._metadata]
-        js = json.dumps(dictionary, indent=1)
+        js = json.dumps(dictionary, indent=2)
 
         cfg = self.config
         if filename is None and cfg is not None:
