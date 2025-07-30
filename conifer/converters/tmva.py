@@ -26,7 +26,7 @@ def convert(bdt):
     # TODO find out how TMVA implements multi-class
     tree = trees
     weight = float(tree.attrib['boostWeight'])
-    tree = treeToDict(bdt, tree)
+    tree = treeToDict(bdt, tree, n_features)
     treesl.append(tree)
     ensembleDict['trees'].append(treesl)
     ensembleDict['norm'] += weight
@@ -45,8 +45,9 @@ def recurse(node):
             for ni in recurse(n):
                 yield ni
 
-def treeToDict(bdt, tree):
+def treeToDict(bdt, tree, n_features):
   feature = []
+  weights = []
   threshold = []
   value = []
   children_left = []
@@ -66,6 +67,12 @@ def treeToDict(bdt, tree):
         vPurity = float(attrib['purity']) * float(tree.attrib['boostWeight'])
         vType = float(attrib['nType']) * float(tree.attrib['boostWeight'])
         v = vType if useYesNoLeaf else vPurity
+        
+      weight = [0 for i in range(n_features)]
+      if f >= 0:
+        weight[f] = 1
+      
+      weights.append(weight)
       feature.append(f)
       threshold.append(t)
       value.append(v)
