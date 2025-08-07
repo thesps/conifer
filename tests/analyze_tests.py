@@ -29,7 +29,7 @@ def generate_test_yaml(directory='.'):
         file_name = str(test_file)
         name = file_name.replace('test_', '').replace('.py', '')
         build = 'build' if calls_build(test_file) else 'no build'
-        test_yml = yaml.safe_load(template.format(name, build, test_file))
+        test_yml = yaml.safe_load(template.format(name, images[build], test_file))
         if yml is None:
             yml = test_yml
         else:
