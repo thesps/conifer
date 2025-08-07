@@ -11,17 +11,17 @@ generator:
   before_script:
     - pip install pyyaml
   script:
-    - cd test/pytest
+    - cd tests
     - python analyze_tests.py
   artifacts:
     paths:
-      - test/pytests.yml
+      - tests/pytests.yml
 
 pytests:
   stage: trigger
   trigger:
     include:
-      - local: test/ci.yml
-      - artifact: test/pytests.yml
+      - local: tests/ci.yml
+      - artifact: tests/pytests.yml
         job: generator
     strategy: depend
