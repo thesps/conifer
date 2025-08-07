@@ -1,0 +1,27 @@
+stages:
+  - generate
+  - trigger
+  - test
+
+generator:
+  stage: generate
+  image: python:3.8-alpine
+  tags:
+    - k8s-default
+  before_script:
+    - pip install pyyaml
+  script:
+    - cd test/pytest
+    - python analyze_tests.py
+  artifacts:
+    paths:
+      - test/pytests.yml
+
+pytests:
+  stage: trigger
+  trigger:
+    include:
+      - local: test/ci.yml
+      - artifact: test/pytests.yml
+        job: generator
+    strategy: depend

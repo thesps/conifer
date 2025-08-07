@@ -3,7 +3,7 @@ onnxruntime
 scipy
 onnxmltools
 scikit-learn
-xgboost<2.0.0
-pybind11
+xgboost<3.0.0
+pybind11<3.0.0
 ydf
 pandas
