@@ -4,15 +4,10 @@
   tags:
     - fpga-mid
   before_script:
-    - # install g++
-    - # apt update
-    - # apt install -y build-essential
-    - # setup conifer external requirements
     - git clone --depth 1 --branch v3.12.0 https://github.com/nlohmann/json.git
     - export JSON_ROOT=$(pwd)/json/single_include/
     - git clone --depth 1 https://github.com/Xilinx/HLS_arbitrary_Precision_Types.git
     - export XILINX_AP_INCLUDE=$(pwd)/HLS_arbitrary_Precision_Types/include
-    - # setup test python environment
     - pip install -r dev_requirements.txt
     - pip install .
   script:
