@@ -2,15 +2,11 @@ from pathlib import Path
 import yaml
 
 template = '''
-pytest.{}:
-    extends: .pytest
-    image: {}
-    variables:
-        PYTESTFILE: {}
+pytest.{name}:
+  extends: .pytest-{extends}
+  variables:
+    PYTESTFILE: {test_file}
 '''
-
-images = {'build' : 'registry.cern.ch/ci4fpga/vivado:2024.1',
-          'no build' : 'registry.cern.ch/ci4fpga/ubuntu'}
 
 # check whether "build" method is called in the test -> needs different resources
 def calls_build(test_filename):
@@ -28,8 +24,11 @@ def generate_test_yaml(directory='.'):
     for test_file in test_files:
         file_name = str(test_file)
         name = file_name.replace('test_', '').replace('.py', '')
-        build = 'build' if calls_build(test_file) else 'no build'
-        test_yml = yaml.safe_load(template.format(name, images[build], test_file))
+        build = calls_build(test_file)
+        extends = 'fpga' if build else 'plain'
+        test_yml = yaml.safe_load(template.format(name=name,
+                                                  extends=extends,
+                                                  test_file=test_file))
         if yml is None:
             yml = test_yml
         else:

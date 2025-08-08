@@ -1,8 +1,7 @@
-.pytest:
-  stage: test
-  #image: registry.cern.ch/ci4fpga/vivado:2024.1
-  tags:
-    - fpga-mid
+.snippets:
+  mambaforge_setup:
+    - apt update
+    - apt install build-essential
   before_script:
     - git clone --depth 1 --branch v3.12.0 https://github.com/nlohmann/json.git
     - export JSON_ROOT=$(pwd)/json/single_include/
@@ -10,6 +9,9 @@
     - export XILINX_AP_INCLUDE=$(pwd)/HLS_arbitrary_Precision_Types/include
     - pip install -r dev_requirements.txt
     - pip install .
+
+.pytest:
+  stage: test
   script:
     - cd tests
     - pytest $PYTESTFILE -rA
@@ -17,3 +19,20 @@
     when: always
     paths:
       - tests/prj*
+
+.pytest-plain:
+  extends: .pytest
+  image: condaforge/mambaforge
+  tags:
+    - k8s-default
+  before_script:
+    - !reference [.snippets, mambaforge_setup]
+    - !reference [.snippets, before_script]
+
+.pytest-fpga:
+  extends: .pytest
+  image: registry.cern.ch/ci4fpga/vivado:2024.1
+  tags:
+    - fpga-mid
+  before_script:
+    - !reference [.snippets, before_script]
