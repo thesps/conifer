@@ -3,6 +3,7 @@ onnxruntime
 scipy
 onnxmltools
 scikit-learn
+skl2onnx
 xgboost<3.0.0
 pybind11<3.0.0
 ydf
