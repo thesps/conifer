@@ -101,8 +101,9 @@ class CPPModel(ModelBase):
       logger.debug(f'Importing conifer_bridge_{self._stamp} from conifer_bridge_{self._stamp}.so')
       import importlib.util
       spec = importlib.util.spec_from_file_location(f'conifer_bridge_{self._stamp}', f'./conifer_bridge_{self._stamp}.so')
-      self.bridge = importlib.util.module_from_spec(spec).BDT(f"{cfg.project_name}.json")
-      spec.loader.exec_module(self.bridge)
+      module = importlib.util.module_from_spec(spec)
+      spec.loader.exec_module(module)
+      self.bridge = module.BDT(f"{cfg.project_name}.json")
     except ImportError:
       os.chdir(curr_dir)
       raise Exception("Can't import pybind11 bridge, is it compiled?")
