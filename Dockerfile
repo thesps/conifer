@@ -11,7 +11,7 @@ ENTRYPOINT ["/tini", "--"]
 USER conifer
 ENV WORKDIR=/home/conifer
 WORKDIR $WORKDIR
-COPY dev_requirements.txt .
+COPY . .
 RUN wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" && \
     bash Miniforge3.sh -b -p "${HOME}/conda" && \
     source "${HOME}/conda/etc/profile.d/mamba.sh" && \
@@ -19,7 +19,8 @@ RUN wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/lat
     mamba shell init && \
     pip install -r dev_requirements.txt && \
     git clone --depth 1 --branch v3.12.0 https://github.com/nlohmann/json.git && \
-    git clone --depth 1 https://github.com/Xilinx/HLS_arbitrary_Precision_Types.git
+    git clone --depth 1 https://github.com/Xilinx/HLS_arbitrary_Precision_Types.git && \
+    pip install .
 ENV JSON_ROOT=${WORKDIR}/json/single_include
 ENV XILINX_AP_INCLUDE=${WORKDIR}/HLS_arbitrary_Precision_Types/include
 CMD ["/bin/bash"]
