@@ -12,7 +12,7 @@ build-image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
   variables:
-    IMAGE_SHA: $CI_REGISTRY_IMAGE/conifer:$CI_COMMIT_SHA
+    IMAGE_SHA: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
   script:
     # Auth for Kaniko
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
@@ -28,8 +28,8 @@ build-image:
   stage: publish
   image: quay.io/skopeo/stable
   script:
-    - export SRC="$CI_REGISTRY_IMAGE/conifer:$CI_COMMIT_SHA"
-    - export DEST="$CI_REGISTRY_IMAGE/conifer:$IMAGE_VERSION"
+    - export SRC="$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    - export DEST="$CI_REGISTRY_IMAGE:$IMAGE_VERSION"
     - |
       skopeo copy \
         --src-creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD" \
