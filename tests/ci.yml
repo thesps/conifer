@@ -4,8 +4,9 @@
     - export JSON_ROOT=$(pwd)/json/single_include/
     - git clone --depth 1 https://github.com/Xilinx/HLS_arbitrary_Precision_Types.git
     - export XILINX_AP_INCLUDE=$(pwd)/HLS_arbitrary_Precision_Types/include
-    - pip uninstall -y conifer
     - pip install -r dev_requirements.txt
+  conifer_reinstall:
+    - pip uninstall -y conifer
     - pip install .
 
 .pytest:
@@ -24,7 +25,7 @@
   tags:
     - k8s-default
   before_script:
-    - pip uninstall -y conifer
+    - !reference [.snippets, conifer_reinstall]
 
 .pytest-fpga:
   extends: .pytest
@@ -33,3 +34,4 @@
     - fpga-mid
   before_script:
     - !reference [.snippets, before_script]
+    - !reference [.snippets, conifer_reinstall]
