@@ -1,7 +1,61 @@
 stages:
+  - build
+  - publish
   - generate
   - trigger
   - test
+
+# Build commit SHA image
+build-image:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  variables:
+    IMAGE_SHA: $CI_REGISTRY_IMAGE/conifer:$CI_COMMIT_SHA
+  script:
+    # Auth for Kaniko
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    # Build & push SHA-tagged image
+    - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $IMAGE_SHA
+    - echo "Image pushed as $IMAGE_SHA"
+  rules:
+    - changes:
+        - Dockerfile
+        - dev_requirements.txt
+
+.publish-image:
+  stage: publish
+  image: quay.io/skopeo/stable
+  script:
+    - export SRC="$CI_REGISTRY_IMAGE/conifer:$CI_COMMIT_SHA"
+    - export DEST="$CI_REGISTRY_IMAGE/conifer:$IMAGE_VERSION"
+    - |
+      skopeo copy \
+        --src-creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD" \
+        --dest-creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD" \
+        docker://"$SRC" docker://"$DEST"
+  needs:
+    - job: build-image
+      optional: true
+
+publish-image-latest:
+  extends: .publish-image
+  variables:
+    IMAGE_VERSION: latest
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - Dockerfile
+        - dev_requirements.txt
+    - if: $CI_COMMIT_TAG
+
+publish-image-tag:
+  extends: .publish-image
+  variables:
+    IMAGE_VERSION: $CI_COMMIT_TAG
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+$/'
 
 generator:
   stage: generate
