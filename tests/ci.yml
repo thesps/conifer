@@ -18,10 +18,15 @@
     when: always
     paths:
       - tests/prj*
+  rules:
+    - when: always
 
+# the $IMAGE_TAG is provided by set-image-tag job
 .pytest-plain:
   extends: .pytest
-  image: gitlab-registry.cern.ch/ssummers/conifer:latest
+  image: $CI_REGISTRY_IMAGE:$IMAGE_TAG
+  needs:
+    - set-image-tag
   tags:
     - k8s-default
   before_script:
