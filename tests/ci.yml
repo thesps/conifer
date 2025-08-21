@@ -8,6 +8,7 @@
   conifer_reinstall:
     - pip uninstall -y conifer
     - pip install .
+    - pip show conifer
 
 .pytest:
   stage: test
