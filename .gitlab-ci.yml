@@ -101,3 +101,5 @@ pytests:
       - artifact: tests/pytests.yml
         job: generator
     strategy: depend
+  variables:
+    PARENT_PIPELINE_ID: $CI_PIPELINE_ID

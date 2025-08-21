@@ -26,7 +26,8 @@
   extends: .pytest
   image: $CI_REGISTRY_IMAGE:$IMAGE_TAG
   needs:
-    - set-image-tag
+    - pipeline: $PARENT_PIPELINE_ID
+      job: set-image-tag
   tags:
     - k8s-default
   before_script:
