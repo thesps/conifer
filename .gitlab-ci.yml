@@ -20,11 +20,15 @@ build-image:
     - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $IMAGE_SHA
     - echo "Image pushed as $IMAGE_SHA"
     # leave some trace that the image was built
-    - echo '$IMAGE_SHA' > build-image.txt
+    - echo '$IMAGE_SHA' | tee build-image.txt
   rules:
     - changes:
         - Dockerfile
         - dev_requirements.txt
+  artifacts:
+    paths:
+      - build-image.txt
+
 
 .publish-image:
   stage: publish
