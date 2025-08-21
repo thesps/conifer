@@ -13,6 +13,7 @@
 .pytest:
   stage: test
   script:
+    - !reference [.snippets, conifer_reinstall]
     - cd tests
     - pytest $PYTESTFILE -rA
   artifacts:
@@ -31,8 +32,6 @@
       job: set-image-tag
   tags:
     - k8s-default
-  before_script:
-    - !reference [.snippets, conifer_reinstall]
 
 .pytest-fpga:
   extends: .pytest
@@ -41,4 +40,3 @@
     - fpga-mid
   before_script:
     - !reference [.snippets, before_script]
-    - !reference [.snippets, conifer_reinstall]
