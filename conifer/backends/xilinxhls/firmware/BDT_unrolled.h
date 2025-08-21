@@ -41,11 +41,12 @@ constexpr int fn_classes(int n_classes){
   return n_classes == 2 ? 1 : n_classes;
 }
 
-template<int n_tree, int n_nodes, int n_leaves, class input_t, class score_t, class threshold_t>
+template<int n_tree, int n_nodes, int n_leaves, int n_features, class input_t, class score_t, class weight_t, class threshold_t>
 struct Tree {
 private:
 public:
   int feature[n_nodes];
+  weight_t weight[n_nodes][n_features];
   threshold_t threshold[n_nodes];
   score_t value[n_nodes];
   int children_left[n_nodes];
@@ -85,8 +86,15 @@ public:
       #pragma HLS unroll
       // Only non-leaf nodes do comparisons
       // negative values mean is a leaf (sklearn: -2)
+      T accumulation = 0;
       if(feature[i] >= 0){
-        comparison[i] = split_fn(&x[feature[i]], &threshold[i]);
+        accumulation = 0;
+        // Multiply input x by weight vector, axis aligned uses a one hot encoded weight
+        // Oblique uses a variable weight per feature
+        for(int i_feat = 0; i_feat < n_features; i_feat++ ){
+          accumulation += x[i_feat] * weight[i][i_feat];
+        }
+        comparison[i] = split_fn(&accumulation, &threshold[i]);
       }else{
         comparison[i] = true;
       }
@@ -125,7 +133,7 @@ public:
   }
 };
 
-template<int n_trees, int n_classes, class input_t, class score_t, class threshold_t>
+template<int n_trees, int n_classes, int n_features, class input_t, class score_t, class weight_t, class threshold_t>
 struct BDT{
 
 public:
