@@ -70,9 +70,9 @@ set-image-tag:
   stage: publish
   script:
     - if [[ -s "build-image.txt" ]]; then
-        echo "IMAGE_TAG=$CI_COMMIT_SHA" > image.env;
+        echo "IMAGE_TAG=$CI_COMMIT_SHA" | tee image.env;
       else
-        echo "IMAGE_TAG=latest" > image.env;
+        echo "IMAGE_TAG=latest" | tee image.env;
       fi
   artifacts:
     reports:
