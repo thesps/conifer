@@ -23,4 +23,5 @@ RUN wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/lat
     pip install .
 ENV JSON_ROOT=${WORKDIR}/json/single_include
 ENV XILINX_AP_INCLUDE=${WORKDIR}/HLS_arbitrary_Precision_Types/include
+ENV PATH="${WORKDIR}/conda/bin:${PATH}"
 CMD ["/bin/bash"]
