@@ -1,0 +1,6 @@
+[submodule "conifer/externals/nlohmann"]
+	path = conifer/externals/nlohmann
+	url = https://github.com/nlohmann/json.git
+[submodule "conifer/externals/Vitis_HLS"]
+	path = conifer/externals/Vitis_HLS
+	url = https://github.com/Xilinx/hls-utilities.git
