@@ -623,12 +623,12 @@ class XilinxHLSModel(ModelBase):
 
             report['latency'] = lb
             report['interval'] = iib
-            for key in ['lut', 'ff']:
+            for key in ['lut', 'ff', 'dsp']:
                 report[key] = hls_report[key]
 
         vsynth_report = read_vsynth_report(f'{self.config.output_dir}/vivado_synth.rpt')
         if vsynth_report is not None:
-            report['vsynth'] = {'lut' : vsynth_report['lut'], 'ff' : vsynth_report['ff']}
+            report['vsynth'] = {'lut' : vsynth_report['lut'], 'ff' : vsynth_report['ff'], 'dsp' : vsynth_report['dsp']}
         return report
 
 def auto_config(granularity='simple'):

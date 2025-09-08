@@ -184,7 +184,6 @@ class ConiferTreeBuilder:
                 self.feature.append(0)
                 self.weight.append(weights)
                 self.threshold.append(node.condition.threshold)
-                #raise ValueError("Oblique conditions are not yet supported")
             else:
                 raise ValueError(f"No supported YDF condition: {node.condition}")
 

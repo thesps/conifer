@@ -7,6 +7,7 @@ import sys
 import numpy as np
 import ydf
 from sklearn.datasets import make_hastie_10_2
+from scipy.special import expit
 import conifer
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -46,8 +47,8 @@ hls_model = conifer.converters.convert_from_ydf(model, hls_cfg)
 hls_model.compile()
 
 # Compare the predictions of YDF, C++ Conifer, and HLS Conifer model.
-y_cpp = cpp_model.decision_function(X)
-y_hls = hls_model.decision_function(X)
+y_cpp = expit(cpp_model.decision_function(X)[:,0])
+y_hls = expit(hls_model.decision_function(X))
 y_ydf = model.predict({"x": X})
 
 
