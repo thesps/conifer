@@ -39,7 +39,9 @@ def toy_dataset(request) -> Dataset:
 
 
 @pytest.fixture(params=[("exact", "GradientBoostedTreesLearner", ydf.Task.CLASSIFICATION),
+                        ("oblique", "GradientBoostedTreesLearner", ydf.Task.CLASSIFICATION),
                         ("exact", "GradientBoostedTreesLearner", ydf.Task.REGRESSION),
+                        ("oblique", "GradientBoostedTreesLearner", ydf.Task.REGRESSION),
                         ("exact", "IsolationForestLearner", ydf.Task.ANOMALY_DETECTION)])
 def toy_ydf_model(toy_dataset, request) -> ydf.GenericModel:
     """Trains a YDF model on a toy dataset."""
