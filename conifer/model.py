@@ -122,7 +122,7 @@ class DecisionTreeBase:
     for i, x in enumerate(X):
       n = 0
       while any(self.feature[n]) != -2:
-        comp=self.split_function(sum(x[self.feature[n][j]] * self.weight[n][j] for j in range(len(self.feature[n]))),self.threshold[n])
+        comp=self.split_function(np.dot(x[self.feature[n]],self.weight[n]),self.threshold[n])
         n = self.children_left[n] if comp else self.children_right[n]
       y[i] = n
     return y

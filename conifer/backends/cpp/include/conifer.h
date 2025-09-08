@@ -58,10 +58,14 @@ std::function<bool (T, T)> createSplit(const std::string& op) {
     return split;
 }
 
-template<class T, class U, class W>
+template<typename config>
 class DecisionTree{
 
 private:
+  using U = typename config::score_t;
+  using T = typename config::threshold_t;
+  using W = typename config::weight_t;
+
   std::vector<int> feature;
   std::vector<std::vector<W>> weight_;
   std::vector<std::vector<double>> weight;
@@ -114,10 +118,14 @@ public:
 
 }; // class DecisionTree
 
-template<class T, class U, class W, bool useAddTree = false>
+template<typename config>
 class BDT{
 
 private:
+
+  using U = typename config::score_t;
+  using T = typename config::threshold_t;
+  using W = typename config::weight_t;
 
   unsigned int n_classes;
   unsigned int n_trees;
@@ -126,7 +134,7 @@ private:
   std::vector<double> init_predict;
   std::vector<U> init_predict_;
   // vector of decision trees: outer dimension tree, inner dimension class
-  std::vector<std::vector<DecisionTree<T,U, W>>> trees;
+  std::vector<std::vector<DecisionTree<config>>> trees;
   OpAdd<U> add;
 
 public:
@@ -162,7 +170,7 @@ public:
     for(unsigned int i = 0; i < n_classes; i++){
       std::transform(trees.begin(), trees.end(), std::back_inserter(values_trees.at(i)),
                      [&i, &x](auto tree_v){ return tree_v.at(i).decision_function(x); });
-      if(useAddTree){
+      if(config::useAddTree){
         values.at(i) = init_predict_.at(i);
         values.at(i) += reduce<U, OpAdd<U>>(values_trees.at(i), add);
       }else{

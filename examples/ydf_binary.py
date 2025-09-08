@@ -7,6 +7,7 @@ import sys
 import numpy as np
 import ydf
 from sklearn.datasets import make_hastie_10_2
+from scipy.special import expit
 import conifer
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -17,8 +18,8 @@ y = y == 1  # Converts Hastie's labels from {-1, 1} to {False, True}.
 
 # Train a Gradient Boosted Decision Trees model using YDF.
 model = ydf.GradientBoostedTreesLearner(
-    num_trees=1,
-    max_depth=2,
+    num_trees=100,
+    max_depth=3,
     apply_link_function=False,
     label="y",
 ).train({"x": X, "y": y})
@@ -43,9 +44,9 @@ hls_model = conifer.converters.convert_from_ydf(model, hls_cfg)
 hls_model.compile()
 
 # Compare the predictions of YDF, C++ Conifer, and HLS Conifer model.
-y_cpp = cpp_model.decision_function(X)
-y_hls = hls_model.decision_function(X)
-y_ydf = model.predict({"x": X})
+y_cpp = expit(cpp_model.decision_function(X)[:,0])
+y_hls = expit(hls_model.decision_function(X))
+y_ydf = expit(model.predict({"x": X}))
 
 
 if np.array_equal(y_hls, y_cpp):
