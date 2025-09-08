@@ -90,6 +90,7 @@ class FPUInterfaceTree:
   def from_flat_tree_dictionary(tree, iclass):
     n_nodes = len(tree['feature'])
     nodes = []
+    assert [(sum(weights)) for weights in tree['weight']][0] == 1, f'Oblique splits are not supported by the FPU backend, please use the hls backend'
     for i in range(n_nodes):
       nodes.append(FPUInterfaceNode(tree['threshold'][i],
                                     tree['value'][i],

@@ -49,6 +49,7 @@ class VHDLModel(ModelBase):
         # Convert the floating point values to integers
         tree.threshold_int = np.array([self._fp_converter.to_int(x) for x in tree.threshold])
         tree.value_int = np.array([self._fp_converter.to_int(x) for x in tree.value])
+        assert sum([(sum(weights)) for weights in tree.weight]) == self.max_depth + 1, f'Oblique splits are not supported by the VHDL backend, please use the hls backend'
 
   @copydocstring(ModelBase.write)
   def write(self):
