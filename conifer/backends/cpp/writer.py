@@ -53,12 +53,12 @@ class CPPModel(ModelBase):
       newline = line
       if '// conifer insert typedef' in line:
         
-        newline =  f"struct BDTConfig {'{'}\n"
+        newline =  "struct BDTConfig : conifer::ConiferConfiguration {\n"
         newline += f"    typedef {cfg.threshold_precision} threshold_t;\n"  
         newline += f"    typedef {cfg.input_precision} input_t;\n"
         newline += f"    typedef {cfg.weight_precision} weight_t;\n"  
         newline += f"    typedef {cfg.score_precision} score_t;\n"
-        newline += f"     static constexpr bool useAddTree = false;\n"  
+        newline += f"    static constexpr bool useAddTree = false;\n"
         newline += f"{'}'};\n"
       elif 'PYBIND11_MODULE' in line:
         newline = line.replace('conifer_bridge', f'conifer_bridge_{self._stamp}')
