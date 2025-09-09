@@ -245,6 +245,18 @@ class ModelBase:
 
     def get_config(self):
         return self.config
+    
+    def is_oblique(self):
+        '''
+        Check obliqueness of the tree by confirming if a tree's weight vector contains anything other than 0 or 1
+        '''
+        for tree_c in self.trees:
+            for tree in tree_c:
+                for weight in tree.weight:
+                    w = sum(weight)
+                    if w not in (0,1):
+                        return True
+        return False
 
     def save(self, filename=None):
         '''
