@@ -58,13 +58,22 @@ std::function<bool (T, T)> createSplit(const std::string& op) {
     return split;
 }
 
-template<typename config>
-class DecisionTree{
+class ConiferConfiguration {
+public:
+  using score_t = float;
+  using threshold_t = float;
+  using weight_t = float;
+  static const bool useAddTree = false;
+};
 
+template<typename Config>
+class DecisionTree{
+    static_assert(std::is_base_of<ConiferConfiguration, Config>::value,
+                  "Config must derive from ConiferConfiguration");
 private:
-  using U = typename config::score_t;
-  using T = typename config::threshold_t;
-  using W = typename config::weight_t;
+  using U = typename Config::score_t;
+  using T = typename Config::threshold_t;
+  using W = typename Config::weight_t;
 
   std::vector<int> feature;
   std::vector<std::vector<W>> weight_;
@@ -118,14 +127,15 @@ public:
 
 }; // class DecisionTree
 
-template<typename config>
+template<typename Config>
 class BDT{
-
+    static_assert(std::is_base_of<ConiferConfiguration, Config>::value,
+                  "Config must derive from ConiferConfiguration");
 private:
 
-  using U = typename config::score_t;
-  using T = typename config::threshold_t;
-  using W = typename config::weight_t;
+  using U = typename Config::score_t;
+  using T = typename Config::threshold_t;
+  using W = typename Config::weight_t;
 
   unsigned int n_classes;
   unsigned int n_trees;
@@ -134,7 +144,7 @@ private:
   std::vector<double> init_predict;
   std::vector<U> init_predict_;
   // vector of decision trees: outer dimension tree, inner dimension class
-  std::vector<std::vector<DecisionTree<config>>> trees;
+  std::vector<std::vector<DecisionTree<Config>>> trees;
   OpAdd<U> add;
 
 public:
@@ -170,7 +180,7 @@ public:
     for(unsigned int i = 0; i < n_classes; i++){
       std::transform(trees.begin(), trees.end(), std::back_inserter(values_trees.at(i)),
                      [&i, &x](auto tree_v){ return tree_v.at(i).decision_function(x); });
-      if(config::useAddTree){
+      if(Config::useAddTree){
         values.at(i) = init_predict_.at(i);
         values.at(i) += reduce<U, OpAdd<U>>(values_trees.at(i), add);
       }else{
