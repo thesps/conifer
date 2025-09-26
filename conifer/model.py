@@ -121,8 +121,8 @@ class DecisionTreeBase:
     y = np.zeros(X.shape[0], dtype='int')
     for i, x in enumerate(X):
       n = 0
-      while any(self.feature[n]) != -2:
-        comp=self.split_function(np.dot(x[self.feature[n]],self.weight[n]),self.threshold[n])
+      while self.feature[n] != -2:
+        comp=self.split_function(np.dot(x,self.weight[n]),self.threshold[n])
         n = self.children_left[n] if comp else self.children_right[n]
       y[i] = n
     return y
