@@ -1,7 +1,7 @@
 on:
   pull_request_target:
     types: [labeled]
-    branches: [main]
+    branches: [master]
 
 name: Update branch on PR from fork
 jobs:
