@@ -281,7 +281,10 @@ class XilinxHLSModel(ModelBase):
                 # loop over fields
                 for ifield, field in enumerate(tree_fields):
                     newline = '\t\t\t\t{'
-                    newline += ','.join(map(str, getattr(tree, field)))
+                    if field in ['weight']:
+                        newline += ','.join(map(str, getattr(tree, field))).replace("[", "{").replace("]", "}")
+                    else:
+                        newline += ','.join(map(str, getattr(tree, field)))
                     newline += '}'
                     if ifield < len(tree_fields) - 1:
                         newline += ','
