@@ -108,7 +108,7 @@ def test_vhdl_toy_model(toy_dataset, toy_ydf_model, tmp_path):
 def test_hls_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     # Create a conifer config
     cfg = conifer.backends.xilinxhls.auto_config()
-    cfg["Precision"] = "ap_fixed<32,16>"
+    cfg["Precision"] = "ap_fixed<40,16,AP_RND_CONV,AP_SAT>"
     cfg["OutputDir"] = str(tmp_path)
     cfg["XilinxPart"] = "xcu250-figd2104-2L-e"
 
