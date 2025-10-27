@@ -63,8 +63,17 @@ def treeToDict(tree : pandas.DataFrame, feature_names):
   children_left = tree.Yes.map(lambda x : int(x.split('-')[1]) if isinstance(x, str) else -1).tolist()
   children_right = tree.No.map(lambda x : int(x.split('-')[1]) if isinstance(x, str) else -1).tolist()
   values = tree.Gain.tolist()
+  
+  weight_list = []
+  for feature in features:
+    weights = [0 for i in range(len(feature_names))]
+    if feature >= 0:
+      weights[feature] = 1
+    weight_list.append(weights)
+    
   treeDict = {'feature'        : features,
               'threshold'      : thresholds,
+              'weight'         : weight_list,
               'children_left'  : children_left,
               'children_right' : children_right,
               'value'          : values

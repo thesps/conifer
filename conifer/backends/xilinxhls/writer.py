@@ -177,6 +177,9 @@ class XilinxHLSModel(ModelBase):
 
         threshold_precision = cfg.threshold_precision
         fout.write('typedef {} threshold_t;\n'.format(threshold_precision))
+        
+        weight_precision = cfg.weight_precision
+        fout.write('typedef {} weight_t;\n'.format(weight_precision))
 
         score_precision = cfg.score_precision
         fout.write('typedef {} score_t;\n'.format(score_precision))
@@ -199,12 +202,12 @@ class XilinxHLSModel(ModelBase):
         Write the parameters.h file with manually unrolled trees
         '''
         cfg = self.config
-        tree_fields = ['feature', 'threshold', 'value',
+        tree_fields = ['feature', 'weight', 'threshold',  'value',
                        'children_left', 'children_right', 'parent']
 
         # write the BDT instance
         fout.write(
-            "static const BDT::BDT<n_trees, n_classes, input_arr_t, score_t, threshold_t> bdt = \n")
+            "static const BDT::BDT<n_trees, n_classes, n_features, input_arr_t, score_t, weight_t,threshold_t> bdt = \n")
         fout.write("{ // The struct\n")
         newline = "\t" + str(self.norm) + ", // The normalisation\n"
         fout.write(newline)
@@ -226,13 +229,16 @@ class XilinxHLSModel(ModelBase):
         for itree, trees in enumerate(self.trees):
             # loop over classes
             for iclass, tree in enumerate(trees):
-                fout.write(f'static const BDT::Tree<{itree*nc+iclass}, {tree.n_nodes()}, {tree.n_leaves()}')
-                fout.write(f', input_arr_t, score_t, threshold_t>')
+                fout.write(f'static const BDT::Tree<{itree*nc+iclass}, {tree.n_nodes()}, {tree.n_leaves()}, {self.n_features} ')
+                fout.write(f', input_arr_t, score_t, weight_t,threshold_t>')
                 fout.write(f' tree_{iclass}_{itree} = {{\n')
                 # loop over fields
                 for ifield, field in enumerate(tree_fields):
                     newline = '    {'
-                    newline += ','.join(map(str, getattr(tree, field)))
+                    if field in ['weight']:
+                        newline += ','.join(map(str, getattr(tree, field))).replace("[", "{").replace("]", "}")
+                    else:   
+                        newline += ','.join(map(str, getattr(tree, field)))
                     newline += '}'
                     if ifield < len(tree_fields) - 1:
                         newline += ','
@@ -247,11 +253,11 @@ class XilinxHLSModel(ModelBase):
         Write the parameters.h file with the array of trees
         '''
 
-        tree_fields = ['feature', 'threshold', 'value',
+        tree_fields = ['feature', 'weight','threshold', 'value',
                     'children_left', 'children_right', 'parent']
 
         fout.write(
-            "static const BDT::BDT<n_trees, max_depth, n_classes, input_arr_t, score_t, threshold_t, unroll> bdt = \n")
+            "static const BDT::BDT<n_trees, max_depth, n_classes, n_features, input_arr_t, score_t, weight_t,threshold_t, unroll> bdt = \n")
         fout.write("{ // The struct\n")
         newline = "\t" + str(self.norm) + ", // The normalisation\n"
         fout.write(newline)
@@ -275,7 +281,10 @@ class XilinxHLSModel(ModelBase):
                 # loop over fields
                 for ifield, field in enumerate(tree_fields):
                     newline = '\t\t\t\t{'
-                    newline += ','.join(map(str, getattr(tree, field)))
+                    if field in ['weight']:
+                        newline += ','.join(map(str, getattr(tree, field))).replace("[", "{").replace("]", "}")
+                    else:
+                        newline += ','.join(map(str, getattr(tree, field)))
                     newline += '}'
                     if ifield < len(tree_fields) - 1:
                         newline += ','
@@ -617,12 +626,12 @@ class XilinxHLSModel(ModelBase):
 
             report['latency'] = lb
             report['interval'] = iib
-            for key in ['lut', 'ff']:
+            for key in ['lut', 'ff', 'dsp']:
                 report[key] = hls_report[key]
 
         vsynth_report = read_vsynth_report(f'{self.config.output_dir}/vivado_synth.rpt')
         if vsynth_report is not None:
-            report['vsynth'] = {'lut' : vsynth_report['lut'], 'ff' : vsynth_report['ff']}
+            report['vsynth'] = {'lut' : vsynth_report['lut'], 'ff' : vsynth_report['ff'], 'dsp' : vsynth_report['dsp']}
         return report
 
 def auto_config(granularity='simple'):

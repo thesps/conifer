@@ -204,6 +204,8 @@ class FPUModel(ModelBase):
     if self.config.fpu.dynamic_scaler:
       t, s = self.derive_scales()
       self.scale(t, s)
+      
+    assert not self.is_oblique(), f'Oblique splits are not supported by the FPU backend, please use the hls backend'
 
   def attach_device(self, device, batch_size=None):
     '''

@@ -8,6 +8,7 @@ import numpy as np
 import ydf
 from sklearn.datasets import load_iris, load_diabetes
 from sklearn.datasets import make_hastie_10_2
+from scipy.special import expit
 
 
 @dataclasses.dataclass
@@ -39,7 +40,9 @@ def toy_dataset(request) -> Dataset:
 
 
 @pytest.fixture(params=[("exact", "GradientBoostedTreesLearner", ydf.Task.CLASSIFICATION),
+                        ("oblique", "GradientBoostedTreesLearner", ydf.Task.CLASSIFICATION),
                         ("exact", "GradientBoostedTreesLearner", ydf.Task.REGRESSION),
+                        ("oblique", "GradientBoostedTreesLearner", ydf.Task.REGRESSION),
                         ("exact", "IsolationForestLearner", ydf.Task.ANOMALY_DETECTION)])
 def toy_ydf_model(toy_dataset, request) -> ydf.GenericModel:
     """Trains a YDF model on a toy dataset."""
@@ -47,13 +50,16 @@ def toy_ydf_model(toy_dataset, request) -> ydf.GenericModel:
     # skip the combinations of regression dataset with [classification|anomaly detection] model
     if toy_dataset.kind == "regression" and request.param[2] == ydf.Task.CLASSIFICATION:
         pytest.skip("Skipping classification task on regression dataset")
+    # skip classification dataset with regression model
+    if toy_dataset.kind == "classification" and request.param[2] == ydf.Task.REGRESSION:
+        pytest.skip("Skipping regression task on classification dataset")
     if toy_dataset.kind == "regression" and request.param[2] == ydf.Task.ANOMALY_DETECTION:
         pytest.skip("Skipping anomaly detection task on regression dataset")
 
     if request.param[0] == "exact":
         extra_kwargs = {}
     elif request.param[0] == "oblique":
-        extra_kwargs = {"split_axis": "SPARSE_OBLIQUE"}  # TODO: Test when supported.
+        extra_kwargs = {"split_axis": "SPARSE_OBLIQUE","sparse_oblique_weights": "CONTINUOUS"}
     else:
         assert False
 
@@ -79,6 +85,9 @@ def toy_ydf_model(toy_dataset, request) -> ydf.GenericModel:
     return model
 
 def test_vhdl_toy_model(toy_dataset, toy_ydf_model, tmp_path):
+    # Skip oblique models, evaluate ydfs node condition as no easy way to access hyperparameters
+    if isinstance(toy_ydf_model.get_tree(0).root.condition, ydf.tree.NumericalSparseObliqueCondition):
+        pytest.skip("Skipping VHDL backend for oblique splits")
     # Create a conifer config
     cfg = conifer.backends.vhdl.auto_config()
     cfg["Precision"] = "ap_fixed<32,16>"
@@ -99,7 +108,7 @@ def test_vhdl_toy_model(toy_dataset, toy_ydf_model, tmp_path):
 def test_hls_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     # Create a conifer config
     cfg = conifer.backends.xilinxhls.auto_config()
-    cfg["Precision"] = "ap_fixed<32,16>"
+    cfg["Precision"] = "ap_fixed<40,16,AP_RND_CONV,AP_SAT>"
     cfg["OutputDir"] = str(tmp_path)
     cfg["XilinxPart"] = "xcu250-figd2104-2L-e"
 
@@ -112,6 +121,9 @@ def test_hls_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     if isinstance(toy_ydf_model, ydf.IsolationForestModel):
         conifer_pred = 2**conifer_pred
     ydf_pred = np.squeeze(toy_ydf_model.predict({"x": toy_dataset.X_test}))
+    # Oblique models need expit (applying link function doesn't do anything) but only for single class classification tasks
+    if (conifer_model.is_oblique()) and len(ydf_pred.shape) == 1 and toy_dataset.kind != "regression":
+        conifer_pred = expit(conifer_pred)
     np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-3, rtol=1e-3)
 
 
@@ -130,6 +142,9 @@ def test_cpp_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     if isinstance(toy_ydf_model, ydf.IsolationForestModel):
         conifer_pred = 2**conifer_pred
     ydf_pred = np.squeeze(toy_ydf_model.predict({"x": toy_dataset.X_test}))
+    # Oblique models need expit (applying link function doesn't do anything) but only for single class classification tasks
+    if (conifer_model.is_oblique()) and len(ydf_pred.shape) == 1 and toy_dataset.kind != "regression":
+        conifer_pred = expit(conifer_pred)
     np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-3, rtol=1e-3)
 
 
@@ -143,6 +158,10 @@ def test_py_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     if isinstance(toy_ydf_model, ydf.IsolationForestModel):
         conifer_pred = 2**conifer_pred
     ydf_pred = np.squeeze(toy_ydf_model.predict({"x": toy_dataset.X_test}))
+    # Oblique models need expit (applying link function doesn't do anything) but only for single class classification tasks
+    if (isinstance(toy_ydf_model.get_tree(0).root.condition, ydf.tree.NumericalSparseObliqueCondition) 
+        and len(ydf_pred.shape) == 1) and toy_dataset.kind != "regression":
+        conifer_pred = expit(conifer_pred)
     np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-3, rtol=1e-3)
 
 def test_four_nodes_model():
@@ -190,6 +209,7 @@ def test_four_nodes_model():
             [
                 {
                     "feature": [1, -2, 0, -2, -2],
+                    "weight": [[0, 1], [0, 0], [1, 0], [0, 0], [0, 0]],
                     "threshold": [0.5, -2.0, 0.5, -2.0, -2.0],
                     "children_left": [1, -1, 3, -1, -1],
                     "children_right": [2, -1, 4, -1, -1],

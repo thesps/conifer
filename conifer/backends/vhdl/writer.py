@@ -42,6 +42,7 @@ class VHDLModel(ModelBase):
     self._fp_converter = FixedPointConverter(self.config.input_precision)
     trees = ensembleDict.get('trees', None)
     assert trees is not None, f'Missing expected key trees in ensembleDict'
+    assert not self.is_oblique(), f'Oblique splits are not supported by the VHDL backend, please use the hls backend'
     self.trees = [[BottomUpDecisionTree(treeDict, self.splitting_convention) for treeDict in trees_class] for trees_class in trees]
     for trees_class in self.trees:
       for tree in trees_class:
@@ -49,7 +50,7 @@ class VHDLModel(ModelBase):
         # Convert the floating point values to integers
         tree.threshold_int = np.array([self._fp_converter.to_int(x) for x in tree.threshold])
         tree.value_int = np.array([self._fp_converter.to_int(x) for x in tree.value])
-
+        
   @copydocstring(ModelBase.write)
   def write(self):
 

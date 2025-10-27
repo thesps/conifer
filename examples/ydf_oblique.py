@@ -17,10 +17,13 @@ X, y = make_hastie_10_2(random_state=0)
 y = y == 1  # Converts Hastie's labels from {-1, 1} to {False, True}.
 
 # Train a Gradient Boosted Decision Trees model using YDF.
+# Sparse oblique weights: BINARY, CONTINUOUS, POWER_OF_TWO, INTEGER -> TO TEST
+# hls_cfg['weight_precision'] = 'ap_fixed<18,8>' -> TO TEST
 model = ydf.GradientBoostedTreesLearner(
     num_trees=100,
     max_depth=3,
     apply_link_function=False,
+    split_axis="SPARSE_OBLIQUE",
     label="y",
 ).train({"x": X, "y": y})
 
@@ -46,7 +49,7 @@ hls_model.compile()
 # Compare the predictions of YDF, C++ Conifer, and HLS Conifer model.
 y_cpp = expit(cpp_model.decision_function(X)[:,0])
 y_hls = expit(hls_model.decision_function(X))
-y_ydf = expit(model.predict({"x": X}))
+y_ydf = model.predict({"x": X})
 
 
 if np.array_equal(y_hls, y_cpp):

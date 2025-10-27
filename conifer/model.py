@@ -31,7 +31,7 @@ class DecisionTreeBase:
   '''
   Conifer DecisionTreeBase representation class
   '''
-  _tree_fields = ['feature', 'threshold', 'value', 'children_left', 'children_right']
+  _tree_fields = ['feature', 'weight','threshold', 'value', 'children_left', 'children_right']
   def __init__(self, treeDict, splitting_convention):
     for key in DecisionTreeBase._tree_fields:
       val = treeDict.get(key, None)
@@ -122,7 +122,7 @@ class DecisionTreeBase:
     for i, x in enumerate(X):
       n = 0
       while self.feature[n] != -2:
-        comp=self.split_function(x[self.feature[n]],self.threshold[n])
+        comp=self.split_function(np.dot(x,self.weight[n]),self.threshold[n])
         n = self.children_left[n] if comp else self.children_right[n]
       y[i] = n
     return y
@@ -245,6 +245,18 @@ class ModelBase:
 
     def get_config(self):
         return self.config
+    
+    def is_oblique(self):
+        '''
+        Check obliqueness of the tree by confirming if a tree's weight vector contains anything other than 0 or 1
+        '''
+        for tree_c in self.trees:
+            for tree in tree_c:
+                for weight in tree.weight:
+                    w = sum(weight)
+                    if w not in (0,1):
+                        return True
+        return False
 
     def save(self, filename=None):
         '''
@@ -259,7 +271,7 @@ class ModelBase:
         dictionary['trees'] = [[{key : getattr(tree, key) for key in DecisionTreeBase._tree_fields} for tree in trees_i] for trees_i in self.trees]
         dictionary['config'] = self.config._to_dict()
         dictionary['metadata'] = [md._to_dict() for md in self._metadata]
-        js = json.dumps(dictionary, indent=1)
+        js = json.dumps(dictionary, indent=2)
 
         cfg = self.config
         if filename is None and cfg is not None:

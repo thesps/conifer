@@ -58,11 +58,26 @@ std::function<bool (T, T)> createSplit(const std::string& op) {
     return split;
 }
 
-template<class T, class U>
-class DecisionTree{
+class ConiferConfiguration {
+public:
+  using score_t = float;
+  using threshold_t = float;
+  using weight_t = float;
+  static const bool useAddTree = false;
+};
 
+template<typename Config>
+class DecisionTree{
+    static_assert(std::is_base_of<ConiferConfiguration, Config>::value,
+                  "Config must derive from ConiferConfiguration");
 private:
+  using U = typename Config::score_t;
+  using T = typename Config::threshold_t;
+  using W = typename Config::weight_t;
+
   std::vector<int> feature;
+  std::vector<std::vector<W>> weight_;
+  std::vector<std::vector<double>> weight;
   std::vector<int> children_left;
   std::vector<int> children_right;
   std::vector<T> threshold_;
@@ -77,8 +92,15 @@ public:
     /* Do the prediction */
     int i = 0;
     bool comparison;
+    T accumulation = 0;
     while(feature[i] != -2){ // continue until reaching leaf
-      comparison = split(x[feature[i]], threshold_[i]);
+      accumulation = 0;
+      // Multiply input x by weight vector, axis aligned uses a one hot encoded weight
+      // Oblique uses a variable weight per feature
+      for(unsigned int i_feat = 0; i_feat < weight_[i].size(); i_feat++){
+        accumulation += x[i_feat] * weight_[i][i_feat];
+      }
+      comparison = split(accumulation, threshold_[i]);
       i = comparison ? children_left[i] : children_right[i];
     }
     return value_[i];
@@ -91,17 +113,29 @@ public:
                    [](double t) -> T { return (T) t; });
     std::transform(value.begin(), value.end(), std::back_inserter(value_),
                    [](double v) -> U { return (U) v; });
+    // Load weight vector of arrays, multidimensional so no nice one liner?
+    for (int i = 0; i < weight.size(); i++) {
+      weight_.push_back(std::vector<W>());
+        for (int j = 0; j < weight[i].size(); j++) {
+            weight_[i].push_back((W) weight[i][j]);
+        }
+    }
   }
 
   // Define how to read this class to/from JSON
-  NLOHMANN_DEFINE_TYPE_INTRUSIVE(DecisionTree, feature, children_left, children_right, threshold, value);
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(DecisionTree, feature, weight, children_left, children_right, threshold, value);
 
 }; // class DecisionTree
 
-template<class T, class U, bool useAddTree = false>
+template<typename Config>
 class BDT{
-
+    static_assert(std::is_base_of<ConiferConfiguration, Config>::value,
+                  "Config must derive from ConiferConfiguration");
 private:
+
+  using U = typename Config::score_t;
+  using T = typename Config::threshold_t;
+  using W = typename Config::weight_t;
 
   unsigned int n_classes;
   unsigned int n_trees;
@@ -110,7 +144,7 @@ private:
   std::vector<double> init_predict;
   std::vector<U> init_predict_;
   // vector of decision trees: outer dimension tree, inner dimension class
-  std::vector<std::vector<DecisionTree<T,U>>> trees;
+  std::vector<std::vector<DecisionTree<Config>>> trees;
   OpAdd<U> add;
 
 public:
@@ -146,7 +180,7 @@ public:
     for(unsigned int i = 0; i < n_classes; i++){
       std::transform(trees.begin(), trees.end(), std::back_inserter(values_trees.at(i)),
                      [&i, &x](auto tree_v){ return tree_v.at(i).decision_function(x); });
-      if(useAddTree){
+      if(Config::useAddTree){
         values.at(i) = init_predict_.at(i);
         values.at(i) += reduce<U, OpAdd<U>>(values_trees.at(i), add);
       }else{
