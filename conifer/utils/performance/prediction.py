@@ -165,6 +165,8 @@ def performance_estimates(model : ModelBase, backend : str = None):
   dictionary of parameter estimates
   '''
   logger.warning('Performance estimation is experimental, use with caution!')
+  if model.is_oblique():
+    logger.warning('Performance estimation is not yet available for oblique splitting')
   if backend is None:
     backend = model.config.backend
   if backend in _estimators.keys():
