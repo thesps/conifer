@@ -490,17 +490,21 @@ class XilinxHLSModel(ModelBase):
         #######################
 
         copyfile(f'{filedir}/hls-template/bridge.cpp',
-            f"{cfg.output_dir}/bridge_tmp.cpp")
+         f"{cfg.output_dir}/bridge_tmp.cpp")
 
-        fin = open(f"{cfg.output_dir}/bridge_tmp.cpp", 'r')
-        fout = open(f"{cfg.output_dir}/bridge.cpp", 'w')
-        for line in fin.readlines():
-            newline = line
-            if 'PYBIND11_MODULE' in line:
-                newline = f'PYBIND11_MODULE(conifer_bridge_{self._stamp}, m){{\n'
-            fout.write(newline)
-        fin.close()
-        fout.close()
+        proj_name = getattr(cfg, 'project_name', 'my_prj')
+
+        with open(f"{cfg.output_dir}/bridge_tmp.cpp", 'r') as fin, \
+            open(f"{cfg.output_dir}/bridge.cpp", 'w') as fout:
+            for line in fin:
+                newline = line
+                # replace PYBIND11_MODULE line
+                if 'PYBIND11_MODULE' in line:
+                    newline = f'PYBIND11_MODULE(conifer_bridge_{self._stamp}, m){{\n'
+                # replace my_prj.h with ProjectName
+                newline = newline.replace('my_prj.h', f'{proj_name}.h')
+                fout.write(newline)
+
         os.remove(f"{cfg.output_dir}/bridge_tmp.cpp")
 
         if self.config.accelerator_config is not None:
