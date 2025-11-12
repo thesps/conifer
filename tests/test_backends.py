@@ -28,6 +28,7 @@ def backend_predict(model, odir, X, y_shape, backend, backend_config):
   cfg = the_backend.auto_config()
   cfg.update(backend_config)
   cfg['OutputDir'] = odir
+  cfg['ProjectName'] = "custom_project"
   model = conifer.converters.convert_from_sklearn(model, cfg)
   model.compile()
   y = model.decision_function(X).reshape(y_shape)
