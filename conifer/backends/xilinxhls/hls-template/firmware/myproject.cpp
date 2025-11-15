@@ -8,18 +8,6 @@ void myproject(input_arr_t x, score_arr_t score){
   bdt.decision_function(x, score);
 }
 
-void copy_input(int n, accelerator_input_t* x_in, input_arr_t x_int){
-  for(int i = 0; i < n_features; i++){
-    x_int[i] = x_in[n_features*n + i];
-  }
-}
-
-void copy_output(int n, score_arr_t score_int, accelerator_output_t* score_out){
-  for(int i = 0; i < BDT::fn_classes(n_classes); i++){
-    score_out[BDT::fn_classes(n_classes)*n + i] = score_int[i];
-  }
-}
-
 void load(int N, accelerator_input_t* x, hls::stream<input_t>& x_stream){
   for(int n = 0; n < N; n++){
     for(int i = 0; i < n_features; i++){
@@ -50,7 +38,7 @@ void store(int N, hls::stream<score_t>& score_stream, accelerator_output_t* scor
   for(int n = 0; n < N; n++){
     for(int i = 0; i < BDT::fn_classes(n_classes); i++){
       #pragma HLS pipeline
-      input_t scorei = score_stream.read();
+      score_t scorei = score_stream.read();
       score[n * BDT::fn_classes(n_classes) + i] = scorei;
     }
   }
