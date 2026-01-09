@@ -1,0 +1,34 @@
+[build-system]
+requires = [
+    "setuptools>=64",
+    "setuptools_scm[toml]>=8",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "conifer"
+dynamic = ["version"]
+description = "BDT Inference for FPGAs"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "Sioni Summers", email = "sioni@cern.ch" },
+]
+dependencies = [
+    "numpy",
+    "packaging",
+    "pybind11",
+]
+
+[project.optional-dependencies]
+xrt = ["conifer-xrt"]
+
+[project.urls]
+Homepage = "https://ssummers.web.cern.ch/conifer/"
+
+[tool.setuptools]
+packages = { find = {} }
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme = "no-local-version"
