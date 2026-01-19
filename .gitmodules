@@ -1,0 +1,6 @@
+[submodule "external/json"]
+	path = conifer/external/json
+	url = https://github.com/nlohmann/json.git
+[submodule "conifer/external/ap_types"]
+	path = conifer/external/ap_types
+	url = https://github.com/Xilinx/HLS_arbitrary_Precision_Types.git
