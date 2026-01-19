@@ -1,6 +1,7 @@
 import pynq
-import numpy as np
 import json
+import logging
+logger = logging.getLogger(__name__)
 
 class ZynqDriver:
   def __init__(self, bitfile, fpu_name=None, batch_size=1):
@@ -18,6 +19,7 @@ class ZynqDriver:
     self.interfaceNodes = pynq.buffer.allocate((self.config['tree_engines'], self.config['nodes'], 7), dtype='int32')
     self.scales = pynq.buffer.allocate(self.config['features']+1, dtype='float')
     self._init_buffers(batch_size=batch_size)
+    logger.info(f'Initialized FPU driver for {fpu_name} with configuration: {self.config}')
 
   def get_info_len(self):
     self.fpu.write(self.fpu.register_map.instruction.address, 0)
@@ -85,6 +87,7 @@ class ZynqDriver:
       batch_size = self.Xbuf.shape[0]
     nc = 1 if n_classes == 2 else n_classes
     self._init_Xy_buffers((batch_size, n_features), (batch_size, nc))
+    logging.info(f'Loaded model onto FPU with n_features={n_features}, n_classes={n_classes}, batch_size={batch_size}')
 
   def read(self):
     '''
@@ -98,7 +101,7 @@ class ZynqDriver:
     self.fpu.write(self.fpu.register_map.instruction.address, 2)
     self.fpu.write(self.fpu.register_map.CTRL.address, 1)
 
-  def predict(self, X):
+  def decision_function(self, X):
     '''
     Execute inference on FPU
 
@@ -121,8 +124,23 @@ class ZynqDriver:
     self.fpu.write(self.fpu.register_map.instruction.address, 3)
     self.fpu.write(self.fpu.register_map.CTRL.address, 1)
     return self.ybuf[:]
+  
+  def predict(self, X):
+    '''
+    Execute inference on FPU
 
-class AlveoDriver:
+    Parameters
+    ----------
+    X: ndarray of shape (batch_size, n_features), dtype float32 or int32
+      Input sample. Shape must match allocated buffers
+
+    Returns
+    ----------
+    score: ndarray of shape (batch_size, n_classes)
+    '''
+    return self.decision_function(X)
+
+class PynqAlveoDriver:
   def __init__(self, bitfile, fpu_name=None, batch_size=1):
     self.overlay = pynq.Overlay(bitfile)
     self.fpus = [getattr(self.overlay, at) for at in dir(self.overlay) if 'FPU' in at]
@@ -133,6 +151,7 @@ class AlveoDriver:
     self.config = info['configuration']
     self.metadata = info['metadata']
     self._init_buffers(batch_size=batch_size)
+    logger.info(f'Initialized FPU driver for {fpu_name} with configuration: {self.config}')
 
   def get_info(self):
     '''
@@ -192,7 +211,7 @@ class AlveoDriver:
     nc = 1 if n_classes == 2 else n_classes
     self._init_Xy_buffers((batch_size, n_features), (batch_size, nc))
 
-  def predict(self, X):
+  def decision_function(self, X):
     '''
     Execute inference on FPU
 
@@ -217,5 +236,18 @@ class AlveoDriver:
       pass
     self.ybuf.sync_from_device()
     return self.ybuf
-
   
+  def predict(self, X):
+    '''
+    Execute inference on FPU
+
+    Parameters
+    ----------
+    X: ndarray of shape (batch_size, n_features), dtype float32 or int32
+      Input sample. Shape must match allocated buffers
+
+    Returns
+    ----------
+    score: ndarray of shape (batch_size, n_classes)
+    '''
+    return self.decision_function(X)

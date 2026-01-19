@@ -13,7 +13,8 @@ import sys
 import json
 import numpy as np
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logger = logging.getLogger('conifer')
+logger.setLevel(logging.INFO)
 
 # First, either build an FPU yourself (see build_fpu_alveo.py and build_fpu_pynq.py)
 # Or download one from the conifer website for your device.
@@ -35,10 +36,14 @@ stamp = int(datetime.datetime.now().timestamp())
 cfg = conifer.backends.fpu.auto_config()
 
 # Important! Set the target FPU config to match the one loaded on the board
-cfg['FPU'] = device.config
+cfg['FPU'] = device.config.__dict__
 
 # Create and compile the model for target FPU
 model = conifer.converters.convert_from_sklearn(clf, cfg)
+
+# Rescale the model simplistically
+model.scale(1./model.threshold_scale, model.score_scale)
+model.scale(1000., 1000.)
 
 # Load this model onto the FPU
 # Important! Set the batch size to allocate buffers

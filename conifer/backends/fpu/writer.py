@@ -214,7 +214,7 @@ class FPUModel(ModelBase):
     Parameters
     ----------
     device
-      FPU runtime device (AlveoDriver or ZynqDriver)
+      FPU runtime device (XrtDriver or ZynqDriver)
     batch_size: integer
       batch size used for allocating buffers
     '''
@@ -293,7 +293,7 @@ class FPUModel(ModelBase):
   @copydocstring(ModelBase.write)
   def decision_function(self, X):
     assert self.device is not None, 'No device attached! Did you load the driver and attach_device first?'
-    return self.device.predict(X)
+    return self.device.decision_function(X)
 
   def write(self):
     '''

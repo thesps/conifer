@@ -124,8 +124,8 @@ public:
     int nodes = 0;
     int tree_engines = 0;
     int features = 0;
-    std::string threshold_type;
-    std::string score_type;
+    int threshold_type;
+    int score_type;
     bool dynamic_scaler = false;
 
     ConiferFPUKernelInfo() = default;
@@ -135,36 +135,7 @@ public:
         from_json(j.at("configuration"), *this);
     }
 
-    friend void from_json(const nlohmann::json& j, ConiferFPUKernelInfo& c) {
-        j.at("nodes").get_to(c.nodes);
-        j.at("tree_engines").get_to(c.tree_engines);
-        j.at("features").get_to(c.features);
-        j.at("dynamic_scaler").get_to(c.dynamic_scaler);
-
-        // threshold_type: string OR number → string
-        {
-            const auto& v = j.at("threshold_type");
-            if (v.is_string())
-                c.threshold_type = v.get<std::string>();
-            else if (v.is_number())
-                c.threshold_type = std::to_string(v.get<int>());
-            else
-                throw std::runtime_error(
-                    "score_type must be string or number");
-        }
-
-        // score_type: string OR number → string
-        {
-            const auto& v = j.at("score_type");
-            if (v.is_string())
-                c.score_type = v.get<std::string>();
-            else if (v.is_number())
-                c.score_type = std::to_string(v.get<int>());
-            else
-                throw std::runtime_error(
-                    "score_type must be string or number");
-        }
-    }
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(ConiferFPUKernelInfo, nodes, tree_engines, features, threshold_type, score_type, dynamic_scaler);
 };
 
 int get_conifer_fpu_kernel_info_length(const int device_index, const std::string& xclbin_path, const std::string& kernel_name) {
