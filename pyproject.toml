@@ -28,6 +28,7 @@ Homepage = "https://ssummers.web.cern.ch/conifer/"
 
 [tool.setuptools]
 packages = { find = {} }
+include-package-data = true
 
 [tool.setuptools_scm]
 version_scheme = "post-release"
