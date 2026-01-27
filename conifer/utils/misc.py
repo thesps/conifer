@@ -25,9 +25,9 @@ def _ap_include():
     logger.warning(f'Could not find ap_ headers (e.g., ap_fixed.h) at {ap_types_path}')
   logger.debug(f'Including ap_ headers from {ap_types_path}')
 
-  if not os.path.isdir(hls_stream_path):
-    logger.warning(f'Could not find hls_stream headers at {hls_stream_path}')
-  logger.debug(f'Including hls_stream headers from: {hls_stream_path}')
+  if not os.path.isdir(hls_stream_path) or not os.path.exists(f'{ap_types_path}/hls_stream.h'):
+    logger.warning(f'Could not find hls_stream headers at {hls_stream_path} or {ap_types_path}/hls_stream.h')
+  logger.debug(f'Including hls_stream headers from: {ap_types_path if hls_stream_path == "" else hls_stream_path}')
 
   ret = f'-I{ap_types_path}' + (f' -I{hls_stream_path}' if hls_stream_path != '' else '')
   return ret
@@ -36,7 +36,7 @@ def _json_include():
   '''
   Get the -I include option for the g++ compile for JSON headers.
   '''
-  json_path = f'{conifer.__path__[0]}/external/json/'
+  json_path = f'{conifer.__path__[0]}/external/json/include'
   if not os.path.isdir(json_path):
     logger.warning(f'Could not find JSON headers at expected location: {json_path}')
   ret = f'-I{json_path}'
