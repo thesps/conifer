@@ -1,4 +1,5 @@
 stages:
+  - build
   - generate
   - trigger
   - test
@@ -16,6 +17,7 @@ generator:
   artifacts:
     paths:
       - tests/pytests.yml
+  needs: []
 
 pytests:
   stage: trigger
@@ -25,3 +27,25 @@ pytests:
       - artifact: tests/pytests.yml
         job: generator
     strategy: depend
+
+# install conifer-xrt
+build-conifer-xrt:
+  stage: build
+  image: ubuntu:22.04
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+    GIT_SUBMODULE_DEPTH: 1
+  before_script:
+    - apt update
+    - apt install -y wget git ocl-icd-libopencl1 ocl-icd-opencl-dev uuid-dev dkms udev libboost-filesystem1.74.0 libboost-program-options1.74.0 libprotobuf23
+    - wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    - bash Miniforge3.sh -b -p "${HOME}/conda"
+    - source "${HOME}/conda/etc/profile.d/mamba.sh"
+    - mamba activate
+    - wget -O xrt.deb https://download.amd.com/opendownload/xrt/xrt_202510.2.19.194_22.04-amd64-xrt.deb
+    - dpkg -i xrt.deb
+    - source /opt/xilinx/xrt/setup.sh
+  script:
+    - cd conifer-xrt
+    - pip install .
+    - python -c 'import conifer_xrt_runtime'
