@@ -1,0 +1,10 @@
+{
+  "name": "aup-zu3",
+  "xilinx_part": "xczu3eg-sfvc784-2-e",
+  "board_part": "realdigital.org:aup-zu3-8gb:part0:1.0",
+  "processing_system_ip": "xilinx.com:ip:zynq_ultra_ps_e:3.5",
+  "processing_system": "zynq_ultra_ps_e",
+  "ps_config": "CONFIG.PSU__USE__S_AXI_GP2 {1} CONFIG.PSU__USE__M_AXI_GP2 {1}",
+  "ps_s_axi_port": "S_AXI_HP0_FPD",
+  "ps_m_axi_port": "M_AXI_HPM0_LPD"
+ }
