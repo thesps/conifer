@@ -2,7 +2,7 @@
 #include "parameters.h"
 #include "myproject.h"
 
-void myproject(input_arr_t x, score_arr_t score){
+void myproject(input_arr_t x, score_arr_t score, score_t tree_scores[BDT::fn_classes(n_classes) * n_trees]){
   // conifer insert pragmas
   bdt.decision_function(x, score);
 }
