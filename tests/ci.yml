@@ -25,7 +25,7 @@
 
 .pytest-plain:
   extends: .pytest
-  image: ghdl/ghdl:6.0.0-dev-gcc-ubuntu-22.04
+  image: ghdl/ghdl:7.0.0-dev-gcc-ubuntu-24.04
   tags:
     - k8s-default
   before_script:
