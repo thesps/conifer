@@ -121,9 +121,6 @@ def test_hls_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     if isinstance(toy_ydf_model, ydf.IsolationForestModel):
         conifer_pred = 2**conifer_pred
     ydf_pred = np.squeeze(toy_ydf_model.predict({"x": toy_dataset.X_test}))
-    # Oblique models need expit (applying link function doesn't do anything) but only for single class classification tasks
-    if (conifer_model.is_oblique()) and len(ydf_pred.shape) == 1 and toy_dataset.kind != "regression":
-        conifer_pred = expit(conifer_pred)
     np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-3, rtol=1e-3)
 
 
@@ -142,9 +139,6 @@ def test_cpp_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     if isinstance(toy_ydf_model, ydf.IsolationForestModel):
         conifer_pred = 2**conifer_pred
     ydf_pred = np.squeeze(toy_ydf_model.predict({"x": toy_dataset.X_test}))
-    # Oblique models need expit (applying link function doesn't do anything) but only for single class classification tasks
-    if (conifer_model.is_oblique()) and len(ydf_pred.shape) == 1 and toy_dataset.kind != "regression":
-        conifer_pred = expit(conifer_pred)
     np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-3, rtol=1e-3)
 
 
@@ -158,10 +152,6 @@ def test_py_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     if isinstance(toy_ydf_model, ydf.IsolationForestModel):
         conifer_pred = 2**conifer_pred
     ydf_pred = np.squeeze(toy_ydf_model.predict({"x": toy_dataset.X_test}))
-    # Oblique models need expit (applying link function doesn't do anything) but only for single class classification tasks
-    if (isinstance(toy_ydf_model.get_tree(0).root.condition, ydf.tree.NumericalSparseObliqueCondition) 
-        and len(ydf_pred.shape) == 1) and toy_dataset.kind != "regression":
-        conifer_pred = expit(conifer_pred)
     np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-3, rtol=1e-3)
 
 def test_four_nodes_model():
