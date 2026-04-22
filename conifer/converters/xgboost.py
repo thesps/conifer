@@ -1,6 +1,8 @@
 import json
 import xgboost as xgb
 import pandas
+from scipy.special import logit
+import numpy as np
 from packaging import version
 from typing import Union
 import logging
@@ -40,7 +42,7 @@ def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor]):
                     'n_classes' : n_classes,
                     'n_features' : n_features,
                     'trees' : [],
-                    'init_predict' : [0] * fn_classes,
+                    'init_predict' : parse_base_score(meta, fn_classes),
                     'norm' : 1,
                     'library':'xgboost',
                     'splitting_convention': splitting_conventions['xgboost'],
@@ -79,3 +81,29 @@ def treeToDict(tree : pandas.DataFrame, feature_names):
               'value'          : values
               }
   return treeDict
+
+def parse_base_score(meta_json, n_classes):
+  '''
+  Extract the base score from the learner
+  '''
+  if __xgb_version >= version.parse('2'):
+
+    objective = meta_json.get('learner').get('objective').get('name')
+    _proba_objectives = ['reg:logistic', 'binary:logistic', 'multi:softmax', 'multi:softprob']
+    base_score_string = meta_json.get('learner').get('learner_model_param').get('base_score')
+    base_score_string_values = base_score_string.strip('[]').split(',')
+    base_score_float = list(map(float, base_score_string_values))
+    all_zeros = not np.any(base_score_float)
+    if not all_zeros:
+      # for objectives predicting probabilities, take the logit to get a raw base score
+      # otherwise the base score is already a raw value (e.g. regression)
+      if objective in _proba_objectives:
+        base_score = logit(base_score_float).tolist()
+      else:
+        base_score = base_score_float
+      assert len(base_score) == n_classes, f'Expected {n_classes} base_scores values, got {len(base_score)}'
+      return base_score
+    else:
+      return [0.] * n_classes
+  else:
+    return [0.] * n_classes
