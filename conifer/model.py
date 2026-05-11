@@ -127,9 +127,11 @@ class DecisionTreeBase:
       y[i] = n
     return y
 
-  def decision_function(self, X):
+  def decision_function(self, X, return_leaf=False):
     assert len(X.shape) == 2, 'Expected 2D input'
     yi = self.apply(X)
+    if return_leaf:
+      return yi
     return np.array(self.value)[yi]
 
 class ConfigBase:
@@ -330,7 +332,7 @@ class ModelBase:
             graph.write(filename, format=extension)
         return graph
 
-    def decision_function(self, X, trees=False):
+    def decision_function(self, X, trees=False, return_leaf=False):
         '''
         Compute the decision function of `X`.
         The backend performs the actual computation
@@ -339,7 +341,13 @@ class ModelBase:
         ----------
         X: array-like of shape (n_samples, n_features)
             Input sample
-        
+
+        trees: bool, optional
+            If True, returns the decision function of each tree in the ensemble. Otherwise, returns the sum of the decision function of all trees. Defaults to False.
+
+        return_leaf: bool, optional
+            If True, returns the leaf node indices of each tree in the ensemble. Otherwise, returns the decision function. Defaults to False.
+
         Returns
         ----------    
         score: ndarray of shape (n_samples, n_classes) or (n_samples,)   
@@ -353,7 +361,9 @@ class ModelBase:
         y = np.zeros((self.n_trees, n_classes, n_samples))
         for it, trees in enumerate(self.trees):
             for ic, tree_c in enumerate(trees):
-                y[it, ic] = tree_c.decision_function(X)
+                y[it, ic] = tree_c.decision_function(X, return_leaf=return_leaf)
+        if return_leaf:
+            return np.squeeze(np.transpose(y))
         y = (np.transpose(np.sum(y, axis=0)) + self.init_predict) * self.norm
         return np.squeeze(y)
 
