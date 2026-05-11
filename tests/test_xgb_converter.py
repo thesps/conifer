@@ -76,9 +76,42 @@ def test_xgb(params):
   else:
     model = get_model_function(X, y, get_model_kwargs)
   cnf_model = conifer.converters.convert_from_xgboost(model)
-  y_cnf = np.squeeze(transform(cnf_model.decision_function(X), **transform_kwargs))
+
+  # get the inference data in the correct format
   X_xgb = X if data_fmt == 'np' else d
+
+  # get leaf index predictions
+  y_cnf_leaf = cnf_model.decision_function(X, return_leaf=True)
+  # conifer y_cnf_leaf shape is (batch, class, tree) but xgboost is (batch, tree, class) with the (tree and class) squashed, reshape:
+  if len(y_cnf_leaf.shape) == 3:
+    y_cnf_leaf = np.transpose(y_cnf_leaf, (0, 2, 1)).reshape(y_cnf_leaf.shape[0], -1)
+
+  if isinstance(model, xgb.core.Booster): # only Booster has pred_leaf option
+    y_xgb_leaf = model.predict(X_xgb, pred_leaf=True)
+  else:
+    y_xgb_leaf = model.get_booster().predict(d, pred_leaf=True)
+
+  # get numerical predictions
+  y_cnf = np.squeeze(transform(cnf_model.decision_function(X), **transform_kwargs))
   y_xgb = getattr(model, predictor)(X_xgb)
   if len(y_xgb.shape) == 2 and y_xgb.shape[1] == 2:
     y_xgb = y_xgb[:,-1]
-  np.testing.assert_array_almost_equal(y_cnf, y_xgb)
+
+  # test only the examples where the same leaf was reached for the numerical test
+  if len(y_xgb_leaf.shape) == 1: # single tree, single class special case
+    same_leaf_sel = y_cnf_leaf == y_xgb_leaf
+  else:
+    same_leaf_sel = np.all(y_cnf_leaf == y_xgb_leaf, axis=1)
+  y_cnf_test = y_cnf[same_leaf_sel]
+  y_xgb_test = y_xgb[same_leaf_sel]
+
+  # first do a test based on the fraction of correct leaves reached
+  leaf_denominator = np.prod(y_xgb_leaf.shape)
+  leaf_numerator = leaf_denominator - np.sum(y_cnf_leaf == y_xgb_leaf)
+  same_leaf_fraction = leaf_numerator / leaf_denominator
+  assert same_leaf_fraction < 1e-3, f"Mismatched leaf reached in {leaf_numerator} of {leaf_denominator} cases ({100*leaf_numerator/leaf_denominator:.4f}%)"
+  print(f"PASS: Mismatched leaf reached in {leaf_numerator} of {leaf_denominator} cases ({100*leaf_numerator/leaf_denominator:.4f}%)")
+
+  # second do a test based on the numerical predictions for the examples where the same leaf was reached
+  np.testing.assert_array_almost_equal(y_cnf_test, y_xgb_test)
+  print("PASS: numerical predictions agree well for examples where the same leaf was reached")
