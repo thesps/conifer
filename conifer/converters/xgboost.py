@@ -18,7 +18,7 @@ def convert(bdt : Union[xgb.core.Booster, xgb.XGBClassifier, xgb.XGBRegressor]):
       bst = bdt.get_booster()
     meta = json.loads(bst.save_config())
     if __xgb_version >= version.parse('2'):
-      logger.warning(f'xgboost versions >= 2.0.0 are not yet fully supported. You have xgboost {__xgb_version}')
+      logger.warning(f'Some prediction disagreements are observed for xgboost versions >= 2.0.0. You have xgboost {__xgb_version}. Extra validation is advised.')
       max_depth = int(meta.get('learner').get('gradient_booster').get('tree_train_param').get('max_depth'))
     else:
       updater = meta.get('learner').get('gradient_booster').get('gbtree_train_param').get('updater').split(',')[0]
