@@ -1,5 +1,8 @@
 <img src="https://github.com/thesps/conifer/raw/master/conifer_v1.png" width="250" alt="conifer">
 
+[![CI Status](https://gitlab.cern.ch/ssummers/conifer/badges/master/pipeline.svg?key_text=CI+Status)](https://gitlab.cern.ch/ssummers/conifer/-/pipelines?scope=all&ref=master)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/thesps/conifer)](https://github.com/thesps/conifer/releases)
+
 Conifer translates trained Boosted Decision Trees to FPGA firmware for extreme low latency inference. 
 
 # Installation
