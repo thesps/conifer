@@ -101,6 +101,8 @@ def parse_base_score(meta_json, n_classes):
         base_score = logit(base_score_float).tolist()
       else:
         base_score = base_score_float
+      if len(base_score) == 1: # expected with xgboost 2 but not xgboost 3
+        base_score = [base_score[0]] * n_classes
       assert len(base_score) == n_classes, f'Expected {n_classes} base_scores values, got {len(base_score)}'
       return base_score
     else:
