@@ -4,7 +4,7 @@ scipy
 onnxmltools
 scikit-learn
 skl2onnx
-xgboost<3.0.0
+xgboost
 pybind11
 ydf
 pandas
