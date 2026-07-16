@@ -129,6 +129,8 @@ class CPPModel(ModelBase):
     else:
       raise Exception(f"Can't handle data shape {X.shape}, expected 1D or 2D shape")
     os.chdir(curr_dir)
+    if len(y.shape) == 2 and y.shape[1] == 1:
+      y = y.reshape(y.shape[0])
     return y
 
   def build(self):
