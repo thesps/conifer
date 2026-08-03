@@ -5,40 +5,12 @@ import numpy as np
 import copy
 from conifer.utils import _ap_include, _gcc_opts, _py_executable, copydocstring
 from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig, read_hls_report, read_vsynth_report
+from conifer.backends.common import _TOOLS, get_tool_exe_in_path, get_hls, get_hls_build_command
 from conifer.backends.boards import get_board_config, get_builder, BoardConfig, AlveoConfig, ZynqConfig
 from conifer.model import ModelBase, ConfigBase
 import datetime
 import logging
 logger = logging.getLogger(__name__)
-
-_TOOLS = {
-    'vivadohls': 'vivado_hls',
-    'vitishls': 'vitis_hls'
-}
-
-
-def get_tool_exe_in_path(tool):
-    if tool not in _TOOLS.keys():
-        return None
-
-    tool_exe = _TOOLS[tool]
-
-    if os.system('type {} > /dev/null 2>/dev/null'.format(tool_exe)) != 0:
-        return None
-
-    return tool_exe
-
-
-def get_hls():
-
-    tool_exe = None
-
-    for tool in _TOOLS.keys():
-        tool_exe = get_tool_exe_in_path(tool)
-        if tool_exe != None:
-            break
-
-    return tool_exe
 
 class XilinxHLSAcceleratorConfig(ConfigBase):
     _config_fields = ['interface_type', 'board']
@@ -574,11 +546,18 @@ class XilinxHLSModel(ModelBase):
         rval = True
         hls_tool = get_hls()
         if hls_tool is None:
-            logger.error("No HLS in PATH. Did you source the appropriate Xilinx Toolchain?")
+            logger.error("No HLS in PATH (looked for {}). Did you source the appropriate Xilinx Toolchain?".format(', '.join(_TOOLS.values())))
             rval = False
         else:
-            cmd = '{hls_tool} -f build_hls.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} export={export}" > build.log'\
-                .format(hls_tool=hls_tool, reset=reset, csim=csim, synth=synth, cosim=cosim, export=export)
+            # write the build options to a file sourced by build_hls.tcl, since the
+            # unified vitis-run CLI cannot forward command line arguments to the script
+            opts = {'reset': reset, 'csim': csim, 'synth': synth, 'cosim': cosim, 'export': export}
+            with open('build_opt.tcl', 'w') as f:
+                f.write('array set opt {\n')
+                for opt, val in opts.items():
+                    f.write(f'    {opt} {int(val)}\n')
+                f.write('}\n')
+            cmd = f'{get_hls_build_command(hls_tool, "build_hls.tcl")} > build.log'
             start = datetime.datetime.now()
             logger.info(f'build starting {start:%H:%M:%S}')
             logger.debug(f'build invoking {hls_tool} with command "{cmd}"')
