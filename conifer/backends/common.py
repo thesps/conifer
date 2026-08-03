@@ -4,6 +4,55 @@ import xml.etree.ElementTree as ET
 import re
 import os
 
+# HLS tools that can run the build Tcl scripts, in order of preference.
+# vitis_hls was removed in Vitis 2025.1.
+_TOOLS = {
+    'vivadohls': 'vivado_hls',
+    'vitishls': 'vitis_hls',
+    'vitis_unified': 'vitis-run'
+}
+
+
+def get_tool_exe_in_path(tool):
+    if tool not in _TOOLS.keys():
+        return None
+
+    tool_exe = _TOOLS[tool]
+
+    if os.system('type {} > /dev/null 2>/dev/null'.format(tool_exe)) != 0:
+        return None
+
+    return tool_exe
+
+
+def get_hls():
+
+    tool_exe = None
+
+    for tool in _TOOLS.keys():
+        tool_exe = get_tool_exe_in_path(tool)
+        if tool_exe != None:
+            break
+
+    return tool_exe
+
+
+def get_hls_build_command(tool_exe, tcl_script):
+    '''
+    Get the shell command running a build Tcl script with the discovered HLS tool
+    Parameters
+    ----------
+    tool_exe : string
+        name of the HLS tool executable, one of the values of _TOOLS
+    tcl_script : string
+        name of the Tcl script to run
+    '''
+    if tool_exe == 'vitis-run':
+        return f'vitis-run --mode hls --tcl {tcl_script}'
+    else:
+        return f'{tool_exe} -f {tcl_script}'
+
+
 class BottomUpDecisionTree(DecisionTreeBase):
   _tree_fields = DecisionTreeBase._tree_fields + ['parent', 'depth', 'iLeaf']
   def __init__(self, treeDict, splitting_convention):
