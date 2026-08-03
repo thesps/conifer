@@ -31,6 +31,7 @@ Available backends:
 - VHDL - a direct-to-VHDL implementation, deeply pipelined for high clock frequencies
 - FPU - Forest Processing Unit reusable IP core for flexible BDT inference
 - C++ - intended for bit-accurate emulation on CPU with a single include header file
+- C++ QuickScorer - the cache-friendly QuickScorer traversal on CPU, bit-accurate with the C++ backend and faster for large ensembles
 - Python - intended for validation of model conversion and to allow inspection of a model without a configuration
 
 See our paper in JINST: "[Fast inference of Boosted Decision Trees in FPGAs for particle physics](https://iopscience.iop.org/article/10.1088/1748-0221/15/05/P05026)".
@@ -116,7 +117,7 @@ print(fpu.get_info())
 </details>
 
 # Development
-1. Clone the github repository: `git clone https://github.com/thesps/conifer`
+1. Clone the github repository: `git clone https://github.com/thesps/conifer --recurse-submodules`
 1. Install the dependencies listed in the *Installation* section. For instance:
     - Clone nlohmann json: `git clone https://github.com/nlohmann/json`
     - Clone Arbitrary Precision: `git clone https://github.com/Xilinx/HLS_arbitrary_Precision_Types`
