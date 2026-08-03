@@ -9,6 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 from conifer.model import ModelBase, ConfigBase, ModelMetaData
 from conifer.utils import copydocstring
+from conifer.backends.common import _TOOLS, get_hls, get_hls_build_command
 from conifer.backends.boards import get_board_config, get_builder, BoardConfig, ZynqConfig, AlveoConfig
 
 class FPUInterfaceNode:
@@ -418,9 +419,14 @@ class FPUBuilder:
     os.chdir(self.output_dir)
     success = True
     if csynth:
-      cmd = 'vitis_hls -f build_hls.tcl > hls_build.log'
-      logger.info(f'Building FPU HLS with command "{cmd}"')
-      success = success and os.system(cmd)==0
+      hls_tool = get_hls()
+      if hls_tool is None:
+        logger.error("No HLS in PATH (looked for {}). Did you source the appropriate Xilinx Toolchain?".format(', '.join(_TOOLS.values())))
+        success = False
+      else:
+        cmd = f'{get_hls_build_command(hls_tool, "build_hls.tcl")} > hls_build.log'
+        logger.info(f'Building FPU HLS with command "{cmd}"')
+        success = success and os.system(cmd)==0
     if success and bitfile:
       success = success and self.board_builder.build(**build_kwargs)
     os.chdir(cwd)

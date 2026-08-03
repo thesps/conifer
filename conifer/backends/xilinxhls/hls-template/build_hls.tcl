@@ -13,10 +13,21 @@ array set opt {
     vsynth     0
 }
 
-foreach arg $::argv {
-  foreach o [lsort [array names opt]] {
-    regexp "$o=+(\\w+)" $arg unused opt($o)
-  }
+# conifer writes the build options to build_opt.tcl, since the unified
+# vitis-run CLI (Vitis >=2025.1) cannot forward cli args to the script
+# (no tclargs in https://docs.amd.com/r/en-US/ug1702-vitis-accelerated-reference/vitis-run-Command)
+if {[file exists [file join $tcldir build_opt.tcl]]} {
+    source [file join $tcldir build_opt.tcl]
+}
+
+# CLI args override the file options when running the script directly
+# with the classic tools, e.g. vitis_hls -f build_hls.tcl "csim=1"
+if {[info exists ::argv]} {
+    foreach arg $::argv {
+        foreach o [lsort [array names opt]] {
+            regexp "$o=+(\\w+)" $arg unused opt($o)
+        }
+    }
 }
 
 file mkdir tb_data
