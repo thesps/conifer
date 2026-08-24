@@ -31,8 +31,9 @@ Available backends:
 - VHDL - a direct-to-VHDL implementation, deeply pipelined for high clock frequencies
 - FPU - Forest Processing Unit reusable IP core for flexible BDT inference
 - C++ - intended for bit-accurate emulation on CPU with a single include header file
-- C++ QuickScorer - the cache-friendly QuickScorer traversal on CPU, bit-accurate with the C++ backend and faster for large ensembles
 - Python - intended for validation of model conversion and to allow inspection of a model without a configuration
+
+The C++ and Python backends provide different traversal algorithms, selected with the `Algorithm` configuration key: a default root-to-leaf `treewalk`, and the vectorized traversal [QuickScorer](https://doi.org/10.1145/2766462.2767733) `quickscorer` and `blockwise-quickscorer`. The QuickScorer implementation supports only axis-aligned trees with at most 64 leaves for now.
 
 See our paper in JINST: "[Fast inference of Boosted Decision Trees in FPGAs for particle physics](https://iopscience.iop.org/article/10.1088/1748-0221/15/05/P05026)".
 

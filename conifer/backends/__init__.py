@@ -4,7 +4,6 @@ import importlib.util
 from conifer.backends import xilinxhls
 from conifer.backends import vhdl
 from conifer.backends import cpp
-from conifer.backends import cpp_qs
 from conifer.backends import fpu
 from conifer.backends import python
 from conifer.backends import boards
@@ -12,7 +11,6 @@ from conifer.backends import boards
 _backend_map = {'xilinxhls' : xilinxhls,
                 'vhdl'      : vhdl,
                 'cpp'       : cpp,
-                'cpp_qs'    : cpp_qs,
                 'fpu'       : fpu,
                 'python'    : python,
                 'py'        : python,

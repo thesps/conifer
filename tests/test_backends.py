@@ -60,9 +60,9 @@ tests = [*[Tester(*model0, 'xilinxhls', 'cpp', {'Precision' : p}, {'Precision' :
          Tester(*model0, 'xilinxhls', 'xilinxhls', {'Unroll' : True}, {'Unroll' : False}),
          Tester(*model0, 'python', 'python', {}, {'Algorithm': 'quickscorer'}),
          Tester(*model0, 'python', 'python', {}, {'Algorithm': 'blockwise-quickscorer', 'Tau' : 7, 'Delta' : 13}),
-         *[Tester(*model0, 'cpp', 'cpp_qs', {'Precision' : p}, {'Precision' : p}) for p in hls_cpp_precisions],
-         Tester(*model0, 'cpp', 'cpp_qs', mixed_precision_cfg, mixed_precision_cfg),
-         Tester(*model0, 'cpp', 'cpp_qs', {}, {'Tau' : 7, 'Delta' : 13})]
+         *[Tester(*model0, 'cpp', 'cpp', {'Precision' : p}, {'Precision' : p, 'Algorithm' : 'quickscorer'}) for p in hls_cpp_precisions],
+         Tester(*model0, 'cpp', 'cpp', mixed_precision_cfg, {**mixed_precision_cfg, 'Algorithm' : 'quickscorer'}),
+         Tester(*model0, 'cpp', 'cpp', {}, {'Algorithm' : 'blockwise-quickscorer', 'Tau' : 7, 'Delta' : 13})]
 
 @pytest.mark.parametrize('test', tests)
 def test_backend_equality(test):
