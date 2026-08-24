@@ -179,7 +179,7 @@ public:
     values.resize(n_classes, U(0));
     for(unsigned int i = 0; i < n_classes; i++){
       std::transform(trees.begin(), trees.end(), std::back_inserter(values_trees.at(i)),
-                     [&i, &x](auto tree_v){ return tree_v.at(i).decision_function(x); });
+                     [&i, &x](const auto &tree_v){ return tree_v.at(i).decision_function(x); });
       if(Config::useAddTree){
         values.at(i) = init_predict_.at(i);
         values.at(i) += reduce<U, OpAdd<U>>(values_trees.at(i), add);
