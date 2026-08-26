@@ -8,6 +8,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -139,7 +140,7 @@ public:
 
 }; // class DecisionTree
 
-/* ---
+/*
 * QuickScorer tree ensemble traversal, Algorithm 2 of
 * https://doi.org/10.1145/2766462.2767733, as an alternative to the root-to-leaf
 * 'treewalk' of DecisionTree::decision_function above.
@@ -172,7 +173,7 @@ public:
 *  - Thresholds, leaf values and inputs are held in the emulation types (e.g.
 *    ap_fixed) rather than the paper's float, so that the QuickScorer scores are
 *    bit-identical to the treewalk ones for the same precision configuration.
-* --- */
+*/
 
 /* n low bits set, valid for n in [0, 64] */
 inline uint64_t ones_mask(size_t n) {
@@ -186,25 +187,39 @@ class TreeBlock{
 public:
   using T = typename Config::threshold_t;
   using U = typename Config::score_t;
+  using W = typename Config::weight_t;
 
   size_t n_trees = 0;    // trees in block
   size_t max_leaves = 0; // widest tree of block
-  // per-node data, grouped per feature with ascending thresholds within each group
+  size_t n_features = 0;
+  // per-node data, grouped by the projection w.x the nodes compare rather than by
+  // feature, with ascending thresholds within each group, so a group's false
+  // nodes are still a prefix. Reduces to the paper's grouping when the weight
+  // vector is one-hot
   std::vector<T> thresholds;
   std::vector<uint32_t> tree_ids;
   std::vector<uint64_t> bitvectors;
-  std::vector<size_t> offsets;  // start of each feature's group, n_features + 1
+  std::vector<size_t> offsets;  // start of each group, n_groups + 1
   std::vector<uint64_t> init_v; // per-tree initial result bitvector
   std::vector<U> leaves;        // leaf values, [n_trees][max_leaves], left-to-right
+  // group -> the feature it projects onto, or -1 when it needs the dot product
+  std::vector<int> dir_feature;
+  // [n_groups][n_features], only read where dir_feature is -1
+  std::vector<W> directions;
 
-  TreeBlock(const std::vector<const DecisionTree<Config>*> &block_trees, size_t n_features){
+  TreeBlock(const std::vector<const DecisionTree<Config>*> &block_trees, size_t n_feat){
     n_trees = block_trees.size();
+    n_features = n_feat;
     struct Node {
       T threshold;
       uint32_t tree;
       uint64_t bitvector;
     };
-    std::vector<std::vector<Node>> per_feature(n_features);
+    std::vector<std::vector<Node>> per_group(n_features);
+    dir_feature.resize(n_features);
+    for(size_t k = 0; k < n_features; k++) dir_feature[k] = (int) k;
+    directions.assign(n_features * n_features, W(0));
+    std::unordered_map<std::string, size_t> group_of;
     std::vector<std::vector<U>> leaf_values(n_trees);
 
     for(uint32_t h = 0; h < n_trees; h++){
@@ -220,10 +235,31 @@ public:
       uint64_t ones = ones_mask(n_leaves);
       for(const auto &r : left_ranges){
         int n = r[0], a = r[1], b = r[2];
-        check_axis_aligned(t, n);
         // construct node bitvector: 0s at the leaves of the left subtree (bits a..b), 1s elsewhere
         uint64_t bv = ones ^ (ones_mask(b - a + 1) << a);
-        per_feature.at(t.feature.at(n)).push_back({t.threshold_.at(n), h, bv});
+        int k = one_hot_feature(t, n);
+        size_t g;
+        if(k >= 0){
+          g = (size_t) k;
+        }else{
+          // key on the model's own doubles rather than on the cast weights in 
+          // case the latter coincide
+          const std::vector<double> &wd = t.weight.at(n);
+          std::string key(reinterpret_cast<const char*>(wd.data()),
+                          wd.size() * sizeof(double));
+          auto it = group_of.find(key);
+          if(it == group_of.end()){
+            g = per_group.size();
+            group_of.emplace(std::move(key), g);
+            per_group.emplace_back();
+            dir_feature.push_back(-1);
+            const std::vector<W> &wq = t.weight_.at(n);
+            directions.insert(directions.end(), wq.begin(), wq.end());
+          }else{
+            g = it->second;
+          }
+        }
+        per_group.at(g).push_back({t.threshold_.at(n), h, bv});
       }
       leaf_values.at(h).reserve(n_leaves);
       for(int n : leaf_nodes)
@@ -232,11 +268,11 @@ public:
       max_leaves = std::max(max_leaves, n_leaves);
     }
 
-    // concatenate the per-feature groups & sort in the quantized threshold domain,
-    // since that is what the traversal compares in
-    offsets.assign(n_features + 1, 0);
-    for(size_t k = 0; k < n_features; k++){
-      auto &nodes = per_feature.at(k);
+    // concatenate the groups & sort in the quantized threshold domain, since that
+    // is what the traversal compares in
+    offsets.assign(per_group.size() + 1, 0);
+    for(size_t g = 0; g < per_group.size(); g++){
+      auto &nodes = per_group.at(g);
       std::stable_sort(nodes.begin(), nodes.end(),
                        [](const Node &a, const Node &b){ return a.threshold < b.threshold; });
       for(const auto &nd : nodes){
@@ -244,7 +280,7 @@ public:
         tree_ids.push_back(nd.tree);
         bitvectors.push_back(nd.bitvector);
       }
-      offsets.at(k + 1) = thresholds.size();
+      offsets.at(g + 1) = thresholds.size();
     }
 
     // leaf value table padded to the widest tree
@@ -265,13 +301,14 @@ public:
    */
   void score(const T *x, bool strict, uint64_t *v, U *out) const{
     std::copy(init_v.begin(), init_v.end(), v);
-    // Step 1: within a feature group thresholds ascend, so the false nodes form a
-    // prefix => scan it linearly and stop at the first true node
-    size_t n_features = offsets.size() - 1;
-    for(size_t k = 0; k < n_features; k++){
-      T xk = x[k];
-      for(size_t i = offsets[k]; i < offsets[k + 1]; i++){
-        bool false_node = strict ? (thresholds[i] <= xk) : (thresholds[i] < xk);
+    // Step 1: within a group thresholds ascend, so the false nodes form a prefix
+    // => scan it linearly and stop at the first true node
+    size_t n_groups = offsets.size() - 1;
+    for(size_t g = 0; g < n_groups; g++){
+      if(offsets[g] == offsets[g + 1]) continue;
+      T pg = project(x, g);
+      for(size_t i = offsets[g]; i < offsets[g + 1]; i++){
+        bool false_node = strict ? (thresholds[i] <= pg) : (thresholds[i] < pg);
         if(!false_node)
           break;
         v[tree_ids[i]] &= bitvectors[i];
@@ -288,7 +325,8 @@ public:
   size_t nbytes() const{
     return thresholds.size() * sizeof(T) + tree_ids.size() * sizeof(uint32_t)
            + bitvectors.size() * sizeof(uint64_t) + offsets.size() * sizeof(size_t)
-           + init_v.size() * sizeof(uint64_t) + leaves.size() * sizeof(U);
+           + init_v.size() * sizeof(uint64_t) + leaves.size() * sizeof(U)
+           + dir_feature.size() * sizeof(int) + directions.size() * sizeof(W);
   }
 
 private:
@@ -311,22 +349,27 @@ private:
     return {left.first, right.second};
   }
 
-  /* Verify internal node n tests exactly one feature with unit weight */
-  static void check_axis_aligned(const DecisionTree<Config> &t, int n){
-    const auto &node_weight_vec = t.weight.at(n);
-    int node_feature_idx = t.feature.at(n);
-    bool ok = node_feature_idx >= 0
-              && (size_t) node_feature_idx < node_weight_vec.size()
-              && node_weight_vec.at(node_feature_idx) == 1.0;
-    // check that every entry other than the tested feature is 0
-    for(size_t i = 0; ok && i < node_weight_vec.size(); i++){
-      ok = (int) i == node_feature_idx || node_weight_vec.at(i) == 0.0;
+  static int one_hot_feature(const DecisionTree<Config> &t, int n){
+    const std::vector<double> &w = t.weight.at(n);
+    int k = -1;
+    for(size_t i = 0; i < w.size(); i++){
+      if(w.at(i) == 0.0) continue;
+      if(k >= 0) return -1;          // more than one nonzero
+      if(w.at(i) != 1.0) return -1;  // scaled
+      k = (int) i; // feature index, node n's weight vector is one-hot with weight 1
     }
-    if(!ok){
-      throw std::runtime_error("QuickScorer supports only axis-aligned trees "
-                               "(one feature per split), but node "
-                               + std::to_string(n) + " has a non one-hot weight vector");
-    }
+    return k;
+  }
+
+  T project(const T *x, size_t g) const{
+    // The scalar group g's nodes compare against, accumulated exactly as the tree walk
+    int k = dir_feature.at(g);
+    if(k >= 0) return x[k]; // group is one-hot
+    const W *w = &directions[g * n_features];
+    T accumulation = 0;
+    for(size_t f = 0; f < n_features; f++)
+      accumulation += x[f] * w[f];
+    return accumulation;
   }
 
 }; // class TreeBlock

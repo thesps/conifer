@@ -82,10 +82,12 @@ class _TreeBlock:
         # per-tree structures
         all_leaf_values = []  # leaf output values, left-to-right
         all_leaf_nodes = []  # original node index of each leaf
-        # per-node triples, grouped per feature
-        triples = [
-            [] for _ in range(n_features)
-        ]  # feature -> [(threshold, tree_id, bitvector)]
+        # per-node triples, grouped by the projection w . x rather than by feature,
+        # keeping a group's false nodes a prefix
+        directions = [None] * n_features        # group -> weight vector or None
+        dir_feature = list(range(n_features))   # group -> feature id, or -1
+        group_of = {}                           # weight key -> group index
+        triples = [[] for _ in range(n_features)]  # first n_features groups: the one-hot directions
 
         for h, tree in enumerate(flat_trees):
             leaf_nodes, left_ranges = self._tree_leaf_layout(tree)
@@ -98,22 +100,44 @@ class _TreeBlock:
             all_leaf_nodes.append(leaf_nodes)
             ones = (1 << n_leaves) - 1
             for n, (a, b) in left_ranges.items():
-                self._check_axis_aligned(tree, n)
                 # node bitvector: 0s at the leaves of the left subtree (bits a..b), 1s elsewhere
                 bitvector = ones ^ (((1 << (b - a + 1)) - 1) << a)
-                triples[tree.feature[n]].append((tree.threshold[n], h, bitvector))
+                w = np.asarray(tree.weight[n], dtype=np.float64)
+                k = self._one_hot_feature(w)
+                if k is not None:
+                    g = k
+                else:
+                    key = w.tobytes()
+                    g = group_of.get(key)
+                    if g is None:
+                        g = len(triples)
+                        group_of[key] = g
+                        triples.append([])
+                        directions.append(w)
+                        dir_feature.append(-1)
+                triples[g].append((tree.threshold[n], h, bitvector))
 
         # global arrays
+        n_groups = len(triples)
         thresholds, tree_ids, bitvectors = [], [], []
-        self.offsets = np.zeros(n_features + 1, dtype=np.int64)
-        for k in range(n_features):
+        self.offsets = np.zeros(n_groups + 1, dtype=np.int64)
+        for g in range(n_groups):
             # ascending threshold within each block
-            triples[k].sort(key=lambda t: t[0])
-            for t, h, bv in triples[k]:
+            triples[g].sort(key=lambda t: t[0])
+            for t, h, bv in triples[g]:
                 thresholds.append(t)
                 tree_ids.append(h)
                 bitvectors.append(bv)
-            self.offsets[k + 1] = len(thresholds)
+            self.offsets[g + 1] = len(thresholds)
+        self.n_groups = n_groups
+        self.dir_feature = np.array(dir_feature, dtype=np.int64)
+        # self.directions filled for the one-hot groups too
+        self.directions = np.zeros((n_groups, n_features), dtype=np.float64)
+        for g, w in enumerate(directions):
+            if w is not None:
+                self.directions[g] = w
+            elif dir_feature[g] >= 0:
+                self.directions[g, dir_feature[g]] = 1.0
         self.thresholds = np.array(thresholds, dtype=np.float64)
         self.tree_ids = np.array(tree_ids, dtype=np.int64)
         self.bitvectors = np.array(bitvectors, dtype=np.uint64)
@@ -140,6 +164,7 @@ class _TreeBlock:
             + self.init_v.nbytes
             + self.leaves.nbytes
             + self.leaf_nodes.nbytes
+            + self.directions.nbytes
         )  # leaf_nodes is specific to this implementation
 
     @staticmethod
@@ -173,15 +198,20 @@ class _TreeBlock:
         return leaf_nodes, left_ranges
 
     @staticmethod
-    def _check_axis_aligned(tree, n):
-        """Verify internal node n tests exactly one feature with unit weight"""
-        w = tree.weight[n]
-        nonzero = [i for i, wi in enumerate(w) if wi != 0]
-        if nonzero != [tree.feature[n]] or w[tree.feature[n]] != 1:
-            raise NotImplementedError(
-                "QuickScorer supports only axis-aligned trees (one feature per split), "
-                f"but node {n} has weight vector {w}"
-            )
+    def _one_hot_feature(w):
+        """The feature index if w is one-hot with weight exactly 1, else None."""
+        nz = np.flatnonzero(w)
+        if nz.size == 1 and w[nz[0]] == 1.0:
+            return int(nz[0])
+        return None
+
+    def _project(self, X, g):
+        """The scalar group g's nodes compare against, one per sample, accumulated
+        as the tree walk does."""
+        k = self.dir_feature[g]
+        if k >= 0:
+            return X[:, k]
+        return X @ self.directions[g]
 
     def exit_leaves(self, X):
         """
@@ -200,21 +230,23 @@ class _TreeBlock:
         """
         n_samples = X.shape[0]
 
-        # QS step 1: interleaved traversal, feature by feature. All samples of the
-        # block are processed together: node i of a feature block (ascending
+        # QS step 1: interleaved traversal, group by group (a group is one
+        # projection vector; for an axis-aligned model, one feature). All samples
+        # of the block are processed together: node i of a group (ascending
         # thresholds) is a false node for sample d iff i < cuts[d], and its
         # bitvector is ANDed into that sample's result bitvector for the node's
         # tree.
         v = np.repeat(
             self.init_v[np.newaxis, :], n_samples, axis=0
         )  # result bitvectors, (n_samples, n_trees)
-        for k in range(self.n_features):
-            start, end = self.offsets[k], self.offsets[k + 1]
+        for g in range(self.n_groups):
+            start, end = self.offsets[g], self.offsets[g + 1]
             if start == end:
                 continue
             # boundary of the false nodes prefix for every sample
             # TODO: compare with the paper's stepped linear scan (paper claimed binary search doesn't provide gains)
-            cuts = np.searchsorted(self.thresholds[start:end], X[:, k], side=self.side)
+            cuts = np.searchsorted(self.thresholds[start:end], self._project(X, g),
+                                   side=self.side)
             for i in range(end - start):
                 rows = cuts > i
                 if not rows.any():
@@ -251,7 +283,8 @@ class QuickScorer:
         ----------
         model: ModelBase
             conifer model to build the QuickScorer data structures from.
-            Must be axis-aligned with at most 64 leaves per tree.
+            At most 64 leaves per tree. Oblique splits are supported: nodes are
+            grouped by projection vector rather than by feature.
 
         tau: int, optional
             number of trees per block. Defaults to the whole ensemble.
@@ -262,11 +295,6 @@ class QuickScorer:
             (best delta up to 16), useful values here are in the thousands, since
             each numpy operation processes the whole sample block.
         """
-        if model.is_oblique():
-            raise NotImplementedError(
-                "QuickScorer supports only axis-aligned trees (one feature per split), "
-                "but this model contains oblique splits"
-            )
         self.n_features = model.n_features
         self.n_trees = model.n_trees
         self.n_classes = 1 if model.n_classes == 2 else model.n_classes

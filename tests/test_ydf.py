@@ -154,6 +154,39 @@ def test_py_toy_model(toy_dataset, toy_ydf_model, tmp_path):
     ydf_pred = np.squeeze(toy_ydf_model.predict({"x": toy_dataset.X_test}))
     np.testing.assert_allclose(conifer_pred, ydf_pred, atol=1e-3, rtol=1e-3)
 
+def test_py_quickscorer_toy_model(toy_dataset, toy_ydf_model, tmp_path):
+    # Check QuickScorer reproduces the tree walk exactly
+
+    conifer_model = conifer.converters.convert_from_ydf(toy_ydf_model)
+    X = toy_dataset.X_test
+
+    walk = np.asarray(conifer_model.decision_function(X, algorithm="treewalk"))
+    qs = np.asarray(conifer_model.decision_function(X, algorithm="quickscorer"))
+    bwqs = np.asarray(conifer_model.decision_function(X, algorithm="blockwise-quickscorer"))
+    np.testing.assert_array_equal(walk, qs)
+    np.testing.assert_array_equal(walk, bwqs)
+
+    # Check that both have the same exit leaves
+    leaf_walk = np.asarray(conifer_model.decision_function(X, algorithm="treewalk", return_leaf=True))
+    leaf_qs = np.asarray(conifer_model.decision_function(X, algorithm="quickscorer", return_leaf=True))
+    np.testing.assert_array_equal(leaf_walk, leaf_qs)
+
+
+@pytest.mark.parametrize("precision", ["ap_fixed<32,16,AP_RND_CONV,AP_SAT>"])
+def test_cpp_quickscorer_toy_model(toy_dataset, toy_ydf_model, tmp_path, precision):
+    # Check the cpp QuickScorer matches its own tree walk
+    scores = {}
+    for algorithm in ("treewalk", "quickscorer"):
+        cfg = conifer.backends.cpp.auto_config()
+        cfg["Precision"] = precision
+        cfg["Algorithm"] = algorithm
+        cfg["OutputDir"] = str(tmp_path / algorithm)
+        model = conifer.converters.convert_from_ydf(toy_ydf_model, cfg)
+        model.compile()
+        scores[algorithm] = np.asarray(model.decision_function(toy_dataset.X_test))
+    np.testing.assert_array_equal(scores["treewalk"], scores["quickscorer"])
+
+
 def test_four_nodes_model():
     # Train a model with 4 nodes
     dataset = {

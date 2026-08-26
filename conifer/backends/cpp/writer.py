@@ -158,9 +158,6 @@ class CPPModel(ModelBase):
     tau, delta = (0, 0) if algorithm == 'quickscorer' else (int(cfg.tau), int(cfg.delta))
     if self._qs_block_shape == (tau, delta):
       return
-    if self.is_oblique():
-      raise NotImplementedError('QuickScorer supports only axis-aligned trees (one feature per split), '
-                                'but this model contains oblique splits')
     max_leaves = max(tree.n_leaves() for trees_class in self.trees for tree in trees_class)
     if max_leaves > 64:
       raise NotImplementedError(f'QuickScorer bitvectors are 64-bit words, but a tree has {max_leaves} leaves')
