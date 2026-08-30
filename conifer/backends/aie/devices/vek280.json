@@ -1,0 +1,14 @@
+{
+  "name": "vek280",
+  "part": "xcve2802-vsvh1760-2MP-e-S",
+  "platform": "vek280_base",
+  "architecture": "AIE-ML",
+  "n_tiles": 304,
+  "array_columns": 38,
+  "array_rows": 8,
+  "tile_memory_bytes": 65536,
+  "memtile_bytes": 524288,
+  "plio_channels_out": 112,
+  "clock_ghz": 1.25,
+  "plio_rate_mhz": 625
+}
