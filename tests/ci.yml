@@ -1,3 +1,6 @@
+variables:
+  CONIFER_PYTHON_VERSION: "3.12"
+
 .snippets:
   ghdl_docker_setup:
     - apt update
@@ -5,7 +8,8 @@
     - wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
     - bash Miniforge3.sh -b -p "${HOME}/conda"
     - source "${HOME}/conda/etc/profile.d/mamba.sh"
-    - mamba activate
+    - mamba create -y -n conifer "python=${CONIFER_PYTHON_VERSION}"
+    - mamba activate conifer
   before_script:
     - pip install -r dev_requirements.txt
     - pip install .
@@ -39,3 +43,32 @@
     - fpga-mid
   before_script:
     - !reference [.snippets, before_script]
+
+# Check whether the dependency stack installs and imports on newer Python versions
+python-version-check:
+  stage: test
+  image: ghdl/ghdl:7.0.0-dev-gcc-ubuntu-24.04
+  tags:
+    - k8s-default
+  allow_failure: true
+  parallel:
+    matrix:
+      - NEXT_PYTHON_VERSION: ["3.13", "3.14"]
+  before_script:
+    - apt update
+    - apt install -y build-essential wget git ca-certificates
+    - wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    - bash Miniforge3.sh -b -p "${HOME}/conda"
+    - source "${HOME}/conda/etc/profile.d/mamba.sh"
+    - mamba create -y -n conifer-next "python=${NEXT_PYTHON_VERSION}"
+    - mamba activate conifer-next
+  script:
+    - python --version
+    - pip install -r dev_requirements.txt
+    - pip install .
+    - python -c "import conifer; print(conifer.__version__)"
+    - cd tests
+    - pytest test_skl_converter.py test_save_load.py test_utils.py test_performance_estimation.py -rA
+  rules:
+    - if: '$PARENT_PIPELINE_SOURCE == "schedule"'
+    - if: '$RUN_PYTHON_VERSION_CHECK == "true"'
