@@ -1,8 +1,16 @@
 #ifndef CONIFER_CPP_H__
 #define CONIFER_CPP_H__
 #include "nlohmann/json.hpp"
+#include <algorithm>
+#include <array>
 #include <cassert>
+#include <cstdint>
 #include <fstream>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace conifer{
 
@@ -66,6 +74,8 @@ public:
   static const bool useAddTree = false;
 };
 
+template<typename Config> class TreeBlock;
+
 template<typename Config>
 class DecisionTree{
     static_assert(std::is_base_of<ConiferConfiguration, Config>::value,
@@ -85,6 +95,9 @@ private:
   std::vector<double> threshold;
   std::vector<double> value;
   std::function<bool (T, T)> split;
+
+  // the QuickScorer traversal reads the tree structure to build its own layout
+  friend class TreeBlock<Config>;
 
 public:
 
@@ -127,6 +140,240 @@ public:
 
 }; // class DecisionTree
 
+/*
+* QuickScorer tree ensemble traversal, Algorithm 2 of
+* https://doi.org/10.1145/2766462.2767733, as an alternative to the root-to-leaf
+* 'treewalk' of DecisionTree::decision_function above.
+*
+* Rather than traversing each tree root-to-leaf, QuickScorer represents every
+* internal node with a bitvector that masks off the leaves of its left subtree,
+* and performs an interleaved, feature-by-feature traversal of the whole ensemble.
+*
+*   Step 1: for every feature k, the thresholds of all the nodes testing it
+*     (across all trees of the ensemble) are stored in a sorted array. Given an
+*     input x, the nodes whose test fails form a prefix of that sorted array,
+*     delimited by the position of x[k] among the sorted thresholds. The bitvector
+*     of each false node is ANDed into the result bitvector v[h] of the tree h the
+*     node belongs to.
+*   Step 2: after all features are processed, the exit leaf of tree h is the
+*     leftmost set bit in v[h] (Theorem 1 of the paper). The output values of the
+*     exit leaves are summed to produce the score.
+*
+* BWQS (block-wise QuickScorer) improves the cache behaviour on large ensembles:
+* the ensemble is split into disjoint blocks of 'tau' trees, each with its own copy
+* of the relevant data structures, and blocks of 'delta' samples are scored together
+* over one tree block before moving to the next. See docs/quickscorer.md for what
+* each of the two block sizes is worth here.
+*
+* Differences from the paper's design:
+*  - As in the python backend, the bit order is mirrored relative to the paper.
+*  - Bitvectors are always full 64 bit words, so trees may have at most 64 leaves.
+*    The paper instead pads bitvectors to B in {1, 2, 4, 8} bytes fitting the widest
+*    tree of the ensemble, saving on space.
+*  - Thresholds, leaf values and inputs are held in the emulation types (e.g.
+*    ap_fixed) rather than the paper's float, so that the QuickScorer scores are
+*    bit-identical to the treewalk ones for the same precision configuration.
+*/
+
+/* n low bits set, valid for n in [0, 64] */
+inline uint64_t ones_mask(size_t n) {
+  return n >= 64 ? ~uint64_t(0) : ((uint64_t(1) << n) - 1);
+}
+
+template<typename Config>
+class TreeBlock{
+    static_assert(std::is_base_of<ConiferConfiguration, Config>::value,
+                  "Config must derive from ConiferConfiguration");
+public:
+  using T = typename Config::threshold_t;
+  using U = typename Config::score_t;
+  using W = typename Config::weight_t;
+
+  size_t n_trees = 0;    // trees in block
+  size_t max_leaves = 0; // widest tree of block
+  size_t n_features = 0;
+  // per-node data, grouped by the projection w.x the nodes compare rather than by
+  // feature, with ascending thresholds within each group, so a group's false
+  // nodes are still a prefix. Reduces to the paper's grouping when the weight
+  // vector is one-hot
+  std::vector<T> thresholds;
+  std::vector<uint32_t> tree_ids;
+  std::vector<uint64_t> bitvectors;
+  std::vector<size_t> offsets;  // start of each group, n_groups + 1
+  std::vector<uint64_t> init_v; // per-tree initial result bitvector
+  std::vector<U> leaves;        // leaf values, [n_trees][max_leaves], left-to-right
+  // group -> the feature it projects onto, or -1 when it needs the dot product
+  std::vector<int> dir_feature;
+  // [n_groups][n_features], only read where dir_feature is -1
+  std::vector<W> directions;
+
+  TreeBlock(const std::vector<const DecisionTree<Config>*> &block_trees, size_t n_feat){
+    n_trees = block_trees.size();
+    n_features = n_feat;
+    struct Node {
+      T threshold;
+      uint32_t tree;
+      uint64_t bitvector;
+    };
+    std::vector<std::vector<Node>> per_group(n_features);
+    dir_feature.resize(n_features);
+    for(size_t k = 0; k < n_features; k++) dir_feature[k] = (int) k;
+    directions.assign(n_features * n_features, W(0));
+    std::unordered_map<std::string, size_t> group_of;
+    std::vector<std::vector<U>> leaf_values(n_trees);
+
+    for(uint32_t h = 0; h < n_trees; h++){
+      const DecisionTree<Config> &t = *block_trees.at(h);
+      std::vector<int> leaf_nodes;
+      std::vector<std::array<int, 3>> left_ranges;
+      leaf_layout(t, 0, leaf_nodes, left_ranges);
+      size_t n_leaves = leaf_nodes.size();
+      if(n_leaves > 64){
+        throw std::runtime_error("QuickScorer bitvectors are 64-bit words, but a tree has "
+                                 + std::to_string(n_leaves) + " leaves");
+      }
+      uint64_t ones = ones_mask(n_leaves);
+      for(const auto &r : left_ranges){
+        int n = r[0], a = r[1], b = r[2];
+        // construct node bitvector: 0s at the leaves of the left subtree (bits a..b), 1s elsewhere
+        uint64_t bv = ones ^ (ones_mask(b - a + 1) << a);
+        int k = one_hot_feature(t, n);
+        size_t g;
+        if(k >= 0){
+          g = (size_t) k;
+        }else{
+          // key on the model's own doubles rather than on the cast weights in 
+          // case the latter coincide
+          const std::vector<double> &wd = t.weight.at(n);
+          std::string key(reinterpret_cast<const char*>(wd.data()),
+                          wd.size() * sizeof(double));
+          auto it = group_of.find(key);
+          if(it == group_of.end()){
+            g = per_group.size();
+            group_of.emplace(std::move(key), g);
+            per_group.emplace_back();
+            dir_feature.push_back(-1);
+            const std::vector<W> &wq = t.weight_.at(n);
+            directions.insert(directions.end(), wq.begin(), wq.end());
+          }else{
+            g = it->second;
+          }
+        }
+        per_group.at(g).push_back({t.threshold_.at(n), h, bv});
+      }
+      leaf_values.at(h).reserve(n_leaves);
+      for(int n : leaf_nodes)
+        leaf_values.at(h).push_back(t.value_.at(n));
+      init_v.push_back(ones);
+      max_leaves = std::max(max_leaves, n_leaves);
+    }
+
+    // concatenate the groups & sort in the quantized threshold domain, since that
+    // is what the traversal compares in
+    offsets.assign(per_group.size() + 1, 0);
+    for(size_t g = 0; g < per_group.size(); g++){
+      auto &nodes = per_group.at(g);
+      std::stable_sort(nodes.begin(), nodes.end(),
+                       [](const Node &a, const Node &b){ return a.threshold < b.threshold; });
+      for(const auto &nd : nodes){
+        thresholds.push_back(nd.threshold);
+        tree_ids.push_back(nd.tree);
+        bitvectors.push_back(nd.bitvector);
+      }
+      offsets.at(g + 1) = thresholds.size();
+    }
+
+    // leaf value table padded to the widest tree
+    leaves.assign(n_trees * max_leaves, U(0));
+    for(size_t h = 0; h < n_trees; h++){
+      for(size_t j = 0; j < leaf_values.at(h).size(); j++){
+        leaves.at(h * max_leaves + j) = leaf_values.at(h).at(j);
+      }
+    }
+  }
+
+  /*
+   * QuickScorer traversal of this block for one sample x.
+   * 'strict' selects the splitting convention: a node is false iff threshold < x
+   * ("<=" convention) when strict is false, or threshold <= x ("<") when it is true.
+   * v is an array of n_trees words provided by the caller, the exit leaf value of
+   * each tree is written to out.
+   */
+  void score(const T *x, bool strict, uint64_t *v, U *out) const{
+    std::copy(init_v.begin(), init_v.end(), v);
+    // Step 1: within a group thresholds ascend, so the false nodes form a prefix
+    // => scan it linearly and stop at the first true node
+    size_t n_groups = offsets.size() - 1;
+    for(size_t g = 0; g < n_groups; g++){
+      if(offsets[g] == offsets[g + 1]) continue;
+      T pg = project(x, g);
+      for(size_t i = offsets[g]; i < offsets[g + 1]; i++){
+        bool false_node = strict ? (thresholds[i] <= pg) : (thresholds[i] < pg);
+        if(!false_node)
+          break;
+        v[tree_ids[i]] &= bitvectors[i];
+      }
+    }
+    // Step 2: the exit leaf is the lowest set bit of v (leaves numbered from the LSB
+    // here). v is never 0 since the exit leaf bit is never cleared.
+    for(size_t h = 0; h < n_trees; h++){
+      out[h] = leaves[h * max_leaves + __builtin_ctzll(v[h])];
+    }
+  }
+
+  /* Total size in bytes of the traversal data structures */
+  size_t nbytes() const{
+    return thresholds.size() * sizeof(T) + tree_ids.size() * sizeof(uint32_t)
+           + bitvectors.size() * sizeof(uint64_t) + offsets.size() * sizeof(size_t)
+           + init_v.size() * sizeof(uint64_t) + leaves.size() * sizeof(U)
+           + dir_feature.size() * sizeof(int) + directions.size() * sizeof(W);
+  }
+
+private:
+  /*
+   * Number the leaves of the subtree at node n left-to-right and, for every internal
+   * node, record the (contiguous, inclusive) range of leaf numbers in its left
+   * subtree. Returns the leaf range of the subtree at n.
+   */
+  static std::pair<int, int> leaf_layout(const DecisionTree<Config> &t, int n,
+                                         std::vector<int> &leaf_nodes,
+                                         std::vector<std::array<int, 3>> &left_ranges){
+    if(t.feature.at(n) == -2){ // leaf
+      int j = (int) leaf_nodes.size();
+      leaf_nodes.push_back(n);
+      return {j, j};
+    }
+    auto left = leaf_layout(t, t.children_left.at(n), leaf_nodes, left_ranges);
+    auto right = leaf_layout(t, t.children_right.at(n), leaf_nodes, left_ranges);
+    left_ranges.push_back({n, left.first, left.second});
+    return {left.first, right.second};
+  }
+
+  static int one_hot_feature(const DecisionTree<Config> &t, int n){
+    const std::vector<double> &w = t.weight.at(n);
+    int k = -1;
+    for(size_t i = 0; i < w.size(); i++){
+      if(w.at(i) == 0.0) continue;
+      if(k >= 0) return -1;          // more than one nonzero
+      if(w.at(i) != 1.0) return -1;  // scaled
+      k = (int) i; // feature index, node n's weight vector is one-hot with weight 1
+    }
+    return k;
+  }
+
+  T project(const T *x, size_t g) const{
+    // The scalar group g's nodes compare against, accumulated exactly as the tree walk
+    int k = dir_feature.at(g);
+    if(k >= 0) return x[k]; // group is one-hot
+    const W *w = &directions[g * n_features];
+    T accumulation = 0;
+    for(size_t f = 0; f < n_features; f++)
+      accumulation += x[f] * w[f];
+    return accumulation;
+  }
+
+}; // class TreeBlock
+
 template<typename Config>
 class BDT{
     static_assert(std::is_base_of<ConiferConfiguration, Config>::value,
@@ -147,6 +394,12 @@ private:
   std::vector<std::vector<DecisionTree<Config>>> trees;
   OpAdd<U> add;
 
+  // QuickScorer traversal, empty until init_quickscorer is called
+  bool strict;                              // splitting convention is "<" rather than "<="
+  size_t qs_delta = 0;                      // samples per block, 0 = all samples in one block
+  std::vector<TreeBlock<Config>> blocks;    // blocks of tau trees, in flat tree order
+  std::vector<size_t> block_offsets;        // first flat tree index of each block
+
 public:
 
   // Define how to read this class to/from JSON
@@ -159,6 +412,7 @@ public:
     from_json(j, *this);
     auto splitting_convention = j.value("splitting_convention", "<="); // read the splitting convention with default value of "<=" if it's unspecified
     auto split = createSplit<T>(splitting_convention);
+    strict = splitting_convention == "<";
     /* Do some transformation to initialise things into the proper emulation T, U types */
     if(n_classes == 2) n_classes = 1;
     std::transform(init_predict.begin(), init_predict.end(), std::back_inserter(init_predict_),
@@ -203,6 +457,111 @@ public:
                 [](U yi) -> double { return (double) yi; });
     return yd;
   }
+
+  /*
+   * Build the QuickScorer traversal structures, replacing any previously built ones.
+   * tau: trees per block, 0 (default) puts the whole ensemble in one block (plain QS)
+   * delta: samples per block, 0 (default) scores all samples in one block
+   */
+  void init_quickscorer(int tau = 0, int delta = 0){
+    blocks.clear();
+    block_offsets.clear();
+    // one bitvector lane per (tree, class) pair, flat index h = i_tree * n_classes + i_class
+    std::vector<const DecisionTree<Config>*> flat;
+    for(const auto &tree_v : trees){
+      for(const auto &t : tree_v)
+        flat.push_back(&t);
+    }
+    size_t n_flat = flat.size();
+    size_t tau_ = tau > 0 ? (size_t) tau : n_flat;
+    qs_delta = delta > 0 ? (size_t) delta : 0;
+    for(size_t h0 = 0; h0 < n_flat; h0 += tau_){
+      size_t h1 = std::min(h0 + tau_, n_flat);
+      blocks.emplace_back(std::vector<const DecisionTree<Config>*>(flat.begin() + h0, flat.begin() + h1),
+                          n_features);
+      block_offsets.push_back(h0);
+    }
+  }
+
+  /*
+   * Score a batch of samples with the QuickScorer traversal. BWQS loop structure, as
+   * in the paper: outer loop over the tree blocks, then over blocks of delta samples,
+   * then over the samples of the block, with a running partial score per sample.
+   * Keeping the tree blocks outermost means each tree block's (large, read-only)
+   * QuickScorer structures are loaded once and reused for the whole scoring set while
+   * resident in cache.
+   * X: row-major n_samples x n_features, returns row-major n_samples x n_classes.
+   */
+  std::vector<double> _decision_function_batch_double(const double *X, size_t n_samples,
+                                                      size_t n_features_in) const{
+    if(blocks.empty()){
+      throw std::runtime_error("QuickScorer structures are not initialised, "
+                               "call init_quickscorer first");
+    }
+    if(n_features_in != n_features){
+      throw std::runtime_error("Wrong number of features, expected "
+                               + std::to_string(n_features) + ", got "
+                               + std::to_string(n_features_in));
+    }
+    // cast the inputs to the emulation type
+    std::vector<T> XT(n_samples * n_features);
+    for(size_t i = 0; i < XT.size(); i++)
+      XT[i] = (T) X[i];
+
+    // running scores, starting from init_predict like the treewalk accumulate
+    std::vector<U> scores(n_samples * n_classes);
+    for(size_t d = 0; d < n_samples; d++){
+      for(size_t c = 0; c < n_classes; c++)
+        scores[d * n_classes + c] = init_predict_.at(c);
+    }
+
+    size_t max_block = 0;
+    for(const auto &block : blocks)
+      max_block = std::max(max_block, block.n_trees);
+    std::vector<uint64_t> v(max_block);  // result bitvectors
+    std::vector<U> leaf_vals(max_block); // exit leaf values
+
+    size_t delta_ = qs_delta > 0 ? qs_delta : n_samples;
+    // loop over the tree blocks
+    for(size_t b = 0; b < blocks.size(); b++){
+      const TreeBlock<Config> &block = blocks[b];
+      size_t h0 = block_offsets[b];
+      // loop over blocks of delta samples
+      for(size_t d0 = 0; d0 < n_samples; d0 += delta_){
+        size_t d1 = std::min(d0 + delta_, n_samples);
+        for(size_t d = d0; d < d1; d++){
+          block.score(&XT[d * n_features], strict, v.data(), leaf_vals.data());
+          // blocks are in flat tree order, so per class the additions happen in tree
+          // order: the same operation order as the treewalk accumulate. Each sample
+          // visits the tree blocks in ascending order, so the ordering (and hence the
+          // score) is unchanged by the block shape
+          U *sd = &scores[d * n_classes]; // to index by class: sd[c]
+          // add each tree's exit leaf value into the appropriate class
+          for(size_t hh = 0; hh < block.n_trees; hh++){
+            sd[(h0 + hh) % n_classes] += leaf_vals[hh];
+          }
+        }
+      }
+    }
+
+    std::vector<double> y(n_samples * n_classes);
+    for(size_t i = 0; i < y.size(); i++){
+      U yi = scores[i];
+      yi *= (U) norm; // ensemble weighting in hardware precision
+      y[i] = (double) yi;
+    }
+    return y;
+  }
+
+  /* Total size in bytes of the QuickScorer traversal data structures (cf. Table 1 of the paper) */
+  size_t nbytes() const{
+    size_t n = 0;
+    for(const auto &block : blocks)
+      n += block.nbytes();
+    return n;
+  }
+
+  unsigned int get_n_classes() const { return n_classes; }
 
 }; // class BDT
 

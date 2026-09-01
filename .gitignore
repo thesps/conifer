@@ -6,3 +6,5 @@ dist/
 prj_*
 .pytest_cache
 .fp_converter*
+examples/quickscorer_benchmark_*.png
+examples/quickscorer_benchmark_*.csv

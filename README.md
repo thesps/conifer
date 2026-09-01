@@ -33,6 +33,8 @@ Available backends:
 - C++ - intended for bit-accurate emulation on CPU with a single include header file
 - Python - intended for validation of model conversion and to allow inspection of a model without a configuration
 
+The C++ and Python backends provide different traversal algorithms, selected with the `Algorithm` configuration key: a default root-to-leaf `treewalk`, and the vectorized traversal [QuickScorer](https://doi.org/10.1145/2766462.2767733) `quickscorer` and `blockwise-quickscorer`. The QuickScorer implementation supports only axis-aligned trees with at most 64 leaves for now.
+
 See our paper in JINST: "[Fast inference of Boosted Decision Trees in FPGAs for particle physics](https://iopscience.iop.org/article/10.1088/1748-0221/15/05/P05026)".
 
 Conifer originated as a development for [hls4ml](https://fastmachinelearning.org/hls4ml/), and is developed under the [Fast Machine Learning Lab](https://fastmachinelearning.org/).
@@ -116,7 +118,7 @@ print(fpu.get_info())
 </details>
 
 # Development
-1. Clone the github repository: `git clone https://github.com/thesps/conifer`
+1. Clone the github repository: `git clone https://github.com/thesps/conifer --recurse-submodules`
 1. Install the dependencies listed in the *Installation* section. For instance:
     - Clone nlohmann json: `git clone https://github.com/nlohmann/json`
     - Clone Arbitrary Precision: `git clone https://github.com/Xilinx/HLS_arbitrary_Precision_Types`
