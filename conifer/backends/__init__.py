@@ -5,6 +5,7 @@ from conifer.backends import xilinxhls
 from conifer.backends import vhdl
 from conifer.backends import cpp
 from conifer.backends import fpu
+from conifer.backends import aie
 from conifer.backends import boards
 
 class python_backend:
@@ -19,6 +20,7 @@ _backend_map = {'xilinxhls' : xilinxhls,
                 'vhdl'      : vhdl,
                 'cpp'       : cpp,
                 'fpu'       : fpu,
+                'aie'       : aie,
                 'python'    : python_backend,
                 'py'        : python_backend,
                 }

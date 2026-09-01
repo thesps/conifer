@@ -23,19 +23,33 @@ def f_train_skl():
 
     return clf, X_test, y_test.shape
 
-def backend_predict(model, odir, X, y_shape, backend, backend_config):
+def f_train_ydf_oblique(n_rows):
+    import ydf
+    from sklearn.datasets import make_hastie_10_2
+
+    X, y = make_hastie_10_2(random_state=0)
+    model = ydf.GradientBoostedTreesLearner(
+        num_trees=20, max_depth=3, split_axis='SPARSE_OBLIQUE',
+        sparse_oblique_weights='BINARY',   # the only weights the AIE kernel supports
+        apply_link_function=False, label='y',
+    ).train({'x': X[:2000], 'y': y[:2000] == 1}, verbose=0)
+
+    return model, X[2000:2000 + n_rows], (n_rows,)
+
+def backend_predict(model, odir, X, y_shape, backend, backend_config, convert):
   the_backend = conifer.backends.get_backend(backend)
   cfg = the_backend.auto_config()
   cfg.update(backend_config)
   cfg['OutputDir'] = odir
   cfg['ProjectName'] = "custom_project"
-  model = conifer.converters.convert_from_sklearn(model, cfg)
+  model = convert(model, cfg)
   model.compile()
   y = model.decision_function(X).reshape(y_shape)
   return y
 
 class Tester:
-   def __init__(self, model, X, y_shape, backend_a, backend_b, config_a={}, config_b={}):
+   def __init__(self, model, X, y_shape, backend_a, backend_b, config_a={}, config_b={},
+                convert=conifer.converters.convert_from_sklearn):
       self.model = model
       self.X = X
       self.y_shape = y_shape
@@ -43,6 +57,7 @@ class Tester:
       self.backend_b = backend_b
       self.config_a = config_a
       self.config_b = config_b
+      self.convert = convert
 
 model0 = f_train_skl()
 
@@ -53,11 +68,26 @@ hls_hdl_precisions = ['ap_fixed<16,6>', 'ap_fixed<18,8>', 'ap_fixed<12,6>']
 # compare configs with mixed precision
 mixed_precision_cfg = {'InputPrecision' : 'ap_fixed<16,6>', 'ScorePrecision' : 'ap_fixed<12,5>'}
 
+# each configuration costs one aiecompiler+aiesimulator run, so they
+# are compared over fewer rows
+aie_rows = 64
+aie_precision = {'Precision' : 'ap_fixed<16,6,AP_RND_CONV,AP_SAT>',
+                 'ScorePrecision' : 'ap_fixed<32,16,AP_RND_CONV,AP_SAT>'}
+aie_mappings = [{'NTiles' : 1, 'SplitAxis' : 'tree', 'NSamples' : aie_rows},
+                {'NTiles' : 4, 'SplitAxis' : 'tree', 'NSamples' : aie_rows},
+                {'NTiles' : 4, 'SplitAxis' : 'sample', 'NSamples' : aie_rows}]
+
+model0_aie = (model0[0], model0[1][:aie_rows], (aie_rows,))
+model1_aie = f_train_ydf_oblique(aie_rows)
+
 tests = [*[Tester(*model0, 'xilinxhls', 'cpp', {'Precision' : p}, {'Precision' : p}) for p in hls_cpp_precisions],
          *[Tester(*model0, 'xilinxhls', 'vhdl', {'Precision' : p}, {'Precision' : p}) for p in hls_hdl_precisions],
          Tester(*model0, 'xilinxhls', 'cpp', mixed_precision_cfg, mixed_precision_cfg),
          Tester(*model0, 'xilinxhls', 'vhdl', mixed_precision_cfg, mixed_precision_cfg),
-         Tester(*model0, 'xilinxhls', 'xilinxhls', {'Unroll' : True}, {'Unroll' : False})]
+         Tester(*model0, 'xilinxhls', 'xilinxhls', {'Unroll' : True}, {'Unroll' : False}),
+         *[Tester(*model0_aie, 'aie', 'cpp', {**aie_precision, **m}, aie_precision) for m in aie_mappings],
+         *[Tester(*model1_aie, 'aie', 'cpp', {**aie_precision, **m}, aie_precision,
+                  convert=conifer.converters.convert_from_ydf) for m in aie_mappings]]
 
 @pytest.mark.parametrize('test', tests)
 def test_backend_equality(test):
@@ -67,8 +97,8 @@ def test_backend_equality(test):
   else:
      name_a, name_b = test.backend_a, test.backend_b
   name_a, name_b = [f'prj_backends_{stamp}_{n}' for n in [name_a, name_b]]
-  y_a = backend_predict(test.model, name_a, test.X, test.y_shape, test.backend_a, test.config_a)
-  y_b = backend_predict(test.model, name_b, test.X, test.y_shape, test.backend_b, test.config_b)
+  y_a = backend_predict(test.model, name_a, test.X, test.y_shape, test.backend_a, test.config_a, test.convert)
+  y_b = backend_predict(test.model, name_b, test.X, test.y_shape, test.backend_b, test.config_b, test.convert)
   np.testing.assert_array_equal(y_a, y_b)
   assert((y_a is not None) and (y_b is not None)), "backend_predict returned None for the predictions: inconclusive test"
 
