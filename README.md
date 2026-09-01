@@ -126,6 +126,7 @@ print(fpu.get_info())
     export JSON_ROOT=$(pwd)/json/include
     ```
 1. Go into the Conifer project directory: `cd conifer`
+1. Use Python 3.12 to match CI; newer versions may lack wheels for some test dependencies (e.g. `ydf`).
 1. Install the python development dependencies: `pip install -r dev_requirements.txt`
 1. Run an example: `export PYTHONPATH="$(pwd):${PYTHONPATH}" && python examples/sklearn_to_cpp.py`
 1. Run a single unit test: `pytest tests/test_multiclass.py`
