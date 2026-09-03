@@ -146,7 +146,8 @@ class VHDLModel(ModelBase):
       fout[i].write('end Arrays{};'.format(i))
       fout[i].close()
 
-    from conifer.backends.vhdl import simulator
+    from conifer.backends.vhdl import get_simulator
+    simulator = get_simulator()
     simulator.write_scripts(cfg.output_dir, filedir, n_classes)
 
     f = open('{}/SimulationInput.txt'.format(cfg.output_dir), 'w')
@@ -230,12 +231,13 @@ class VHDLModel(ModelBase):
   @copydocstring(ModelBase.compile)
   def compile(self):
     self.write()
-    from conifer.backends.vhdl import simulator
-    return simulator.compile(self.config.output_dir)
+    from conifer.backends.vhdl import get_simulator
+    return get_simulator().compile(self.config.output_dir)
 
   @copydocstring(ModelBase.decision_function)
   def decision_function(self, X, trees=False):
-      from conifer.backends.vhdl import simulator
+      from conifer.backends.vhdl import get_simulator
+      simulator = get_simulator()
 
       config = copy.deepcopy(self.config)
 
