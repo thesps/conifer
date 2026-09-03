@@ -42,6 +42,8 @@ def _touch(simulator, timeout=_TOUCH_TIMEOUT):
     success = 1
   return success == 0
 
+# Set by set_simulator() when the user picks a simulator explicitly; when this is
+# not None, get_simulator() returns it and never probes for tools.
 _detected_simulator = None
 
 def get_simulator():
@@ -49,7 +51,8 @@ def get_simulator():
   Detect an available VHDL simulator, preferring Xsim, then GHDL, then Modelsim.
   The detection shells out to each tool, so it is done lazily (only when a
   simulation is actually run) and the result is cached after the first call.
-  Falls back to Xsim if none is found.
+  Falls back to Xsim if none is found. Use set_simulator() to override the
+  choice regardless of what is detected.
   '''
   global _detected_simulator
   if _detected_simulator is None:
@@ -60,6 +63,27 @@ def get_simulator():
         _detected_simulator = sim
         break
   return _detected_simulator
+
+def set_simulator(simulator):
+  '''
+  Explicitly choose the VHDL simulator, bypassing auto-detection.
+
+  `simulator` may be a name ('xsim', 'ghdl', 'modelsim'/'vsim', case-insensitive)
+  or one of the Xsim / GHDL / Modelsim classes. The choice is applied as-is; it is
+  not probed for availability. Returns the selected simulator class.
+  '''
+  global _detected_simulator
+  simulators = {'xsim': Xsim, 'ghdl': GHDL, 'modelsim': Modelsim, 'vsim': Modelsim}
+  if isinstance(simulator, str):
+    resolved = simulators.get(simulator.lower())
+    if resolved is None:
+      raise ValueError(f'Unknown VHDL simulator "{simulator}". Options are {sorted(simulators)}')
+    simulator = resolved
+  elif simulator not in (Xsim, GHDL, Modelsim):
+    raise ValueError(f'Expected a simulator name or one of the Xsim/GHDL/Modelsim classes, got {simulator!r}')
+  logger.info(f'VHDL simulator set to {simulator.__name__} (auto-detection bypassed)')
+  _detected_simulator = simulator
+  return simulator
 
 class Modelsim:
   # `vsim -version` prints the version and exits without checking out a license;
