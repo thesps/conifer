@@ -6,6 +6,12 @@ import xgboost as xgb
 import conifer
 import datetime
 from scipy.special import softmax
+import logging
+import sys
+
+logging.basicConfig(stream=sys.stdout, level=logging.WARNING)
+logger = logging.getLogger('conifer')
+logger.setLevel(logging.DEBUG)
 
 # Load the iris dataset from sklearn'
 iris = load_iris()

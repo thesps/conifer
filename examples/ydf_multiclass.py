@@ -9,7 +9,9 @@ import ydf
 from sklearn.datasets import load_iris
 import conifer
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, level=logging.WARNING)
+logger = logging.getLogger('conifer')
+logger.setLevel(logging.DEBUG)
 
 # Create dataset
 iris = load_iris()

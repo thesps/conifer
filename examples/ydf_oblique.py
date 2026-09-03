@@ -10,7 +10,9 @@ from sklearn.datasets import make_hastie_10_2
 from scipy.special import expit
 import conifer
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, level=logging.WARNING)
+logger = logging.getLogger('conifer')
+logger.setLevel(logging.DEBUG)
 
 # Create dataset
 X, y = make_hastie_10_2(random_state=0)
