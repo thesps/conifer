@@ -26,16 +26,46 @@ def _run_sim(simulator, odir):
       logger.error(f"'sim_compile' failed, check {simulator.__name__.lower()}.log")
     return success == 0
 
-def _touch(simulator):
+# Timeout (seconds) applied when probing for a simulator executable, so a wedged
+# tool (e.g. a license checkout retrying against an unreachable server) can't
+# stall the caller indefinitely.
+_TOUCH_TIMEOUT = 10
+
+def _touch(simulator, timeout=_TOUCH_TIMEOUT):
   cmd = simulator._touch_cmd
   try:
-    success = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-  except:
+    success = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=timeout)
+  except subprocess.TimeoutExpired:
+    logger.warning(f'Timed out after {timeout}s probing for {simulator.__name__} with command "{" ".join(cmd)}"')
+    success = 1
+  except Exception:
     success = 1
   return success == 0
 
+_detected_simulator = None
+
+def get_simulator():
+  '''
+  Detect an available VHDL simulator, preferring Xsim, then GHDL, then Modelsim.
+  The detection shells out to each tool, so it is done lazily (only when a
+  simulation is actually run) and the result is cached after the first call.
+  Falls back to Xsim if none is found.
+  '''
+  global _detected_simulator
+  if _detected_simulator is None:
+    _detected_simulator = Xsim
+    for sim in [Xsim, GHDL, Modelsim]:
+      if _touch(sim):
+        logger.info(f'Found {sim.__name__}, setting VHDL simulator to {sim.__name__}')
+        _detected_simulator = sim
+        break
+  return _detected_simulator
+
 class Modelsim:
-  _touch_cmd = ['vsim', '-c', '-do', 'quit -f']
+  # `vsim -version` prints the version and exits without checking out a license;
+  # `vsim -c -do "quit -f"` starts a full session and can block for minutes on a
+  # slow/unreachable license server, so it must not be used just to probe.
+  _touch_cmd = ['vsim', '-version']
   _compile_cmd = 'sh modelsim_compile.sh > modelsim_compile.log'
   _run_cmd = 'vsim -c -do "vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench; run -all; quit -f" > vsim.log'
   
