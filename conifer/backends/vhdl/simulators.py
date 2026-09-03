@@ -26,9 +26,7 @@ def _run_sim(simulator, odir):
       logger.error(f"'sim_compile' failed, check {simulator.__name__.lower()}.log")
     return success == 0
 
-# Timeout (seconds) applied when probing for a simulator executable, so a wedged
-# tool (e.g. a license checkout retrying against an unreachable server) can't
-# stall the caller indefinitely.
+# Timeout (seconds) for probing a simulator executable, so a wedged tool can't stall the caller.
 _TOUCH_TIMEOUT = 10
 
 def _touch(simulator, timeout=_TOUCH_TIMEOUT):
@@ -42,18 +40,11 @@ def _touch(simulator, timeout=_TOUCH_TIMEOUT):
     success = 1
   return success == 0
 
-# Set by set_simulator() when the user picks a simulator explicitly; when this is
-# not None, get_simulator() returns it and never probes for tools.
+# Cached simulator choice; set by set_simulator() or filled by get_simulator()'s probe.
 _detected_simulator = None
 
 def get_simulator():
-  '''
-  Detect an available VHDL simulator, preferring Xsim, then GHDL, then Modelsim.
-  The detection shells out to each tool, so it is done lazily (only when a
-  simulation is actually run) and the result is cached after the first call.
-  Falls back to Xsim if none is found. Use set_simulator() to override the
-  choice regardless of what is detected.
-  '''
+  '''Detect an available VHDL simulator (Xsim, then GHDL, then Modelsim), caching and defaulting to Xsim; overridable via set_simulator().'''
   global _detected_simulator
   if _detected_simulator is None:
     _detected_simulator = Xsim
@@ -65,13 +56,7 @@ def get_simulator():
   return _detected_simulator
 
 def set_simulator(simulator):
-  '''
-  Explicitly choose the VHDL simulator, bypassing auto-detection.
-
-  `simulator` may be a name ('xsim', 'ghdl', 'modelsim'/'vsim', case-insensitive)
-  or one of the Xsim / GHDL / Modelsim classes. The choice is applied as-is; it is
-  not probed for availability. Returns the selected simulator class.
-  '''
+  '''Force the VHDL simulator (a name 'xsim'/'ghdl'/'modelsim'/'vsim' or an Xsim/GHDL/Modelsim class), bypassing detection; returns the selected class.'''
   global _detected_simulator
   simulators = {'xsim': Xsim, 'ghdl': GHDL, 'modelsim': Modelsim, 'vsim': Modelsim}
   if isinstance(simulator, str):
@@ -86,9 +71,6 @@ def set_simulator(simulator):
   return simulator
 
 class Modelsim:
-  # `vsim -version` prints the version and exits without checking out a license;
-  # `vsim -c -do "quit -f"` starts a full session and can block for minutes on a
-  # slow/unreachable license server, so it must not be used just to probe.
   _touch_cmd = ['vsim', '-version']
   _compile_cmd = 'sh modelsim_compile.sh > modelsim_compile.log'
   _run_cmd = 'vsim -c -do "vsim -L BDT -L xil_defaultlib xil_defaultlib.testbench; run -all; quit -f" > vsim.log'

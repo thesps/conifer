@@ -9,10 +9,7 @@ class python_backend:
     from conifer.model import ModelBase
     return ModelBase(ensembleDict, config)
 
-# Map of backend string -> attribute name resolved lazily (getattr / import) on
-# first use. The values are kept as strings rather than the objects themselves so
-# that `import conifer` doesn't eagerly import every backend and trigger each
-# one's tool discovery / heavy dependencies.
+# Backend string -> attribute name, resolved lazily (import / getattr) on first use.
 _backend_map = {'xilinxhls' : 'xilinxhls',
                 'vhdl'      : 'vhdl',
                 'cpp'       : 'cpp',
@@ -21,14 +18,12 @@ _backend_map = {'xilinxhls' : 'xilinxhls',
                 'py'        : 'python_backend',
                 }
 
-# Submodules reachable as conifer.backends.<name>; 'boards' is a helper module
-# rather than a backend, so it isn't in _backend_map.
+# Submodules reachable as conifer.backends.<name> ('boards' is a helper, not a backend).
 _backend_submodules = ('xilinxhls', 'vhdl', 'cpp', 'fpu', 'boards')
 _submodule_cache = {}
 
 def _load_backend(target):
-  '''Resolve a _backend_map value: import the backend submodule lazily (and cache
-  it), or getattr the named object from this module.'''
+  '''Resolve a _backend_map value: lazily import the backend submodule, or getattr the named object from this module.'''
   if target in _backend_submodules:
     if target not in _submodule_cache:
       _submodule_cache[target] = importlib.import_module(f'conifer.backends.{target}')

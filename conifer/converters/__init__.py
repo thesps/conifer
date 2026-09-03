@@ -17,11 +17,7 @@ _CONVERTERS = ['sklearn', 'tmva', 'xgboost', 'onnx', 'ydf']
 _converter_map = {}
 
 def _load_converter(name):
-  '''
-  Import and cache the conifer converter submodule for `name`.
-  Returns the module, or None if it (or its third-party dependency) is unavailable.
-  Done lazily so `import conifer` doesn't pull in xgboost/sklearn/ydf etc.
-  '''
+  '''Lazily import and cache the conifer converter submodule for `name`, returning the module or None if it (or its dependency) is unavailable.'''
   if name not in _CONVERTERS:
     return None
   if name not in _converter_map:

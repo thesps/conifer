@@ -5,9 +5,7 @@ logger = logging.getLogger(__name__)
 
 
 def __getattr__(name):
-  # Detect the VHDL simulator lazily: accessing `conifer.backends.vhdl.simulator`
-  # triggers detection (which shells out to EDA tools) the first time it's needed,
-  # rather than on `import conifer`. Result is cached in get_simulator().
+  # Detect the simulator lazily on first access, not on `import conifer`.
   if name == 'simulator':
     return get_simulator()
   raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
