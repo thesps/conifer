@@ -7,7 +7,9 @@ import datetime
 import logging
 import sys
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, level=logging.WARNING)
+logger = logging.getLogger('conifer')
+logger.setLevel(logging.DEBUG)
 
 # Make a random dataset from sklearn 'hastie'
 X, y = make_hastie_10_2(random_state=0)

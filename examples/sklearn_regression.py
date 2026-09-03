@@ -6,6 +6,12 @@ from sklearn.ensemble import GradientBoostingRegressor
 import numpy as np
 import conifer
 import datetime
+import logging
+import sys
+
+logging.basicConfig(stream=sys.stdout, level=logging.WARNING)
+logger = logging.getLogger('conifer')
+logger.setLevel(logging.DEBUG)
 
 # Load Boston regression dataset
 boston = load_boston()

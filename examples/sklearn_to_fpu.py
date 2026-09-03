@@ -13,8 +13,9 @@ import sys
 import json
 import numpy as np
 
+logging.basicConfig(stream=sys.stdout, level=logging.WARNING)
 logger = logging.getLogger('conifer')
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 # First, either build an FPU yourself (see build_fpu_alveo.py and build_fpu_pynq.py)
 # Or download one from the conifer website for your device.

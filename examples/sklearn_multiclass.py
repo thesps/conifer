@@ -2,6 +2,12 @@ from sklearn.datasets import load_iris
 from sklearn.ensemble import GradientBoostingClassifier
 import conifer
 import datetime
+import logging
+import sys
+
+logging.basicConfig(stream=sys.stdout, level=logging.WARNING)
+logger = logging.getLogger('conifer')
+logger.setLevel(logging.DEBUG)
 
 iris = load_iris()
 X, y = iris.data, iris.target
