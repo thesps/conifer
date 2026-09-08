@@ -20,9 +20,9 @@ _PROJECT_NAME = 'conifer_prj'
 
 # files worth keeping once a point is measured (everything else is removed by shrink)
 DEFAULT_KEEP = {
-  f'{_PROJECT_NAME}.json', 'result.json', 'build.log', 'vitis_hls.log', 'vivado_hls.log',
-  'vivado.log', 'vivado_build.log', 'vivado_synth.log', 'vivado_synth.rpt', 'util.rpt',
-  f'{_PROJECT_NAME}_csynth.rpt', f'{_PROJECT_NAME}_csynth.xml',
+  f'{_PROJECT_NAME}.json', 'result.json', 'child_stderr.log', 'build.log', 'vitis_hls.log',
+  'vivado_hls.log', 'vivado.log', 'vivado_build.log', 'vivado_synth.log', 'vivado_synth.rpt',
+  'util.rpt', f'{_PROJECT_NAME}_csynth.rpt', f'{_PROJECT_NAME}_csynth.xml',
 }
 
 
@@ -145,32 +145,58 @@ def _write_stub_result(point, root, outcome, reason, started):
 
 def run_point(point, root, base_config, timeout=None, mem_gb=None, do_vsynth=True,
               keep=None, isolate=True):
-  '''Run one point, by default in a child process with a timeout and RLIMIT_AS memory cap.'''
+  '''Run one point, by default in a child process with a wall-clock timeout.'''
   if not isolate:
     return build_point(point, root, base_config, do_vsynth=do_vsynth, keep=keep)
 
   started = datetime.datetime.now()
+  odir = point_dir(root, point.point_id)
   job = {'point': point.to_dict(), 'root': root, 'base_config': base_config,
          'do_vsynth': do_vsynth, 'keep': sorted(keep) if keep else None}
-  jobfile = os.path.join(point_dir(root, point.point_id), 'job.json')
-  os.makedirs(os.path.dirname(jobfile), exist_ok=True)
-  with open(jobfile, 'w') as f:
+  os.makedirs(odir, exist_ok=True)
+  with open(os.path.join(odir, 'job.json'), 'w') as f:
     json.dump(job, f)
 
+  # RLIMIT_AS caps *virtual* address space; BLAS/glibc over-reserve, so set it generously
+  # (>~3x the RSS you expect) or leave it off and rely on --timeout / a cgroup memory limit
   preexec = None
   if mem_gb:
     import resource
     cap = int(mem_gb * 1024 ** 3)
     preexec = lambda: resource.setrlimit(resource.RLIMIT_AS, (cap, cap))  # noqa: E731
-  cmd = [sys.executable, '-m', 'conifer.utils.performance.scan._build_one', jobfile]
+  cmd = [sys.executable, '-m', 'conifer.utils.performance.scan._build_one',
+         os.path.join(odir, 'job.json')]
+  errfile = os.path.join(odir, 'child_stderr.log')
   try:
-    proc = subprocess.run(cmd, timeout=timeout, preexec_fn=preexec,
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    with open(errfile, 'wb') as ef:
+      proc = subprocess.run(cmd, timeout=timeout, preexec_fn=preexec,
+                            stdout=subprocess.DEVNULL, stderr=ef)
   except subprocess.TimeoutExpired:
     return _write_stub_result(point, root, 'timeout', f'exceeded {timeout}s', started)
+
   if os.path.isfile(result_path(root, point.point_id)):
+    os.path.getsize(errfile) or _rm(errfile)   # keep child_stderr.log only if the child wrote to it
     return json.load(open(result_path(root, point.point_id)))
-  # -9/137 = SIGKILL (our RLIMIT_AS cap or the OS OOM killer), -6 = SIGABRT (e.g. malloc failure under memory pressure)
-  if proc.returncode in (-9, 137, -6):
-    return _write_stub_result(point, root, 'oom', f'child killed (rc={proc.returncode})', started)
-  return _write_stub_result(point, root, 'error', f'child exited rc={proc.returncode}', started)
+
+  tail = _tail(errfile)
+  # -9/137 = SIGKILL (cgroup/OS OOM killer or the RLIMIT_AS cap), -6 = SIGABRT (malloc failure under pressure)
+  outcome = 'oom' if proc.returncode in (-9, 137, -6) else 'error'
+  reason = f'child rc={proc.returncode}' + (f'; {tail}' if tail else '; see child_stderr.log')
+  return _write_stub_result(point, root, outcome, reason, started)
+
+
+def _rm(path):
+  try:
+    os.remove(path)
+  except OSError:
+    pass
+
+
+def _tail(path, n=400):
+  '''Last n chars of a file, single-lined, or '' if empty/unreadable.'''
+  try:
+    with open(path, 'rb') as f:
+      data = f.read()
+  except OSError:
+    return ''
+  return ' '.join(data[-n:].decode('utf-8', 'replace').split()) if data else ''
