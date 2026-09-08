@@ -61,27 +61,31 @@ def _render_status(scandir):
   rows = []
   for p in manifest:
     r = done.get(p.point_id)
-    rows.append({'point_id': p.point_id, 'outcome': r['outcome'] if r else 'not_started',
+    # 'pending' = no result.json yet: either not started or being synthesized right now
+    # (a running point leaves no marker on EOS, so the two can't be told apart from here)
+    rows.append({'point_id': p.point_id, 'outcome': r['outcome'] if r else 'pending',
                  'reason': (r or {}).get('reason', ''),
                  'finished_at': (r or {}).get('finished_at'),
                  'wall_time_s': (r or {}).get('wall_time_s')})
   df = pd.DataFrame(rows)
   total = len(df)
-  n_done = int((df['outcome'] != 'not_started').sum()) if total else 0
+  n_done = int((df['outcome'] != 'pending').sum()) if total else 0
   frac = n_done / total if total else 0.0
 
   print(f'{os.path.basename(scandir.rstrip("/"))}: {n_done}/{total} ({100 * frac:.1f}%)  {_bar(frac)}')
   for outcome, n in df['outcome'].value_counts().items():
-    print(f'  {outcome:<12} {n:>6}  ({100 * n / total:5.1f}%)')
+    label = 'pending (or running)' if outcome == 'pending' else outcome
+    print(f'  {label:<20} {n:>6}  ({100 * n / total:5.1f}%)')
 
   fin = pd.to_datetime(df['finished_at'], errors='coerce', utc=True).dropna()
   if len(fin) and n_done < total:
     recent = int((fin > pd.Timestamp.now(tz='UTC') - pd.Timedelta(minutes=10)).sum())
     rate = recent / 10.0
     eta = f'~{(total - n_done) / rate:.0f} min' if rate > 0 else 'n/a'
-    print(f'  last 10 min : {recent:>6}  ({rate:.1f}/min, ETA {eta})')
+    note = '' if rate > 0 else '  <- nothing finished recently; check the runners'
+    print(f'  last 10 min : {recent:>6}  ({rate:.1f}/min, ETA {eta}){note}')
 
-  reasons = df.loc[~df['outcome'].isin(('ok', 'not_started')) & (df['reason'] != ''), 'reason']
+  reasons = df.loc[~df['outcome'].isin(('ok', 'pending')) & (df['reason'] != ''), 'reason']
   if len(reasons):
     print('failure reasons:')
     for reason, n in reasons.value_counts().head(10).items():

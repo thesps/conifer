@@ -1,0 +1,28 @@
+# ~1000-point grid scan to exercise the scan machinery at scale on the NGT cluster.
+# 10 (n_trees) x 5 (max_depth) x 5 (precision) x 4 (sparsity) = 1000 points, 1 trial each.
+# Largest model: 200 trees, depth 6; smallest: 10 trees, depth 2.
+name: ngt_test_1000
+mode: grid
+n_trials: 1
+seed: 20260908
+base_config:
+  backend: xilinxhls
+  xilinx_part: xcvu9p-flgb2104-2L-e
+  clock_period: 2.5
+  unroll: true
+generator_defaults:
+  n_features: 16
+  split: axis
+axes:
+  - name: n_trees
+    kind: grid
+    values: [10, 20, 35, 55, 80, 110, 140, 170, 190, 200]
+  - name: max_depth
+    kind: grid
+    values: [2, 3, 4, 5, 6]
+  - name: precision            # total width spans 8 -> 24 bits
+    kind: grid
+    values: ["ap_fixed<8,3>", "ap_fixed<12,5>", "ap_fixed<16,6>", "ap_fixed<20,8>", "ap_fixed<24,10>"]
+  - name: sparsity             # 4 steps
+    kind: grid
+    values: [0.0, 0.25, 0.5, 0.75]
