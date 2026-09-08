@@ -5,6 +5,7 @@ Resumable: points that already have a result.json are skipped.
 import concurrent.futures
 import json
 import os
+import sys
 
 from conifer.utils.performance.scan.build import run_point
 from conifer.utils.performance.scan.manifest import DEFAULT_SPEC_NAME, Manifest
@@ -37,9 +38,11 @@ def run_manifest(scandir, shard=None, shard_file=None, jobs=1, timeout=None, mem
     manifest = manifest.shard(shard[0], shard[1])
   todo = manifest.pending(scandir) if resume else manifest
   n_total, n_skipped = len(manifest), len(manifest) - len(todo)
+  print(f'{n_total} points, {n_skipped} already done, running {len(todo)} with -j {jobs} '
+        f'(timeout {timeout}s, vsynth {do_vsynth})', flush=True)
 
   bar = None
-  if progress:
+  if progress and len(todo) and sys.stderr.isatty():  # tqdm's \r bar is useless in a log file
     try:
       from tqdm import tqdm
       bar = tqdm(total=len(todo), desc=f'\N{evergreen tree} scan {os.path.basename(scandir.rstrip("/"))}')
@@ -56,6 +59,8 @@ def run_manifest(scandir, shard=None, shard_file=None, jobs=1, timeout=None, mem
       if bar is not None:
         bar.update(1)
         bar.set_postfix({k: v for k, v in counts.items() if v})
+      else:  # no tqdm: one line per finished point so a hung run is obvious
+        print(f'  {res["point_id"]} {res.get("outcome")} {res.get("reason", "")}'.rstrip(), flush=True)
   if bar is not None:
     bar.close()
 
