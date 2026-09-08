@@ -73,7 +73,7 @@ class HLSEstimator(PerformanceEstimator):
   
   def predict(self, model : ModelBase):
     assert isinstance(model, ModelBase), f"Expected conifer.model.ModelBase, got {type(model)}"
-    X = conifer.utils.performance.metrics.get_model_metrics(model)
+    X = conifer.utils.performance.metrics.get_model_metrics(model).flatten()
     features = ['max_depth',
                 'n_trees',
                 'n_features',

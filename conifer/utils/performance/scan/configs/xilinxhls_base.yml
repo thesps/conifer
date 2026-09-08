@@ -1,0 +1,7 @@
+# Generic conifer xilinxhls config for performance scans (no site/cluster specifics).
+# Used as ScanSpec.base_config; individual axes may override any of these per point.
+backend: xilinxhls
+xilinx_part: xcvu9p-flgb2104-2L-e
+clock_period: 2.5
+precision: ap_fixed<18,8>
+unroll: true

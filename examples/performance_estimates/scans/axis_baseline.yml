@@ -1,0 +1,25 @@
+# Axis-aligned baseline scan, same shape as the released estimator training set.
+# n_trees x max_depth x three sparsity regimes, n_features drawn per point, 4 trials each.
+name: axis_baseline
+mode: random
+n_samples: 1150
+n_trials: 4
+seed: 20240822
+base_config:
+  backend: xilinxhls
+  xilinx_part: xcvu9p-flgb2104-2L-e
+  clock_period: 2.5
+  precision: ap_fixed<18,8>
+  unroll: true
+generator_defaults:
+  split: axis
+axes:
+  - {name: n_trees, kind: randint, low: 5, high: 300}
+  - {name: max_depth, kind: randint, low: 2, high: 8}
+  - {name: n_features, kind: randint, low: 2, high: 100}
+  - name: sparsity
+    kind: choice
+    values:
+      - {dist: const, value: 0.0}
+      - {dist: normal, mean: 0.5, std: 0.1}
+      - {dist: normal, mean: 0.2, std: 0.4}

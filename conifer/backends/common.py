@@ -3,6 +3,7 @@ import numpy as np
 import xml.etree.ElementTree as ET
 import re
 import os
+import subprocess
 
 # HLS tools that can run the build Tcl scripts, in order of preference.
 # vitis_hls was removed in Vitis 2025.1.
@@ -51,6 +52,39 @@ def get_hls_build_command(tool_exe, tcl_script):
         return f'vitis-run --mode hls --tcl {tcl_script}'
     else:
         return f'{tool_exe} -f {tcl_script}'
+
+
+# flag each tool prints its version with; vitis-run only understands the long form
+_VERSION_FLAGS = {'vivado_hls': '-version', 'vitis_hls': '-version', 'vitis-run': '--version'}
+_VERSION_RE = re.compile(r'\bv?(20\d\d\.\d+)\b')
+_version_cache = {}  # tool_exe -> version string or None, so repeated callers don't re-spawn the tool
+
+
+def get_xilinx_version(tool_exe=None):
+    '''
+    Get the version (e.g. "2024.1") of the discovered, or given, HLS tool executable
+    Parameters
+    ----------
+    tool_exe : string, optional
+        name of the HLS tool executable, one of the values of _TOOLS; defaults to get_hls()
+    Returns
+    ----------
+    version string, or None if no tool was found or its version could not be parsed
+    '''
+    tool_exe = tool_exe or get_hls()
+    if tool_exe is None:
+        return None
+    if tool_exe in _version_cache:
+        return _version_cache[tool_exe]
+    try:
+        proc = subprocess.run([tool_exe, _VERSION_FLAGS.get(tool_exe, '-version')],
+                              capture_output=True, text=True, timeout=30)
+        m = _VERSION_RE.search(proc.stdout + proc.stderr)
+        version = m.group(1) if m else None
+    except (OSError, subprocess.TimeoutExpired):
+        version = None
+    _version_cache[tool_exe] = version
+    return version
 
 
 class BottomUpDecisionTree(DecisionTreeBase):
@@ -184,9 +218,12 @@ def read_hls_report(filename: str) -> dict:
         report['dsp'] = R.find('DSP')
         report['bram18'] = R.find('BRAM_18K')
 
-    for key in report.keys():
-      if key is not None:
+    # an expected XML tag can still be absent (schema differs by tool version); drop, don't crash
+    for key in list(report.keys()):
+      if report[key] is not None:
         report[key] = int(report[key].text)
+      else:
+        del report[key]
     return report
   else:
     return None

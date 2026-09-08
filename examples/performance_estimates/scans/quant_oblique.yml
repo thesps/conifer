@@ -1,0 +1,24 @@
+# Step-2 expansion: adds quantization and oblique-split axes on top of the baseline shape.
+# Kept here as a worked example of how new axes slot in without new scan code.
+name: quant_oblique
+mode: random
+n_samples: 4000
+n_trials: 2
+seed: 20260904
+base_config:
+  backend: xilinxhls
+  xilinx_part: xcvu9p-flgb2104-2L-e
+  clock_period: 2.5
+  unroll: true
+axes:
+  - {name: n_trees, kind: randint, low: 5, high: 300}
+  - {name: max_depth, kind: randint, low: 2, high: 8}
+  - {name: n_features, kind: randint, low: 2, high: 100}
+  - name: sparsity
+    kind: choice
+    values:
+      - {dist: const, value: 0.0}
+      - {dist: normal, mean: 0.4, std: 0.2}
+  - {name: split, kind: choice, values: [axis, oblique]}
+  - {name: oblique_k, kind: randint, low: 2, high: 6}
+  - {name: precision, kind: choice, values: ["ap_fixed<10,4>", "ap_fixed<14,6>", "ap_fixed<18,8>", "ap_fixed<24,10>"]}

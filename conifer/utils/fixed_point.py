@@ -1,9 +1,58 @@
 import os
+import re
 import numpy as np
 import datetime
+from dataclasses import dataclass
 from conifer.utils.misc import _ap_include, _gcc_opts
 import logging
 logger = logging.getLogger(__name__)
+
+# ap_fixed<W,I,Q,O,N>: Q/O default per Xilinx's ap_fixed_base.h when omitted from the type string
+_DEFAULT_ROUNDING_MODE = 'AP_TRN'
+_DEFAULT_OVERFLOW_MODE = 'AP_WRAP'
+_DEFAULT_SATURATION_BITS = 0
+
+_FIXED_RE = re.compile(
+  r'ap_(u?)fixed\s*<\s*(\d+)\s*,\s*(-?\d+)'   # width, integer_bits
+  r'(?:\s*,\s*(AP_\w+))?'                     # quantization/rounding mode
+  r'(?:\s*,\s*(AP_\w+))?'                     # overflow/saturation mode
+  r'(?:\s*,\s*(\d+))?'                        # saturation bits, only used by AP_WRAP_SM
+)
+_INT_RE = re.compile(r'ap_(u?)int\s*<\s*(\d+)')
+
+@dataclass(frozen=True)
+class ApType:
+  '''Parsed fields of an ap_[u]fixed<W,I,Q,O,N>/ap_[u]int<W> type string'''
+  width: int
+  integer_bits: int
+  signed: bool
+  rounding_mode: str = None      # ap_int has no rounding/overflow modes: exact, always wraps
+  overflow_mode: str = None
+  saturation_bits: int = None
+
+  @property
+  def fractional_bits(self):
+    return self.width - self.integer_bits
+
+def parse_ap_type(type_string):
+  '''
+  Parse an ap_[u]fixed<W,I,Q,O,N> or ap_[u]int<W> type string into an ApType
+  Returns None if type_string isn't a string or doesn't match either pattern
+  '''
+  if not isinstance(type_string, str):
+    return None
+  m = _FIXED_RE.search(type_string)
+  if m:
+    unsigned, width, integer_bits, rounding_mode, overflow_mode, saturation_bits = m.groups()
+    return ApType(int(width), int(integer_bits), not unsigned,
+                 rounding_mode=rounding_mode or _DEFAULT_ROUNDING_MODE,
+                 overflow_mode=overflow_mode or _DEFAULT_OVERFLOW_MODE,
+                 saturation_bits=int(saturation_bits) if saturation_bits else _DEFAULT_SATURATION_BITS)
+  m = _INT_RE.search(type_string)
+  if m:
+    unsigned, width = m.groups()
+    return ApType(int(width), int(width), not unsigned)
+  return None
 
 class FixedPointConverter:
   '''
@@ -60,21 +109,17 @@ class FixedPointConverter:
     os.chdir(curr_dir)
 
   def _parse(self, type_string):
-
-    if np.any([i in type_string for i in ['int', 'uint']]):
-      self.width = int(type_string.split('<')[1].replace('>', ''))
-      self.integer_bits = self.width
-      self.fractional_bits = 0
-      self.signed = not ('uint' in type_string)
-    elif 'fixed' in type_string:
-      t = type_string.split('<')[1].replace('>','')
-      self.width = int(t.split(',')[0].strip())
-      self.integer_bits = int(t.split(',')[1].strip())
-      self.fractional_bits = self.width - self.integer_bits
-      self.signed = not ('ufixed' in type_string)
-      # TODO rounding/saturation modes
-    else:
+    parsed = parse_ap_type(type_string)
+    if parsed is None:
       logger.error(f'Could not parse {type_string}')
+      return
+    self.width = parsed.width
+    self.integer_bits = parsed.integer_bits
+    self.fractional_bits = parsed.fractional_bits
+    self.signed = parsed.signed
+    self.rounding_mode = parsed.rounding_mode
+    self.overflow_mode = parsed.overflow_mode
+    self.saturation_bits = parsed.saturation_bits
 
   def to_int(self, x):
     return self.lib.to_int(x)

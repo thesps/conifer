@@ -1,2 +1,3 @@
 recursive-include conifer/backends *
 recursive-include conifer/external *
+recursive-include conifer/utils/performance/scan/configs *

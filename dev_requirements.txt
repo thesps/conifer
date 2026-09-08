@@ -9,3 +9,6 @@ xgboost
 pybind11
 ydf
 pandas
+pyyaml
+tqdm
+pyarrow

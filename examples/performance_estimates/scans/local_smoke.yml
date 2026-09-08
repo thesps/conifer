@@ -1,0 +1,21 @@
+# Tiny scan for local validation: a handful of small models, quick to synthesize.
+#   python -m conifer.utils.performance.scan expand local_smoke.yml /tmp/smoke
+#   python -m conifer.utils.performance.scan run /tmp/smoke -j 2
+#   python -m conifer.utils.performance.scan gather /tmp/smoke
+name: local_smoke
+mode: grid
+n_trials: 1
+seed: 0
+base_config:
+  backend: xilinxhls
+  xilinx_part: xcvu9p-flgb2104-2L-e
+  clock_period: 2.5
+  precision: ap_fixed<18,8>
+  unroll: true
+generator_defaults:
+  n_features: 8
+  split: axis
+axes:
+  - {name: n_trees, kind: grid, values: [5, 10]}
+  - {name: max_depth, kind: grid, values: [2, 3]}
+  - {name: sparsity, kind: grid, values: [0.3, 0.6, 0.8]}

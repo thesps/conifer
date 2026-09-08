@@ -28,6 +28,8 @@ dependencies = [
 
 [project.optional-dependencies]
 xrt = ["conifer-xrt"]
+# Extras for the performance-scan tooling (conifer.utils.performance.scan)
+scan = ["pandas", "pyyaml", "scipy", "pyarrow", "tqdm"]
 
 [project.urls]
 Homepage = "https://ssummers.web.cern.ch/conifer/"
