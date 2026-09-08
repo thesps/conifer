@@ -50,17 +50,22 @@ def run_manifest(scandir, shard=None, shard_file=None, jobs=1, timeout=None, mem
       pass
 
   counts = {k: 0 for k in _OUTCOMES}
+  n_todo = len(todo)
   with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as ex:
     futs = {ex.submit(run_point, p, scandir, base_config, timeout, mem_gb, do_vsynth, None, isolate): p
             for p in todo}
-    for fut in concurrent.futures.as_completed(futs):
+    for done, fut in enumerate(concurrent.futures.as_completed(futs), 1):
       res = fut.result()
       counts[res.get('outcome', 'error')] = counts.get(res.get('outcome', 'error'), 0) + 1
       if bar is not None:
         bar.update(1)
         bar.set_postfix({k: v for k, v in counts.items() if v})
-      else:  # no tqdm: one line per finished point so a hung run is obvious
-        print(f'  {res["point_id"]} {res.get("outcome")} {res.get("reason", "")}'.rstrip(), flush=True)
+      else:  # no tqdm (e.g. in a log file): one line per finished point, with a running counter
+        wt = res.get('wall_time_s')
+        line = f'[{done}/{n_todo}] {res["point_id"]} {res.get("outcome")}'
+        line += f' {wt:.0f}s' if isinstance(wt, (int, float)) else ''
+        line += f' {res.get("reason")}' if res.get('reason') else ''
+        print(line, flush=True)
   if bar is not None:
     bar.close()
 
