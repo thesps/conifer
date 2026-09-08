@@ -26,6 +26,11 @@ DEFAULT_KEEP = {
 }
 
 
+def _now():
+  '''UTC-aware timestamp, so started_at/finished_at compare correctly across machines.'''
+  return datetime.datetime.now(datetime.timezone.utc)
+
+
 def _resolve_sparsity(value, rng, n_trees):
   '''Turn a sparsity descriptor ({dist: const|normal, ...}) into a scalar or per-tree array.'''
   if not isinstance(value, dict):
@@ -103,7 +108,7 @@ def _write_result(root, point, result):
 def build_point(point, root, base_config, do_vsynth=True, keep=None):
   '''Generate, synthesize and measure one point in-process; write and return its result dict.'''
   from conifer.utils.performance import metrics as perf_metrics
-  started = datetime.datetime.now()
+  started = _now()
   odir = point_dir(root, point.point_id)
   os.makedirs(odir, exist_ok=True)
   outcome, reason, measured = 'error', '', {}
@@ -129,7 +134,7 @@ def build_point(point, root, base_config, do_vsynth=True, keep=None):
     shrink(odir, keep)
   except Exception as e:  # a failed point must still leave a result so it is not retried blindly
     outcome, reason = 'error', f'{type(e).__name__}: {e}'
-  finished = datetime.datetime.now()
+  finished = _now()
   result = {**_identity(point), **_provenance(started, finished), 'outcome': outcome,
            'reason': reason, **measured}
   return _write_result(root, point, result)
@@ -138,7 +143,7 @@ def build_point(point, root, base_config, do_vsynth=True, keep=None):
 def _write_stub_result(point, root, outcome, reason, started):
   '''Record an outcome for a point whose child process did not produce a result.'''
   os.makedirs(point_dir(root, point.point_id), exist_ok=True)
-  finished = datetime.datetime.now()
+  finished = _now()
   result = {**_identity(point), **_provenance(started, finished), 'outcome': outcome, 'reason': reason}
   return _write_result(root, point, result)
 
@@ -149,7 +154,7 @@ def run_point(point, root, base_config, timeout=None, mem_gb=None, do_vsynth=Tru
   if not isolate:
     return build_point(point, root, base_config, do_vsynth=do_vsynth, keep=keep)
 
-  started = datetime.datetime.now()
+  started = _now()
   odir = point_dir(root, point.point_id)
   job = {'point': point.to_dict(), 'root': root, 'base_config': base_config,
          'do_vsynth': do_vsynth, 'keep': sorted(keep) if keep else None}

@@ -48,31 +48,61 @@ def gather(scandir, out=None, ok_only=False):
   return df
 
 
-def status_report(scandir):
-  '''Per-point outcome for the whole manifest, including points that never started.'''
+def _bar(frac, width=34):
+  n = int(round(max(0.0, min(1.0, frac)) * width))
+  return '[' + '#' * n + '-' * (width - n) + ']'
+
+
+def _render_status(scandir):
+  '''Print a one-shot status view and return the per-point DataFrame.'''
   import pandas as pd
   manifest = Manifest.load(scandir)
   done = {r['point_id']: r for r in iter_results(scandir)}
   rows = []
   for p in manifest:
     r = done.get(p.point_id)
-    rows.append({'point_id': p.point_id, 'name': p.name, 'trial': p.trial,
-                 'outcome': r['outcome'] if r else 'not_started',
+    rows.append({'point_id': p.point_id, 'outcome': r['outcome'] if r else 'not_started',
                  'reason': (r or {}).get('reason', ''),
+                 'finished_at': (r or {}).get('finished_at'),
                  'wall_time_s': (r or {}).get('wall_time_s')})
   df = pd.DataFrame(rows)
-
   total = len(df)
-  counts = df['outcome'].value_counts()
-  print(f'{scandir}: {total} points')
-  for outcome, n in counts.items():
+  n_done = int((df['outcome'] != 'not_started').sum()) if total else 0
+  frac = n_done / total if total else 0.0
+
+  print(f'{os.path.basename(scandir.rstrip("/"))}: {n_done}/{total} ({100 * frac:.1f}%)  {_bar(frac)}')
+  for outcome, n in df['outcome'].value_counts().items():
     print(f'  {outcome:<12} {n:>6}  ({100 * n / total:5.1f}%)')
+
+  fin = pd.to_datetime(df['finished_at'], errors='coerce', utc=True).dropna()
+  if len(fin) and n_done < total:
+    recent = int((fin > pd.Timestamp.now(tz='UTC') - pd.Timedelta(minutes=10)).sum())
+    rate = recent / 10.0
+    eta = f'~{(total - n_done) / rate:.0f} min' if rate > 0 else 'n/a'
+    print(f'  last 10 min : {recent:>6}  ({rate:.1f}/min, ETA {eta})')
+
   reasons = df.loc[~df['outcome'].isin(('ok', 'not_started')) & (df['reason'] != ''), 'reason']
   if len(reasons):
     print('failure reasons:')
-    for reason, n in reasons.value_counts().items():
+    for reason, n in reasons.value_counts().head(10).items():
       print(f'  {n:>6}  {reason}')
   return df
+
+
+def status_report(scandir, watch=None):
+  '''Per-point outcome for the whole manifest; with watch=<seconds>, redraw until ctrl-c.'''
+  if not watch:
+    return _render_status(scandir)
+  import time
+  import datetime
+  df = None
+  try:
+    while True:
+      print(f'\033[2J\033[H(watch {watch}s, ctrl-c to stop)  {datetime.datetime.now():%Y-%m-%d %H:%M:%S}')
+      df = _render_status(scandir)
+      time.sleep(watch)
+  except KeyboardInterrupt:
+    return df if df is not None else _render_status(scandir)
 
 
 def add_gather_arguments(parser):

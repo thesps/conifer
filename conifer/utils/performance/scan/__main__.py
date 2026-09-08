@@ -31,9 +31,10 @@ def main(argv=None):
   add_gather_arguments(p)
   p.set_defaults(func=gather_from_args)
 
-  p = sub.add_parser('status', help='per-point outcome breakdown for the whole manifest')
+  p = sub.add_parser('status', help='progress + per-outcome breakdown for the whole manifest')
   p.add_argument('scandir')
-  p.set_defaults(func=lambda a: status_report(a.scandir))
+  p.add_argument('--watch', type=int, metavar='SECONDS', help='redraw every N seconds until ctrl-c')
+  p.set_defaults(func=lambda a: status_report(a.scandir, watch=a.watch))
 
   args = parser.parse_args(argv)
   args.func(args)
