@@ -1,0 +1,20 @@
+# 8-point probe: the corners of the ngt_test_1000 box, run before the full scan to measure
+# per-point wall time, peak memory and /scratch usage on the big models.
+# (10|200) trees x (2|6) depth x (8|24)-bit x sparsity 0.0  ->  worst case = 200/6/24bit/dense.
+name: ngt_probe
+mode: grid
+n_trials: 1
+seed: 20260908
+base_config:
+  backend: xilinxhls
+  xilinx_part: xcvu9p-flgb2104-2L-e
+  clock_period: 2.5
+  unroll: true
+generator_defaults:
+  n_features: 16
+  split: axis
+axes:
+  - {name: n_trees, kind: grid, values: [10, 200]}
+  - {name: max_depth, kind: grid, values: [2, 6]}
+  - {name: precision, kind: grid, values: ["ap_fixed<8,3>", "ap_fixed<24,10>"]}
+  - {name: sparsity, kind: grid, values: [0.0]}
