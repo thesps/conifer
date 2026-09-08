@@ -4,6 +4,7 @@ get_model_metrics()/get_model_measurements() are the main entry points
 '''
 import dataclasses
 import os
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -13,7 +14,7 @@ from conifer.utils.fixed_point import ApType, parse_ap_type
 
 # schema versions: bump when a field is added/removed/renamed on ModelMetrics or SynthesisMetrics
 MODEL_METRICS_SCHEMA_VERSION = 1
-SYNTHESIS_METRICS_SCHEMA_VERSION = 1
+SYNTHESIS_METRICS_SCHEMA_VERSION = 2   # v2: added vsynth_time_s / vsynth_memory_gb
 
 
 @dataclass
@@ -163,6 +164,27 @@ def _read_build_log(outdir):
       return log
   return {}
 
+_VSYNTH_MEM_RE = re.compile(r'Memory \(MB\): peak = ([\d.]+)')
+_VSYNTH_ELAPSED_RE = re.compile(r'elapsed = (\d+):(\d+):(\d+)')
+
+def _read_vsynth_log(outdir):
+  '''Peak memory (GB) and elapsed time (s) of the Vivado synth_design run, from vivado.log.'''
+  for name in ('vivado.log', 'vivado_build.log', 'vivado_synth.log'):
+    path = os.path.join(outdir, name)
+    if not os.path.isfile(path):
+      continue
+    text = open(path, errors='replace').read()
+    mems = [float(m) for m in _VSYNTH_MEM_RE.findall(text)]
+    times = [int(h) * 3600 + int(mi) * 60 + int(s) for h, mi, s in _VSYNTH_ELAPSED_RE.findall(text)]
+    out = {}
+    if mems:
+      out['memory_GB'] = max(mems) / 1024
+    if times:
+      out['time_seconds'] = float(max(times))   # Vivado's elapsed is cumulative from session start
+    if out:
+      return out
+  return {}
+
 @dataclass
 class SynthesisMetrics:
   '''Every label the performance-scan measures from a built model's HLS/Vivado reports and logs'''
@@ -176,9 +198,11 @@ class SynthesisMetrics:
   lut: int = None
   ff: int = None
   dsp: int = None
-  build_time_s: float = None
-  build_memory_gb: float = None
-  disk_bytes: int = None
+  build_time_s: float = None       # HLS csynth elapsed (vitis_hls.log)
+  build_memory_gb: float = None    # HLS csynth peak memory
+  vsynth_time_s: float = None      # Vivado synth_design elapsed (vivado.log)
+  vsynth_memory_gb: float = None   # Vivado synth_design peak memory
+  disk_bytes: int = None           # project dir size before shrink
   schema_version: int = SYNTHESIS_METRICS_SCHEMA_VERSION
 
   def flatten(self):
@@ -199,8 +223,12 @@ def get_model_measurements(model : ModelBase, do_vsynth : bool = True) -> Synthe
     return SynthesisMetrics(outcome='hls_fail', reason=f'could not parse HLS report: {type(e).__name__}: {e}')
   try:
     log = _read_build_log(outdir)
-  except Exception as e:
+  except Exception:
     log = {}
+  try:
+    vlog = _read_vsynth_log(outdir)
+  except Exception:
+    vlog = {}
 
   vs = rep.get('vsynth', {})
   if rep.get('latency') is None:
@@ -214,4 +242,5 @@ def get_model_measurements(model : ModelBase, do_vsynth : bool = True) -> Synthe
                           interval=rep.get('interval'), hls_lut=rep.get('lut'), hls_ff=rep.get('ff'),
                           hls_dsp=rep.get('dsp'), lut=vs.get('lut'), ff=vs.get('ff'), dsp=vs.get('dsp'),
                           build_time_s=log.get('time_seconds'), build_memory_gb=log.get('memory_GB'),
+                          vsynth_time_s=vlog.get('time_seconds'), vsynth_memory_gb=vlog.get('memory_GB'),
                           disk_bytes=_dir_size(outdir))
