@@ -107,7 +107,7 @@ class FPUInterfaceTree:
 
 class FPUConfig(ConfigBase):
   backend = 'fpu'
-  _config_fields = ConfigBase._config_fields + ['nodes', 'tree_engines', 'features', 'threshold_type', 'score_type', 'dynamic_scaler']
+  _config_fields = ConfigBase._config_fields + ['nodes', 'tree_engines', 'roots', 'features', 'threshold_type', 'score_type', 'dynamic_scaler']
   _config_fields.remove('output_dir')
   _config_fields.remove('project_name')
   _fpu_alts = {'nodes'          : ['Nodes'],
@@ -115,11 +115,13 @@ class FPUConfig(ConfigBase):
                'features'       : ['Features'],
                'threshold_type' : ['ThresholdType'],
                'score_type'     : ['ScoreType'],
-               'dynamic_scaler' : ['DynamicScaler']
+               'dynamic_scaler' : ['DynamicScaler'],
+               'roots'          : ['Roots']
                }
   _alternates = {**ConfigBase._alternates, **_fpu_alts}
   _fpu_defaults = {'nodes'          : 512,
                    'tree_engines'   : 100,
+                   'roots'          : 16,
                    'features'       : 16,
                    'threshold_type' : 16,
                    'score_type'     : 16,
@@ -135,9 +137,10 @@ class FPUConfig(ConfigBase):
     return copy.deepcopy(FPUConfig._defaults)
 
   def generate_codename(self):
-    template = 'fpu_{te}TE_{n}N_{f}F_{tt}T_{st}S_{ds}DS'
+    template = 'fpu_{te}TE_{n}N_{r}R_{f}F_{tt}T_{st}S_{ds}DS'
     codename = template.format(te = self.tree_engines,
                                n = self.nodes,
+                               r = self.roots,
                                f = self.features,
                                tt = self.threshold_type,
                                st = self.score_type,

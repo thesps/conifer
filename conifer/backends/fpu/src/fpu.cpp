@@ -21,10 +21,13 @@ Source location: https://github.com/thesps/conifer
 #include "parameters.h"
 #include <cstdint>
 
-void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_features, InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
+void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_features, int roots[NTE][NROOTS], InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
   static DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes_int[NTE][NNODES];
+  static int roots_int[NTE][NROOTS+1];
   #pragma HLS array_partition variable=nodes_int dim=1
-  #pragma HLS aggregate variable=nodes_int compact=bit  
+  #pragma HLS aggregate variable=nodes_int compact=bit
+  #pragma HLS array_partition variable=roots_int dim=1
+  #pragma HLS aggregate variable=roots_int compact=bit 
   static float scales_int[NFEATURES+NCLASSES];
 
   infoLength = theInfoLength;
@@ -39,6 +42,10 @@ void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_feature
       LoadNode: for(int j = 0; j < NNODES; j++){
         nodes_int[i][j].fromInterfaceNode(nodes_in[i][j]);
       }
+    }
+    LoadRootsTE: for(int i = 0; i < NTE; i++){
+      LoadRoots: for(int j = 0; j < NROOTS+1; j++){
+      roots_int[i][j] = roots[i][j];
     }
     LoadScales: for(int i = 0; i < NFEATURES + NCLASSES; i++){
       scales_int[i] = scales_in[i];
@@ -68,7 +75,7 @@ void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_feature
           X_int[i] = (T) X[n*n_features + i];
         }
       }
-      FPU_df<T, U, FEATBITS, ADDRBITS, CLASSBITS, NFEATURES, NNODES, NTE>(X_int, y_int, nodes_int);
+      FPU_df<T, U, FEATBITS, ADDRBITS, CLASSBITS, NFEATURES, NNODES, NTE>(X_int, y_int, roots_int, nodes_int);
       if(SCALER){
         float y_tmp = ((float) y_int) * scales_int[NFEATURES];
         y[n] = *(reinterpret_cast<int*>(&y_tmp));

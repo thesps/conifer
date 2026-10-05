@@ -61,17 +61,21 @@ struct DecisionNode{
   }
 };
 
-template<class T, class U, int FEATBITS, int ADDRBITS, int CLASSBITS, int NVARS, int NNODES>
-void TreeEngine(T X[NVARS], DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[NNODES], U& y){
+template<class T, class U, int FEATBITS, int ADDRBITS, int CLASSBITS, int NVARS, int NNODES, int NROOTS>
+void TreeEngine(T X[NVARS], int roots[NROOTS+1], DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[NNODES], hls::stream<U> y){
   #pragma HLS pipeline
-  ap_int<ADDRBITS> i = 0;
-  auto node = nodes[i];
-  node_loop : while(!node.is_leaf){
-    #pragma HLS pipeline
-    i = X[node.feature] <= node.threshold ? node.child_left : node.child_right;
-    node = nodes[i];
+  int nRoots = roots[0]
+  for(int nRoot = 0; n < nRoots; n++){ // invalid roots are negative
+    int nRoot = 1;
+    ap_int<ADDRBITS> i = roots[nRoot];
+    auto node = nodes[i];
+    node_loop : while(!node.is_leaf){
+      #pragma HLS pipeline
+      i = X[node.feature] <= node.threshold ? node.child_left : node.child_right;
+      node = nodes[i];
+    }
+    y.write(node.score);
   }
-  y = node.score;
 }
 
 template<class T>
@@ -81,14 +85,17 @@ T dynamic_scaler(float x, float s){
   return (T) y_f;
 } 
 
-template<class T, class U, int FEATBITS, int ADDRBITS, int CLASSBITS, int NVARS, int NNODES, int NTE>
-void FPU_df(T X[NVARS], U& y, DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[NTE][NNODES]){
+template<class T, class U, int FEATBITS, int ADDRBITS, int CLASSBITS, int NVARS, int NNODES, int NTE, int NROOTS>
+void FPU_df(T X[NVARS], U& y, int roots[NTE][NROOTS+1], DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[NTE][NNODES]){
+    #pragma HLS dataflow
     U y_acc = 0;
     for(int i = 0; i < NTE; i++){
       #pragma HLS unroll
       U y_i = 0;
-      TreeEngine<T, U, FEATBITS, ADDRBITS, CLASSBITS, NVARS, NNODES>(X, nodes[i], y_i);
-      y_acc += y_i;
+      TreeEngine<T, U, FEATBITS, ADDRBITS, CLASSBITS, NVARS, NNODES, NROOTS>(X, roots, nodes[i], y_i);
+      for(int j = 0; j < roots[i][0]; j++){
+        y_acc += y_i.read();
+      }
     }
     y = y_acc;
 }
