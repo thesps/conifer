@@ -62,20 +62,33 @@ struct DecisionNode{
 };
 
 template<class T, class U, int FEATBITS, int ADDRBITS, int CLASSBITS, int NVARS, int NNODES, int NROOTS>
-void TreeEngine(T X[NVARS], int roots[NROOTS+1], DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[NNODES], hls::stream<U> y){
-  #pragma HLS pipeline
-  int nRoots = roots[0]
-  for(int nRoot = 0; n < nRoots; n++){ // invalid roots are negative
-    int nRoot = 1;
-    ap_int<ADDRBITS> i = roots[nRoot];
-    auto node = nodes[i];
-    node_loop : while(!node.is_leaf){
-      #pragma HLS pipeline
-      i = X[node.feature] <= node.threshold ? node.child_left : node.child_right;
-      node = nodes[i];
+void TreeEngine(T X[NVARS], ap_int<ADDRBITS> roots[NROOTS+1], DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[NNODES], U& y){
+  // roots[0] is the number of trees loaded into this TE, roots[1:roots[0]+1] are the address of each tree's root node
+  // Walk the trees one after another in a single loop, moving on to the next root on reaching a leaf
+  int n_roots = roots[0];
+  int r = 1;
+  ap_int<ADDRBITS> i_next = roots[NROOTS > 1 ? 2 : 1];
+  bool last = n_roots <= 1;
+  bool done = n_roots == 0;
+  U y_acc = 0;
+  auto node = nodes[roots[1]];
+  node_loop : while(!done){
+    #pragma HLS pipeline
+    #pragma HLS loop_tripcount min=0 max=NNODES
+    // select the next root in parallel with the comparison, leaving one mux after the comparison as for a single tree
+    ap_int<ADDRBITS> next_left = node.is_leaf ? i_next : node.child_left;
+    ap_int<ADDRBITS> next_right = node.is_leaf ? i_next : node.child_right;
+    ap_int<ADDRBITS> i = X[node.feature] <= node.threshold ? next_left : next_right;
+    if(node.is_leaf){
+      y_acc += node.score;
+      done = last;
+      r++;
+      last = r >= n_roots;
+      i_next = roots[r < NROOTS ? r + 1 : NROOTS];
     }
-    y.write(node.score);
+    node = nodes[i];
   }
+  y = y_acc;
 }
 
 template<class T>
@@ -86,16 +99,13 @@ T dynamic_scaler(float x, float s){
 } 
 
 template<class T, class U, int FEATBITS, int ADDRBITS, int CLASSBITS, int NVARS, int NNODES, int NTE, int NROOTS>
-void FPU_df(T X[NVARS], U& y, int roots[NTE][NROOTS+1], DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[NTE][NNODES]){
-    #pragma HLS dataflow
+void FPU_df(T X[NVARS], U& y, ap_int<ADDRBITS> roots[NTE][NROOTS+1], DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[NTE][NNODES]){
     U y_acc = 0;
     for(int i = 0; i < NTE; i++){
       #pragma HLS unroll
       U y_i = 0;
-      TreeEngine<T, U, FEATBITS, ADDRBITS, CLASSBITS, NVARS, NNODES, NROOTS>(X, roots, nodes[i], y_i);
-      for(int j = 0; j < roots[i][0]; j++){
-        y_acc += y_i.read();
-      }
+      TreeEngine<T, U, FEATBITS, ADDRBITS, CLASSBITS, NVARS, NNODES, NROOTS>(X, roots[i], nodes[i], y_i);
+      y_acc += y_i;
     }
     y = y_acc;
 }
