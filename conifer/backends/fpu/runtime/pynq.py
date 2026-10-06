@@ -21,9 +21,15 @@ class ZynqDriver:
     self._init_buffers(batch_size=batch_size)
     logger.info(f'Initialized FPU driver for {fpu_name} with configuration: {self.config}')
 
+  def _start_and_wait(self):
+    '''Start the FPU and wait for it to finish'''
+    self.fpu.write(self.fpu.register_map.CTRL.address, 1)
+    while not self.fpu.register_map.CTRL.AP_IDLE:
+      pass
+
   def get_info_len(self):
     self.fpu.write(self.fpu.register_map.instruction.address, 0)
-    self.fpu.write(self.fpu.register_map.CTRL.address, 1)
+    self._start_and_wait()
     infoLen = self.fpu.read(self.fpu.register_map.infoLength.address)
     return infoLen
 
@@ -40,7 +46,7 @@ class ZynqDriver:
     info = pynq.buffer.allocate(infoLen, dtype='byte')
     self.fpu.write(self.fpu.register_map.info.address, info.physical_address)
     self.fpu.write(self.fpu.register_map.instruction.address, 0)
-    self.fpu.write(self.fpu.register_map.CTRL.address, 1)
+    self._start_and_wait()
     return "".join([chr(i) for i in info])
 
   def _init_Xy_buffers(self, X_shape, y_shape):
@@ -55,9 +61,10 @@ class ZynqDriver:
     assert cfg is not None, 'Configuration not loaded'
     self._init_Xy_buffers((batch_size, cfg['features']), (batch_size, 1))
     self.interfaceNodes = pynq.allocate((self.config['tree_engines'], self.config['nodes'], 7), dtype='int32')
+    self.roots = pynq.allocate((self.config['tree_engines'], self.config['roots'] + 1), dtype='int32')
     self.scales = pynq.allocate(self.config['features'] + 1, dtype='float32') # todo 1 is placehold for number of classes
 
-  def load(self, nodes, scales, n_features=1, n_classes=2, batch_size=None):
+  def load(self, nodes, roots, scales, n_features=1, n_classes=2, batch_size=None):
     '''
     Load packed model onto FPU
 
@@ -65,6 +72,8 @@ class ZynqDriver:
     ----------
     nodes: ndarray of shape (FPU TEs, FPU nodes, 7), dtype int32
       Packed nodes, from FPUModel.pack
+    roots: ndarray of shape (FPU TEs, FPU roots + 1), dtype int32
+      Packed roots, from FPUModel.pack
     scales: ndarray of shape (FPU features + 1), dtype float32
       Packed scale factors, from FPUModel._scales
     n_features: integer (optional)
@@ -76,13 +85,15 @@ class ZynqDriver:
     '''
     assert n_classes == 2, "Only binary classification is currently supported"
     self.interfaceNodes[:] = nodes
+    self.roots[:] = roots
     self.scales[:] = scales
     # load the nodes
+    self.fpu.write(self.fpu.register_map.roots_in.address, self.roots.physical_address)
     self.fpu.write(self.fpu.register_map.nodes_in.address, self.interfaceNodes.physical_address)
     self.fpu.write(self.fpu.register_map.scales_in.address, self.scales.physical_address)
     # load
     self.fpu.write(self.fpu.register_map.instruction.address, 1)
-    self.fpu.write(self.fpu.register_map.CTRL.address, 1)
+    self._start_and_wait()
     if batch_size is None:
       batch_size = self.Xbuf.shape[0]
     nc = 1 if n_classes == 2 else n_classes
@@ -92,14 +103,15 @@ class ZynqDriver:
   def read(self):
     '''
     Read packed model from FPU
-    Sets device attributes interfaceNodes and scales
+    Sets device attributes interfaceNodes, roots and scales
     '''
     # read back the nodes
+    self.fpu.write(self.fpu.register_map.roots_out.address, self.roots.physical_address)
     self.fpu.write(self.fpu.register_map.nodes_out.address, self.interfaceNodes.physical_address)
     self.fpu.write(self.fpu.register_map.scales_out.address, self.scales.physical_address)
     # read
     self.fpu.write(self.fpu.register_map.instruction.address, 2)
-    self.fpu.write(self.fpu.register_map.CTRL.address, 1)
+    self._start_and_wait()
 
   def decision_function(self, X):
     '''
@@ -122,7 +134,7 @@ class ZynqDriver:
     self.fpu.write(self.fpu.register_map.batch_size.address, X.shape[0])
     self.fpu.write(self.fpu.register_map.n_features.address, X.shape[1])
     self.fpu.write(self.fpu.register_map.instruction.address, 3)
-    self.fpu.write(self.fpu.register_map.CTRL.address, 1)
+    self._start_and_wait()
     return self.ybuf[:]
   
   def predict(self, X):
@@ -165,7 +177,7 @@ class PynqAlveoDriver:
     infoLen =self. fpu.read(self.fpu.register_map.infoLength.address)
     info = pynq.allocate(infoLen, dtype='byte')
     dummy = pynq.allocate(1)
-    self.fpu.call(dummy, dummy, 0, 0, 0, dummy, dummy, dummy, dummy, info, dummy)
+    self.fpu.call(dummy, dummy, 0, 0, 0, dummy, dummy, dummy, dummy, dummy, dummy, info, dummy)
     info.sync_from_device()
     return "".join([chr(i) for i in info])
 
@@ -179,10 +191,11 @@ class PynqAlveoDriver:
     assert cfg is not None, 'Configuration not loaded'
     self._init_Xy_buffers((batch_size, cfg['features']), (batch_size, 1))
     self.interfaceNodes = pynq.allocate((self.config['tree_engines'], self.config['nodes'], 7), dtype='int32')
+    self.roots = pynq.allocate((self.config['tree_engines'], self.config['roots'] + 1), dtype='int32')
     self.scales = pynq.allocate(self.config['features'] + 1, dtype='float32') # todo 1 is placehold for number of classes
     self._dummy_buf = pynq.allocate(1)
 
-  def load(self, nodes, scales, n_features=1, n_classes=2, batch_size=None):
+  def load(self, nodes, roots, scales, n_features=1, n_classes=2, batch_size=None):
     '''
     Load packed model onto FPU
 
@@ -190,6 +203,8 @@ class PynqAlveoDriver:
     ----------
     nodes: ndarray of shape (FPU TEs, FPU nodes, 7), dtype int32
       Packed nodes, from FPUModel.pack
+    roots: ndarray of shape (FPU TEs, FPU roots + 1), dtype int32
+      Packed roots, from FPUModel.pack
     scales: ndarray of shape (FPU features + 1), dtype float32
       Packed scale factors, from FPUModel._scales
     n_features: integer (optional)
@@ -201,15 +216,28 @@ class PynqAlveoDriver:
     '''
     assert n_classes == 2, "Only binary classification is currently supported"
     self.interfaceNodes[:] = nodes
+    self.roots[:] = roots
     self.scales[:] = scales
     self.interfaceNodes.sync_to_device()
+    self.roots.sync_to_device()
     self.scales.sync_to_device()
     dummy = self._dummy_buf
-    self.fpu.call(dummy, dummy, 1, 0, 0, self.interfaceNodes, dummy, self.scales, dummy, dummy, dummy)
+    self.fpu.call(dummy, dummy, 1, 0, 0, self.roots, dummy, self.interfaceNodes, dummy, self.scales, dummy, dummy, dummy)
     if batch_size is None:
       batch_size = self.Xbuf.shape[0]
     nc = 1 if n_classes == 2 else n_classes
     self._init_Xy_buffers((batch_size, n_features), (batch_size, nc))
+
+  def read(self):
+    '''
+    Read packed model from FPU
+    Sets device attributes interfaceNodes, roots and scales
+    '''
+    dummy = self._dummy_buf
+    self.fpu.call(dummy, dummy, 2, 0, 0, dummy, self.roots, dummy, self.interfaceNodes, dummy, self.scales, dummy, dummy)
+    self.roots.sync_from_device()
+    self.interfaceNodes.sync_from_device()
+    self.scales.sync_from_device()
 
   def decision_function(self, X):
     '''
@@ -231,7 +259,7 @@ class PynqAlveoDriver:
     self.Xbuf[:] = X
     self.Xbuf.sync_to_device()
     dummy = self._dummy_buf
-    self.fpu.call(self.Xbuf, self.ybuf, 3, X.shape[0], X.shape[1], dummy, dummy, dummy, dummy, dummy, dummy)
+    self.fpu.call(self.Xbuf, self.ybuf, 3, X.shape[0], X.shape[1], dummy, dummy, dummy, dummy, dummy, dummy, dummy, dummy)
     while not self.fpu.register_map.CTRL.AP_IDLE:
       pass
     self.ybuf.sync_from_device()
