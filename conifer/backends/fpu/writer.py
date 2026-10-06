@@ -261,6 +261,7 @@ class FPUModel(ModelBase):
     for i, n in enumerate(tree_nodes):
       assert n <= n_nodes, f'Cannot pack tree {i} with {n} nodes to FPU target with {n_nodes} nodes'
 
+<<<<<<< HEAD
     def _assign(order, key):
       assignment = [[] for _ in range(n_tes)]
       nodes_used = [0] * n_tes
@@ -289,6 +290,8 @@ class FPUModel(ModelBase):
     assert assignment is not None, f'Cannot pack model with {sum(tree_nodes)} nodes in {len(tree_nodes)} trees to FPU target with {n_tes} Tree Engines of {n_nodes} nodes and {n_roots} roots'
     return assignment
 
+=======
+>>>>>>> 29b60872bfa94d182637280355c1d993b8742050
   def derive_scales(self, X=None, headroom=None):
     '''
     Derive threshold and score scale factors from static analysis of model parameters, and configured precision.
