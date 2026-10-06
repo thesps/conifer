@@ -42,9 +42,8 @@ cfg['FPU'] = device.config.__dict__
 # Create and compile the model for target FPU
 model = conifer.converters.convert_from_sklearn(clf, cfg)
 
-# Rescale the model simplistically
-model.scale(1./model.threshold_scale, model.score_scale)
-model.scale(1000., 1000.)
+# Optionally rederive the scales using representative input data as calibration
+model.set_scales(*model.derive_scales(X=X))
 
 # Load this model onto the FPU
 # Important! Set the batch size to allocate buffers

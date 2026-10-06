@@ -31,13 +31,17 @@ class FPUInterfaceNode:
     self.child_right = child_right
     self.iclass = iclass
     self.is_leaf = is_leaf
+    self.threshold_float = threshold
+    self.score_float = score
 
   def scale(self, threshold, score):
-    if isinstance(threshold, np.ndarray):
-      self.threshold *= threshold[self.feature]
+    '''Set the threshold (non-leaf) or score (leaf) from the unscaled value, rounded as on the FPU'''
+    if not self.is_leaf:
+      # floor of the float32 product, matching the FPU's float32 input scaling and truncating cast
+      s = threshold[self.feature] if isinstance(threshold, np.ndarray) else threshold
+      self.threshold = int(np.floor(np.float32(self.threshold_float) * np.float32(s)))
     else:
-      self.threshold *= threshold
-    self.score *= score
+      self.score = int(np.rint(self.score_float * score))
 
   def pack(self) -> List[int] :
     '''
@@ -218,9 +222,12 @@ class FPUModel(ModelBase):
     assert not self.is_oblique(), f'Oblique splits are not supported by the FPU backend, please use the hls backend'
     self.tree_engine_assignment = self.assign_tree_engines()
 
+    self.threshold_scale = np.ones(self.n_features, dtype='float32')
+    self.score_scale = 1.
     if self.config.fpu.dynamic_scaler:
-      t, s = self.derive_scales()
-      self.scale(t, s)
+      self.set_scales(*self.derive_scales())
+
+    assert not self.is_oblique(), f'Oblique splits are not supported by the FPU backend, please use the hls backend'
 
   def attach_device(self, device, batch_size=None):
     '''
@@ -282,47 +289,72 @@ class FPUModel(ModelBase):
     assert assignment is not None, f'Cannot pack model with {sum(tree_nodes)} nodes in {len(tree_nodes)} trees to FPU target with {n_tes} Tree Engines of {n_nodes} nodes and {n_roots} roots'
     return assignment
 
-  def derive_scales(self):
+  def derive_scales(self, X=None, headroom=None):
     '''
     Derive threshold and score scale factors from static analysis of model parameters, and configured precision.
+    Parameters
+    ----------
+    X: ndarray of shape (n_samples, n_features), optional
+      Calibration inputs. If provided, each feature's range is extended to cover the largest magnitude in X
+    headroom: int, optional
+      Bits of the threshold type reserved above the feature range for unseen larger inputs.
+      Defaults to 0 if X is provided, otherwise a sixth of the threshold type magnitude bits (minimum 1)
     Returns
     ----------
     threshold_scales: ndarray of shape (n_features)
       Scale factors derived for thresholds
-    score_scales: ndarray of shape (n_classes)
-      Scale factors derived for scores
+    score_scale: float
+      Scale factor derived for scores
     '''
+    tbits = self.config.fpu.threshold_type - 1
+    if headroom is None:
+      headroom = 0 if X is not None else max(1, tbits // 6)
+    assert 0 <= headroom < tbits, f'headroom must be in [0, {tbits}), got {headroom}'
+    h = 2**(tbits - headroom) - 1
     # only scale thresholds of non-leaf nodes
     thresholds = np.array([t for trees_c in self.trees for tree in trees_c for t, f in zip(tree.threshold, tree.feature) if f != -2])
     features = np.array([f for trees_c in self.trees for tree in trees_c for f in tree.feature if f != -2])
-    threshold_scales = np.zeros(shape=self.n_features, dtype='float32')
-    h = 2**(self.config.fpu.threshold_type-1)-1
+    threshold_scales = np.ones(shape=self.n_features, dtype='float32')
     for i in range(self.n_features):
-      t = np.abs(thresholds[features == i])
-      t = t[t != 0]
-      threshold_scales[i] = 1. if len(t) == 0 else h / t.max()
-    # only scale the scores of leaf nodes
-    v = np.array([v for trees_c in self.trees for tree in trees_c for v, f in zip(tree.value, tree.feature) if f == -2])
-    v = np.abs(v[v != 0])
-    h = (2**(self.config.fpu.score_type-1)-1) / self.n_trees
-    score_scales = np.array([h / v.max()])
-    return threshold_scales, score_scales
+      r = np.abs(thresholds[features == i]).max(initial=0)
+      if X is not None:
+        r = max(r, np.abs(X[:, i]).max(initial=0))
+      if r > 0:
+        threshold_scales[i] = h / r
+    # bound the score sum by the worst case leaf of every tree, keeping room for leaf rounding
+    leaves = [np.array([v for v, f in zip(tree.value, tree.feature) if f == -2]) for trees_c in self.trees for tree in trees_c]
+    bound = max(abs(sum(v.max() for v in leaves)), abs(sum(v.min() for v in leaves)))
+    hs = max(2**(self.config.fpu.score_type - 1) - 1 - len(leaves) / 2, 1)
+    score_scale = 1. if bound == 0 else hs / bound
+    return threshold_scales, score_scale
 
-  def scale(self, threshold: float, score: float):
+  def set_scales(self, threshold, score: float):
     '''
-    Scale model tresholds and scores by scale factors
+    Set the model threshold and score scale factors, replacing any previous scaling
     Parameters
     ----------
     threshold: ndarray of shape (n_features) or scalar
       scale factors by which to multiply thresholds
-    score: ndarray of shape (n_classes) or scalar
-      scale factors by which to divide scores
+    score: scalar
+      scale factor by which to multiply scores
     '''
-    logger.info(f'Scaling model with threshold scales {threshold}, score scales {score}')
-    self.threshold_scale = threshold
+    logger.info(f'Scaling model with threshold scales {threshold}, score scale {score}')
+    self.threshold_scale = np.broadcast_to(np.asarray(threshold, dtype='float32'), (self.n_features,)).copy()
     self.score_scale = 1. / score
     for tree in self.interface_trees:
-      tree.scale(threshold, score)
+      tree.scale(self.threshold_scale, score)
+
+  def scale(self, threshold, score: float):
+    '''
+    Scale model tresholds and scores by scale factors, on top of any previous scaling
+    Parameters
+    ----------
+    threshold: ndarray of shape (n_features) or scalar
+      scale factors by which to multiply thresholds
+    score: scalar
+      scale factor by which to multiply scores
+    '''
+    self.set_scales(self.threshold_scale * threshold, score / self.score_scale)
 
   def pack(self):
     '''
