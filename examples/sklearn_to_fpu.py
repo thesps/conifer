@@ -21,7 +21,7 @@ logger.setLevel(logging.DEBUG)
 # Or download one from the conifer website for your device.
 # Source the Xilinx RunTime environment
 # Then, load the FPU onto Alveo (change the path to point to your xclbin file)
-device = conifer.backends.fpu.runtime.AlveoDriver('fpu-u200_100TE_512N_DS/fpu.xclbin')
+device = conifer.backends.fpu.runtime.XrtDriver('fpu.xclbin')
 print(device.config)
 
 # Make a random dataset from sklearn 'hastie'
