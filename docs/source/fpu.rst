@@ -36,6 +36,13 @@ Logic to loop over the nodes, performing comparisons between input features and 
 One FPU comprises many (hundreds) of TEs, each of which operate independently and in parallel.
 Aggregation logic sums the TE outputs to compute the final ensemble prediction.
 
+Each TE can hold multiple trees, up to the configured number of ``roots``, stored contiguously its node memory.
+The TE walks its trees one after the other, accumulating the leaf scores.
+When a model has more trees than the FPU has TEs, the conifer compiler packs the trees into the TEs, balancing the summed tree depths (and so inference latency) across TEs.
+
+With multiple roots per TE, a compact FPU can run inference of reasonably large models. For example, an FPU with 8 Tree Engines, and 512 nodes per TE holds a 128-tree ensemble of depth 4 using 8 BRAM36 tiles for its node memores.
+Inference latency grows with the number of trees per TE, so more TEs are preferred for fast inference, at the expense of more FPGA resources.
+
 .. _Dynamic Scaler:
 
 Dynamic Scaler
@@ -49,7 +56,7 @@ When converting a BDT targeting an FPU with ``DynamicScaler`` enabled, scale fac
 Interface
 =========
 
-The FPU provides AXI Master interfaces for: nodes (one port each for load/read); scales factors (one port each for load/read); input features, output predictions, and the configuration used to build the FPU.
+The FPU provides AXI Master interfaces for: tree roots (one port each for load/read); nodes (one port each for load/read); scales factors (one port each for load/read); input features, output predictions, and the configuration used to build the FPU.
 AXI Slave interfaces are provided for configuration registers: instruction (info string length, load, read, predict); batch size; number of features, length of information string.
 
 Runtime
@@ -75,6 +82,7 @@ Configuration options available for all platforms:
 - ``part`` : string, FPGA part to target
 - ``tree_engines`` : integer, number of Tree Engines
 - ``nodes`` : integer, number of nodes per TE
+- ``roots`` : integer, maximum number of trees per TE
 - ``features`` : integer, maximum number of model features
 - ``threshold_type`` : integer, number of bits for thresholds
 - ``score_type`` : integer, number of bits for scores
