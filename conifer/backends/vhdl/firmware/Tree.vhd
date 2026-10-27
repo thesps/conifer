@@ -32,7 +32,8 @@ architecture rtl of tree is
   signal comparison : boolArray(0 to nNodes-1) := (others => false);
   signal comparisonPipe : boolArray2DnNodes(0 to maxdepth) := (others => (others => false));
   signal activation : boolArray(0 to nNodes-1) := (others => false);
-  signal vld_pipe : boolArray(0 to maxdepth + 3) := (others => false);
+  signal activation_reg : boolArray(0 to nNodes-1) := (others => false);
+  signal vld_pipe : boolArray(0 to 3) := (others => false);
 
   component Split is
   port(
@@ -46,8 +47,8 @@ begin
 
   -- propagate the valid signal
   vld_pipe(0) <= X_vld;
-  vld_pipe(1 to maxdepth + 3) <= vld_pipe(0 to maxdepth + 3 - 1) when rising_edge(clk);
-  y_vld <= vld_pipe(maxdepth + 3);
+  vld_pipe(1 to 3) <= vld_pipe(0 to 2) when rising_edge(clk);
+  y_vld <= vld_pipe(3);
 
   -- do all the comparisons
   GenComp:
@@ -76,15 +77,6 @@ begin
     end generate Leaf;
   end generate GenComp;
 
-  -- Pipeline the comparisons
-  comparisonPipe(0) <= comparison;
-  process(clk)
-  begin
-    if rising_edge(clk) then
-      comparisonPipe(1 to maxdepth) <= comparisonPipe(0 to maxdepth-1);
-    end if;
-  end process;
-
   -- do all the node activations
   -- the root node is always active
   activation(0) <= true; 
@@ -93,23 +85,22 @@ begin
     -- the root node is always active
     LeftChild:
     if i = iChildLeft(iParent(i)) generate
-      process(clk)
-      begin
-        if rising_edge(clk) then
-          activation(i) <= comparisonPipe(depth(i))(iParent(i)) and activation(iParent(i));
-        end if;
-      end process;    
+    begin
+      activation(i) <= comparison(iParent(i)) and activation(iParent(i));
     end generate LeftChild;
     RightChild:
     if i = iChildRight(iParent(i)) generate
-      process(clk)
-      begin
-        if rising_edge(clk) then
-          activation(i) <= (not comparisonPipe(depth(i))(iParent(i))) and activation(iParent(i));
-        end if;
-      end process;    
+    begin
+      activation(i) <= (not comparison(iParent(i))) and activation(iParent(i));  
     end generate RightChild;
   end generate GenAct;
+
+  process(clk)
+  begin
+    if rising_edge(clk) then
+      activation_reg <= activation;
+    end if;
+  end process;
 
   -- Assign the score from the active leaf
   GenScore:
@@ -117,7 +108,7 @@ begin
   begin
     if rising_edge(clk) then
      for i in 0 to nLeaves-1 loop
-        if activation(iLeaf(i)) then
+        if activation_reg(iLeaf(i)) then
           y <= value(iLeaf(i));
           exit;
         end if;

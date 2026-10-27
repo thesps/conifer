@@ -315,10 +315,18 @@ class VHDLModel(ModelBase):
         report['fmax'] = 1000 / (self.config.clock_period - timing['wns'])
 
     # VHDL latency and II are fixed by implementation
-    # use math ceil to return int
-    report['latency'] = 1 + self.max_depth + math.ceil(math.log2(self.n_trees))
+    report['latency'] = self._latency()
     report['interval'] = 1
     return report
+
+  def _latency(self) -> int:
+    # Tree: comparisons, activations, leaf select
+    tree = 3
+    # AddReduce over the trees and initPredict, one stage per halving
+    add_reduce = math.ceil(math.log2(self.n_trees + 1))
+    # BDT generates the normalisation register unless the normalisation integer representation is 1
+    normalisation = int(self._fp_converter.to_int(np.float64(self.norm)) != 1)
+    return tree + add_reduce + normalisation
 
 def make_model(ensembleDict, config):
     return VHDLModel(ensembleDict, config)
