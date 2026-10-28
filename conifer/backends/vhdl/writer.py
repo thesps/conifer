@@ -13,13 +13,15 @@ logger = logging.getLogger(__name__)
 
 class VHDLConfig(MultiPrecisionConfig):
   backend = 'vhdl'
-  _config_fields = MultiPrecisionConfig._config_fields + ['xilinx_part', 'clock_period']
+  _config_fields = MultiPrecisionConfig._config_fields + ['xilinx_part', 'clock_period', 'adder_pipelining']
   _vhdl_alts = {'xilinx_part'  : ['XilinxPart'],
-                'clock_period' : ['ClockPeriod']}
+                'clock_period' : ['ClockPeriod'],
+                'adder_pipelining' : ['AdderPipelining'],}
   _alternates = {**MultiPrecisionConfig._alternates, **_vhdl_alts}
   _vhdl_defaults = {'precision'    : 'ap_fixed<18,8>',
                     'xilinx_part'  : 'xcvu9p-flgb2104-2L-e',
                     'clock_period' : 5,
+                    'adder_pipelining' : 2,
                     }
   _defaults = {**MultiPrecisionConfig._defaults, **_vhdl_defaults}
   def __init__(self, configDict, validate=True):
@@ -210,6 +212,7 @@ class VHDLModel(ModelBase):
         newline += "  subtype ty is signed({} downto 0);\n".format(self._fp_converter.width - 1)
         newline += "  constant norm_slice_h : integer := {};\n".format(self._fp_converter.width * 2 - self._fp_converter.integer_bits - 1)
         newline += "  constant norm_slice_l : integer := {};\n".format(self._fp_converter.fractional_bits)
+        newline += "  constant adder_pipelining : integer := {};\n".format(cfg.adder_pipelining)
       else:
         newline = line
       fout.write(newline)
@@ -322,8 +325,10 @@ class VHDLModel(ModelBase):
   def _latency(self) -> int:
     # Tree: comparisons, activations, leaf select
     tree = 3
-    # AddReduce over the trees and initPredict, one stage per halving
-    add_reduce = math.ceil(math.log2(self.n_trees + 1))
+    # AddReduce over the trees and initPredict, one adder stage per halving
+    # with a register after the first adder stage and every adder_pipelining stages after it
+    adder_stages = math.ceil(math.log2(self.n_trees + 1))
+    add_reduce = math.ceil(adder_stages / self.config.adder_pipelining)
     # BDT generates the normalisation register unless the normalisation integer representation is 1
     normalisation = int(self._fp_converter.to_int(np.float64(self.norm)) != 1)
     return tree + add_reduce + normalisation
@@ -338,5 +343,6 @@ def auto_config():
               'Precision'   : 'ap_fixed<18,8>',
               'XilinxPart' : 'xcvu9p-flgb2104-2L-e',
               'ClockPeriod' : 5,
+              'AdderPipelining' : 2,
              }
     return config
