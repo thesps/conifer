@@ -27,22 +27,6 @@ constant len : integer := d'length;
 constant intLen : integer := 2 * ((len + 1) / 2);
 constant qLen : integer := (len + 1) / 2;
 
--- number of adder stages to reduce n inputs to one
-function nStages(n : integer) return integer is
-  variable stages : integer := 0;
-  variable remaining : integer := n;
-begin
-  while remaining > 1 loop
-    remaining := (remaining + 1) / 2;
-    stages := stages + 1;
-  end loop;
-  return stages;
-end function;
-
--- the total number of adder stages, and the number of them followed by a register
-constant nStagesTotal : integer := depth + nStages(len);
-constant nRegisters : integer := (nStagesTotal + pipelining - 1) / pipelining;
-
 component AddReduce is
 generic(
   id : string := "0";
@@ -83,8 +67,8 @@ else generate
     end generate;
 
     GRegister:
-    -- distribute the registers evenly over the stages, always including the last stage
-    if ((depth + 1) * nRegisters) / nStagesTotal > (depth * nRegisters) / nStagesTotal generate
+    -- insert a register every "pipelining" stages
+    if depth mod pipelining = 0 generate
       process(clk)
       begin
         if rising_edge(clk) then

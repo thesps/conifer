@@ -24,6 +24,9 @@ architecture rtl of BDTTopOOC is
   signal X_vld_reg : boolean := false;
   signal y_int : tyArray(0 to nClasses-1) := (others => to_ty(0));
   signal y_vld_int : boolArray(0 to nClasses-1) := (others => false);
+  -- prevent synthesis moving BDTTop logic into the wrapper, so BDTTop_inst utilization is complete
+  attribute keep_hierarchy : string;
+  attribute keep_hierarchy of BDTTop_inst : label is "yes";
 begin
 
   X_reg <= X when rising_edge(clk);

@@ -326,7 +326,7 @@ class VHDLModel(ModelBase):
     # Tree: comparisons, activations, leaf select
     tree = 3
     # AddReduce over the trees and initPredict, one adder stage per halving
-    # with ceil(adder_stages / adder_pipelining) registers distributed evenly over the stages
+    # with a register after the first adder stage and every adder_pipelining stages after it
     adder_stages = math.ceil(math.log2(self.n_trees + 1))
     add_reduce = math.ceil(adder_stages / self.config.adder_pipelining)
     # BDT generates the normalisation register unless the normalisation integer representation is 1
