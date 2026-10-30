@@ -19,7 +19,7 @@ class FixedPointConverter:
     self._parse(type_string)
     logger.info(f'Constructing converter for {type_string}')
     self.type_string = type_string
-    self.sani_type = type_string.replace('<','_').replace('>','').replace(',','_')
+    self.sani_type = type_string.replace(' ','').replace('<','_').replace('>','').replace(',','_')
     self.sani_type += f'_{int(datetime.datetime.now().timestamp()) + np.random.randint(0, 2**32)}'
     filedir = os.path.dirname(os.path.abspath(__file__))
     cpp_filedir = f"./.fp_converter_{self.sani_type}"
@@ -32,6 +32,9 @@ class FixedPointConverter:
       newline = line
       if '// conifer insert typedef' in line:
         newline =  f"typedef {type_string} T;\n"
+      # Python caches extension modules by name, so each converter needs a unique module name
+      if 'PYBIND11_MODULE(fixed_point' in line:
+        newline = line.replace('fixed_point', self.sani_type)
       fout.write(newline)
     fin.close()
     fout.close()
@@ -51,7 +54,7 @@ class FixedPointConverter:
     logger.debug(f'Importing compiled module {self.sani_type}.so')
     try:
       import importlib.util
-      spec = importlib.util.spec_from_file_location('fixed_point', f'{self.sani_type}.so')
+      spec = importlib.util.spec_from_file_location(self.sani_type, f'{self.sani_type}.so')
       self.lib = importlib.util.module_from_spec(spec)
       spec.loader.exec_module(self.lib)
     except ImportError:
@@ -66,13 +69,17 @@ class FixedPointConverter:
       self.integer_bits = self.width
       self.fractional_bits = 0
       self.signed = not ('uint' in type_string)
+      self.rounding_mode = 'AP_TRN'
+      self.saturation_mode = 'AP_WRAP'
     elif 'fixed' in type_string:
       t = type_string.split('<')[1].replace('>','')
       self.width = int(t.split(',')[0].strip())
       self.integer_bits = int(t.split(',')[1].strip())
       self.fractional_bits = self.width - self.integer_bits
       self.signed = not ('ufixed' in type_string)
-      # TODO rounding/saturation modes
+      modes = [m.strip() for m in t.split(',')[2:]]
+      self.rounding_mode = modes[0] if len(modes) > 0 else 'AP_TRN'
+      self.saturation_mode = modes[1] if len(modes) > 1 else 'AP_WRAP'
     else:
       logger.error(f'Could not parse {type_string}')
 
