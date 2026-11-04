@@ -61,34 +61,62 @@ struct DecisionNode{
   }
 };
 
-template<class T, class U, int FEATBITS, int ADDRBITS, int CLASSBITS, int NVARS, int NNODES, int NROOTS>
-void TreeEngine(T X[NVARS], ap_int<ADDRBITS> roots[NROOTS+1], DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[NNODES], U& y){
-  // roots[0] is the number of trees loaded into this TE, roots[1:roots[0]+1] are the address of each tree's root node
-  // Walk the trees one after another in a single loop, moving on to the next root on reaching a leaf
-  int n_roots = roots[0];
-  int r = 1;
-  ap_int<ADDRBITS> i_next = roots[NROOTS > 1 ? 2 : 1];
-  bool last = n_roots <= 1;
-  bool done = n_roots == 0;
-  U y_acc = 0;
-  auto node = nodes[roots[1]];
-  node_loop : while(!done){
-    #pragma HLS pipeline
-    #pragma HLS loop_tripcount min=0 max=NNODES
-    // select the next root in parallel with the comparison, leaving one mux after the comparison as for a single tree
-    ap_int<ADDRBITS> next_left = node.is_leaf ? i_next : node.child_left;
-    ap_int<ADDRBITS> next_right = node.is_leaf ? i_next : node.child_right;
-    ap_int<ADDRBITS> i = X[node.feature] <= node.threshold ? next_left : next_right;
-    if(node.is_leaf){
-      y_acc += node.score;
-      done = last;
-      r++;
-      last = r >= n_roots;
-      i_next = roots[r < NROOTS ? r + 1 : NROOTS];
-    }
-    node = nodes[i];
+/*
+* Packed node word, for the VHDL Tree Engines (see vhdl/fpu_pkg.vhd). From the least significant bit:
+* threshold | score | feature | child_left | child_right | iclass | is_leaf
+*/
+template<class T, class U, int FEATBITS, int ADDRBITS, int CLASSBITS>
+struct NodeWord{
+  static const int TBITS = T::width;
+  static const int UBITS = U::width;
+  static const int BITS = TBITS + UBITS + FEATBITS + 2 * ADDRBITS + CLASSBITS + 1;
+  typedef ap_uint<BITS> word;
+  typedef DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> DN;
+
+  static word pack(const DN& n){
+    word w = 0;
+    int lo = 0;
+    w.range(lo + TBITS - 1, lo) = n.threshold.range(TBITS - 1, 0); lo += TBITS;
+    w.range(lo + UBITS - 1, lo) = n.score.range(UBITS - 1, 0); lo += UBITS;
+    w.range(lo + FEATBITS - 1, lo) = n.feature.range(FEATBITS - 1, 0); lo += FEATBITS;
+    w.range(lo + ADDRBITS - 1, lo) = n.child_left.range(ADDRBITS - 1, 0); lo += ADDRBITS;
+    w.range(lo + ADDRBITS - 1, lo) = n.child_right.range(ADDRBITS - 1, 0); lo += ADDRBITS;
+    w.range(lo + CLASSBITS - 1, lo) = n.iclass.range(CLASSBITS - 1, 0); lo += CLASSBITS;
+    w[lo] = n.is_leaf;
+    return w;
   }
-  y = y_acc;
+
+  static DN unpack(const word& w){
+    DN n;
+    int lo = 0;
+    n.threshold.range(TBITS - 1, 0) = w.range(lo + TBITS - 1, lo); lo += TBITS;
+    n.score.range(UBITS - 1, 0) = w.range(lo + UBITS - 1, lo); lo += UBITS;
+    n.feature.range(FEATBITS - 1, 0) = w.range(lo + FEATBITS - 1, lo); lo += FEATBITS;
+    n.child_left.range(ADDRBITS - 1, 0) = w.range(lo + ADDRBITS - 1, lo); lo += ADDRBITS;
+    n.child_right.range(ADDRBITS - 1, 0) = w.range(lo + ADDRBITS - 1, lo); lo += ADDRBITS;
+    n.iclass.range(CLASSBITS - 1, 0) = w.range(lo + CLASSBITS - 1, lo); lo += CLASSBITS;
+    n.is_leaf = w[lo];
+    return n;
+  }
+};
+
+template<class T, class U, int FEATBITS, int ADDRBITS, int CLASSBITS, int NVARS, int NNODES, int NROOTS>
+U TreeEngine(T X[NVARS], ap_uint<ADDRBITS> roots[NROOTS+1], typename NodeWord<T,U,FEATBITS,ADDRBITS,CLASSBITS>::word nodes[NNODES]){
+  // C model of the VHDL Tree Engine (vhdl/TreeEngine.vhd), on its packed memories: walk the trees one after another.
+  // The VHDL walks two trees at a time, which gives the same sum
+  typedef NodeWord<T,U,FEATBITS,ADDRBITS,CLASSBITS> NW;
+  U y = 0;
+  int n_roots = roots[0];
+  for(int r = 0; r < n_roots && r < NROOTS; r++){
+    int i = roots[r + 1];
+    auto node = NW::unpack(nodes[i]);
+    while(!node.is_leaf){
+      i = X[node.feature] <= node.threshold ? node.child_left : node.child_right;
+      node = NW::unpack(nodes[i]);
+    }
+    y += node.score;
+  }
+  return y;
 }
 
 template<class T>
@@ -97,17 +125,5 @@ T dynamic_scaler(float x, float s){
   float y_f = x * s;
   return (T) y_f;
 } 
-
-template<class T, class U, int FEATBITS, int ADDRBITS, int CLASSBITS, int NVARS, int NNODES, int NTE, int NROOTS>
-void FPU_df(T X[NVARS], U& y, ap_int<ADDRBITS> roots[NTE][NROOTS+1], DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes[NTE][NNODES]){
-    U y_acc = 0;
-    for(int i = 0; i < NTE; i++){
-      #pragma HLS unroll
-      U y_i = 0;
-      TreeEngine<T, U, FEATBITS, ADDRBITS, CLASSBITS, NVARS, NNODES, NROOTS>(X, roots[i], nodes[i], y_i);
-      y_acc += y_i;
-    }
-    y = y_acc;
-}
 
 #endif

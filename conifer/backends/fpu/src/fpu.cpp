@@ -20,6 +20,8 @@ Source location: https://github.com/thesps/conifer
 #include "fpu.h"
 #include "parameters.h"
 #include <cstdint>
+// The decision function is the VHDL FPU_df, an RTL blackbox, with the Tree Engine memories and their access in fpu_bb.h
+#include "fpu_bb.h"
 
 // The depth of the unsized pointer interfaces is only used to size the buffers for cosimulation
 #ifndef COSIM_X_DEPTH
@@ -33,11 +35,6 @@ Source location: https://github.com/thesps/conifer
 #endif
 
 void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_features, int roots_in[NTE][NROOTS+1], int roots_out[NTE][NROOTS+1], InterfaceDecisionNode nodes_in[NTE][NNODES], InterfaceDecisionNode nodes_out[NTE][NNODES], float scales_in[NFEATURES+NCLASSES], float scales_out[NFEATURES+NCLASSES], char* info, int& infoLength){
-  static DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> nodes_int[NTE][NNODES];
-  static ap_int<ADDRBITS> roots_int[NTE][NROOTS+1];
-  #pragma HLS array_partition variable=nodes_int dim=1
-  #pragma HLS aggregate variable=nodes_int compact=bit
-  #pragma HLS array_partition variable=roots_int dim=1
   static float scales_int[NFEATURES+NCLASSES];
 
   infoLength = theInfoLength;
@@ -48,31 +45,13 @@ void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_feature
     }
   }
   if(instruction == 1){
-    LoadTE: for(int i = 0; i < NTE; i++){
-      LoadNode: for(int j = 0; j < NNODES; j++){
-        nodes_int[i][j].fromInterfaceNode(nodes_in[i][j]);
-      }
-    }
-    LoadRootsTE: for(int i = 0; i < NTE; i++){
-      LoadRoots: for(int j = 0; j < NROOTS+1; j++){
-        roots_int[i][j] = roots_in[i][j];
-      }
-    }
+    FPU_vhdl_load(nodes_in, roots_in);
     LoadScales: for(int i = 0; i < NFEATURES + NCLASSES; i++){
       scales_int[i] = scales_in[i];
     }
   }
   if(instruction == 2){
-    ReadRootsTE: for(int i = 0; i < NTE; i++){
-      ReadRoots: for(int j = 0; j < NROOTS+1; j++){
-        roots_out[i][j] = roots_int[i][j];
-      }
-    }
-    ReadTE: for(int i = 0; i < NTE; i++){
-      ReadNode: for(int j = 0; j < NNODES; j++){
-        nodes_out[i][j] = nodes_int[i][j].toInterfaceNode();
-      }
-    }
+    FPU_vhdl_read(nodes_out, roots_out);
     ReadScales: for(int i = 0; i < NFEATURES + NCLASSES; i++){
       scales_out[i] = scales_int[i];
     }    
@@ -82,6 +61,8 @@ void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_feature
     U y_int;
     #pragma HLS array_partition variable=X_int
     for(int n = 0; n < batch_size; n++){
+      // the blackbox has the ap_ctrl_chain protocol, which may not be used in a pipeline
+      #pragma HLS pipeline off
       for(int i = 0; i < n_features; i++){
         if(SCALER){
           float x_float = *reinterpret_cast<float*>(&X[n*n_features + i]);
@@ -91,7 +72,7 @@ void FPU_internal(int* X, int* y, int instruction, int batch_size, int n_feature
           X_int[i] = (T) X[n*n_features + i];
         }
       }
-      FPU_df<T, U, FEATBITS, ADDRBITS, CLASSBITS, NFEATURES, NNODES, NTE, NROOTS>(X_int, y_int, roots_int, nodes_int);
+      FPU_df_vhdl(X_int, y_int);
       if(SCALER){
         float y_tmp = ((float) y_int) * scales_int[NFEATURES];
         y[n] = *(reinterpret_cast<int*>(&y_tmp));

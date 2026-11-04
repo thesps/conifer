@@ -1,4 +1,5 @@
 import os
+import math
 import sys
 import logging
 import conifer
@@ -57,6 +58,12 @@ def _py_executable():
   Get the python executable 
   '''
   return sys.executable
+
+def address_bits(n_words):
+  '''
+  The number of address bits of a memory of n_words, at least 1
+  '''
+  return max(1, math.ceil(math.log2(n_words)))
 
 def copydocstring(fromfunc, sep="\n"):
   """

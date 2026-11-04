@@ -43,6 +43,17 @@ When a model has more trees than the FPU has TEs, the conifer compiler packs the
 With multiple roots per TE, a compact FPU can run inference of reasonably large models. For example, an FPU with 8 Tree Engines, and 512 nodes per TE holds a 128-tree ensemble of depth 4 using 8 BRAM36 tiles for its node memores.
 Inference latency grows with the number of trees per TE, so more TEs are preferred for fast inference, at the expense of more FPGA resources.
 
+Implementation
+--------------
+
+The decision function (the TEs and the sum of their scores) is VHDL, instantiated in the HLS FPU as an RTL blackbox.
+The HLS provides the interfaces and the instructions, and holds the TE memories, which the VHDL reads.
+Each TE step takes two cycles: read a node, then compare it and select the next node address.
+So each TE walks two of its trees at once, in two threads, interleaving their steps so that its node memory is read every cycle.
+The compiler orders each TE's trees so that both threads walk a similar total depth.
+The VHDL is written to the ``vhdl`` directory of the project, with the FPU configuration in the package ``fpu_pkg.vhd``.
+Its top level ``FPU_df`` takes ``X`` with a valid and ready handshake, gives ``y`` with a valid, and has a read port for each TE's node and roots memories, so it can also be used without HLS.
+
 .. _Dynamic Scaler:
 
 Dynamic Scaler

@@ -1,0 +1,35 @@
+{
+  "c_files": [
+    {
+      "c_file": "fpu_bb.cpp", 
+      "cflag": "-std=c++17"
+    }
+  ], 
+  "rtl_common_signal": {
+    "ap_ctrl_chain_protocol_idle": "ap_idle", 
+    "module_clock": "ap_clk", 
+    "module_clock_enable": "ap_ce", 
+    "ap_ctrl_chain_protocol_done": "ap_done", 
+    "ap_ctrl_chain_protocol_continue": "ap_continue", 
+    "ap_ctrl_chain_protocol_ready": "ap_ready", 
+    "module_reset": "ap_rst", 
+    "ap_ctrl_chain_protocol_start": "ap_start"
+  }, 
+  "rtl_files": [
+    "FPU_df_bb.v"
+  ], 
+  "c_parameters": [], 
+  "rtl_resource_usage": {
+    "DSP": "0", 
+    "URAM": "0", 
+    "LUT": "0", 
+    "BRAM": "0", 
+    "FF": "0"
+  }, 
+  "rtl_performance": {
+    "II": "1", 
+    "latency": "1"
+  }, 
+  "rtl_top_module_name": "FPU_df_bb", 
+  "c_function_name": "FPU_df_bb"
+}

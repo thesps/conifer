@@ -23,6 +23,8 @@ if {${cosim}} {
 } else {
   add_files fpu.cpp -cflags "-std=c++17"
 }
+# the decision function is the VHDL FPU_df, through the Verilog shim FPU_df_bb.v
+add_files -blackbox FPU_df_bb.json
 if {${csim} || ${cosim}} {
   add_files -tb fpu_tb.cpp -cflags "-std=c++17 -DFPU_TOP=${top}"
   add_files -tb tb_data
@@ -39,8 +41,38 @@ if {${csim}} {
   csim_design
 }
 csynth_design
+set sol_dir [file normalize ${prj_name}/solution1]
+# A blackbox's RTL files may only be Verilog, so the VHDL instantiated by the shim is added to the generated RTL here
+# Cosimulation compiles every file in syn/verilog
+foreach f ${vhdl_files} {
+  file copy -force vhdl/${f} ${sol_dir}/syn/verilog/${f}
+}
 if {${cosim}} {
   cosim_design
 }
 export_design -vendor cern.ch -library conifer -ipname ${top} -version ${version} -format ${export_format}
+# Repackage the IP with the VHDL added. export_design packages only the RTL listed under "Verilog" in the solution
+# data <sol>_data.json, which does not include the VHDL of the blackbox. So: copy the VHDL to impl/verilog, add it
+# to that list, and rerun the packaging. export_design generates the packaging in impl/ip: the script pack.sh runs
+# Vivado on run_ippack.tcl, which reads <sol>_data.json and writes the IP (component.xml and the zip) in impl/ip
+set sol_data_file ${sol_dir}/[file tail ${sol_dir}]_data.json
+set f [open ${sol_data_file} r]
+set sol_data [read $f]
+close $f
+set vhdl_entries ""
+foreach v ${vhdl_files} {
+  file copy -force vhdl/${v} ${sol_dir}/impl/verilog/${v}
+  append vhdl_entries "\n      \"impl\\/verilog\\/${v}\","
+}
+if {[string first {"Verilog": [} $sol_data] < 0} {
+  error "Could not find the Verilog file list in ${sol_data_file} to add the VHDL to"
+}
+set sol_data [string map [list {"Verilog": [} "\"Verilog\": \[${vhdl_entries}"] $sol_data]
+set f [open ${sol_data_file} w]
+puts -nonewline $f $sol_data
+close $f
+set cwd [pwd]
+cd ${sol_dir}/impl/ip
+exec sh pack.sh > ${cwd}/vhdl_ippack.log 2>@1
+cd $cwd
 quit

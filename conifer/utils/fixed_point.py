@@ -5,6 +5,28 @@ from conifer.utils.misc import _ap_include, _gcc_opts
 import logging
 logger = logging.getLogger(__name__)
 
+class FixedPointType:
+  '''
+  The bits of an ap_ type: width, integer_bits, fractional_bits and signed
+  args:
+    type_string : string for the ap_ type, e.g. ap_fixed<16,6,AP_RND,AP_SAT>, ap_int<16>
+  '''
+  def __init__(self, type_string):
+    if np.any([i in type_string for i in ['int', 'uint']]):
+      self.width = int(type_string.split('<')[1].replace('>', ''))
+      self.integer_bits = self.width
+      self.fractional_bits = 0
+      self.signed = not ('uint' in type_string)
+    elif 'fixed' in type_string:
+      t = type_string.split('<')[1].replace('>','')
+      self.width = int(t.split(',')[0].strip())
+      self.integer_bits = int(t.split(',')[1].strip())
+      self.fractional_bits = self.width - self.integer_bits
+      self.signed = not ('ufixed' in type_string)
+      # TODO rounding/saturation modes
+    else:
+      logger.error(f'Could not parse {type_string}')
+
 class FixedPointConverter:
   '''
   A Python wrapper around ap_fixed types to easily emulate the correct number representations
@@ -60,21 +82,8 @@ class FixedPointConverter:
     os.chdir(curr_dir)
 
   def _parse(self, type_string):
-
-    if np.any([i in type_string for i in ['int', 'uint']]):
-      self.width = int(type_string.split('<')[1].replace('>', ''))
-      self.integer_bits = self.width
-      self.fractional_bits = 0
-      self.signed = not ('uint' in type_string)
-    elif 'fixed' in type_string:
-      t = type_string.split('<')[1].replace('>','')
-      self.width = int(t.split(',')[0].strip())
-      self.integer_bits = int(t.split(',')[1].strip())
-      self.fractional_bits = self.width - self.integer_bits
-      self.signed = not ('ufixed' in type_string)
-      # TODO rounding/saturation modes
-    else:
-      logger.error(f'Could not parse {type_string}')
+    t = FixedPointType(type_string)
+    self.width, self.integer_bits, self.fractional_bits, self.signed = t.width, t.integer_bits, t.fractional_bits, t.signed
 
   def to_int(self, x):
     return self.lib.to_int(x)
