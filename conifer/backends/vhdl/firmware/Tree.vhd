@@ -15,7 +15,7 @@ entity Tree is
     iParent : intArray(0 to nNodes-1);
     iLeaf : intArray(0 to nLeaves-1);
     depth : intArray(0 to nNodes-1);
-    threshold : txArray(0 to nNodes-1);
+    threshold : ttArray(0 to nNodes-1);
     value : tyArray(0 to nNodes-1)
   );
   port(
@@ -38,7 +38,7 @@ architecture rtl of tree is
   component Split is
   port(
     a : in tx;
-    b : in tx;
+    b : in tt;
     q : out boolean
   );
   end component;
