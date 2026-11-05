@@ -48,8 +48,8 @@ class VHDLModel(ModelBase):
       for tree in trees_class:
         tree.padTree(self.max_depth)
         # Convert the floating point values to integers
-        tree.threshold_int = np.array([self._fp_converter.to_int(x) for x in tree.threshold])
-        tree.value_int = np.array([self._fp_converter.to_int(x) for x in tree.value])
+        tree.threshold_int = self._fp_converter.to_int(tree.threshold)
+        tree.value_int = self._fp_converter.to_int(tree.value)
         
   @copydocstring(ModelBase.write)
   def write(self):
@@ -120,8 +120,8 @@ class VHDLModel(ModelBase):
     for i in range(n_classes):
       fout[i].write(array_header_text)
       fout[i].write('package Arrays{} is\n\n'.format(i))
-      fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(self._fp_converter.to_int(np.float64(self.init_predict[i]))))
-      fout[i].write('    constant normalisation : ty := to_ty({});\n'.format(self._fp_converter.to_int(np.float64(self.norm))))
+      fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(self._fp_converter.to_int(self.init_predict[i])))
+      fout[i].write('    constant normalisation : ty := to_ty({});\n'.format(self._fp_converter.to_int(self.norm)))
 
     # Loop over fields (childrenLeft, childrenRight, threshold...)
     tree_fields = ['feature', 'threshold_int', 'value_int',
@@ -241,14 +241,14 @@ class VHDLModel(ModelBase):
 
       config = copy.deepcopy(self.config)
 
-      Xint = np.array([self._fp_converter.to_int(x) for x in X.ravel()]).reshape(X.shape)
+      Xint = self._fp_converter.to_int(X)
       np.savetxt('{}/SimulationInput.txt'.format(config.output_dir),
                 Xint, delimiter=' ', fmt='%d')
       success = simulator.run_sim(config.output_dir)
       if not success:
         return 
       y = np.loadtxt('{}/SimulationOutput.txt'.format(config.output_dir)).astype(np.int32)
-      y = np.array([self._fp_converter.from_int(yi) for yi in y.ravel()]).reshape(y.shape)
+      y = self._fp_converter.from_int(y)
       if np.ndim(y) == 1:
         y = np.expand_dims(y, 1)
 

@@ -10,12 +10,11 @@ name = "conifer"
 dynamic = ["version"]
 description = "BDT Inference for FPGAs"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     { name = "Sioni Summers", email = "sioni@cern.ch" },
 ]
 classifiers = [
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -24,6 +23,7 @@ dependencies = [
     "numpy",
     "packaging",
     "pybind11",
+    "quantizers>=2.0,<3",
 ]
 
 [project.optional-dependencies]
