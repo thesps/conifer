@@ -4,7 +4,7 @@ import numpy as np
 import math
 from enum import Enum
 from conifer.utils import FixedPointConverter, copydocstring
-from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig, read_vsynth_report
+from conifer.backends.common import BottomUpDecisionTree, MultiPrecisionConfig, read_vsynth_report, read_vivado_timing_report
 from conifer.model import ModelBase
 import copy
 import datetime
@@ -13,11 +13,15 @@ logger = logging.getLogger(__name__)
 
 class VHDLConfig(MultiPrecisionConfig):
   backend = 'vhdl'
-  _config_fields = MultiPrecisionConfig._config_fields + ['xilinx_part']
-  _vhdl_alts = {'xilinx_part'  : ['XilinxPart']}
+  _config_fields = MultiPrecisionConfig._config_fields + ['xilinx_part', 'clock_period', 'adder_pipelining']
+  _vhdl_alts = {'xilinx_part'  : ['XilinxPart'],
+                'clock_period' : ['ClockPeriod'],
+                'adder_pipelining' : ['AdderPipelining'],}
   _alternates = {**MultiPrecisionConfig._alternates, **_vhdl_alts}
   _vhdl_defaults = {'precision'    : 'ap_fixed<18,8>',
                     'xilinx_part'  : 'xcvu9p-flgb2104-2L-e',
+                    'clock_period' : 5,
+                    'adder_pipelining' : 2,
                     }
   _defaults = {**MultiPrecisionConfig._defaults, **_vhdl_defaults}
   def __init__(self, configDict, validate=True):
@@ -96,7 +100,7 @@ class VHDLModel(ModelBase):
     logger.info(f"Writing project to {cfg.output_dir}")
     os.makedirs('{}/firmware'.format(cfg.output_dir), exist_ok=True)
     copyfiles = ['AddReduce.vhd', 'BDT.vhd', 'BDTTestbench.vhd', 'SimulationInput.vhd', 'SimulationOutput.vhd',
-                'TestUtil.vhd', 'Types.vhd']
+                'TestUtil.vhd', 'Types.vhd', 'BDTTopOOC.vhd']
     for f in copyfiles:
         copyfile('{}/firmware/{}'.format(filedir, f), '{}/firmware/{}'.format(cfg.output_dir, f))
     
@@ -154,17 +158,15 @@ class VHDLModel(ModelBase):
     f.write(' '.join(map(str, [0] * self.n_features)))
     f.close()
 
-    f = open(os.path.join(filedir,'./scripts/synth.tcl'),'r')
-    fout = open('{}/synth.tcl'.format(cfg.output_dir), 'w')
-    for line in f.readlines():
-      if 'hls4ml' in line:
-        newline = "synth_design -top BDTTop -part {}\n".format(cfg.xilinx_part)
-        fout.write(newline)
-      else:
-        fout.write(line)
-    fout.write('write_edif -file {}'.format(cfg.project_name))
-    f.close()
-    fout.close()
+    copyfile(os.path.join(filedir, 'scripts/build.tcl'), f'{cfg.output_dir}/build.tcl')
+    with open(f'{cfg.output_dir}/build_parameters.tcl', 'w') as f:
+      f.write(f'set part {cfg.xilinx_part}\n')
+      f.write(f'set clock_period {cfg.clock_period}\n')
+    with open(f'{cfg.output_dir}/build.xdc', 'w') as f:
+      f.write(f'create_clock -name clk -period {cfg.clock_period} [get_ports clk]\n')
+      # the ports of the register wrapper are unplaced out-of-context, so don't time them
+      f.write('set_false_path -from [get_ports -filter {DIRECTION == IN && NAME != clk}]\n')
+      f.write('set_false_path -to [get_ports -filter {DIRECTION == OUT}]\n')
 
     f = open(os.path.join(filedir,'./firmware/BDTTop.vhd'),'r')
     fout = open('{}/firmware/BDTTop.vhd'.format(cfg.output_dir),'w')
@@ -210,6 +212,7 @@ class VHDLModel(ModelBase):
         newline += "  subtype ty is signed({} downto 0);\n".format(self._fp_converter.width - 1)
         newline += "  constant norm_slice_h : integer := {};\n".format(self._fp_converter.width * 2 - self._fp_converter.integer_bits - 1)
         newline += "  constant norm_slice_l : integer := {};\n".format(self._fp_converter.fractional_bits)
+        newline += "  constant adder_pipelining : integer := {};\n".format(cfg.adder_pipelining)
       else:
         newline = line
       fout.write(newline)
@@ -256,11 +259,28 @@ class VHDLModel(ModelBase):
           logger.warn("Individual tree output (trees=True) not yet implemented for this backend")
       return y
 
-  @copydocstring(ModelBase.build)
-  def build(self, **kwargs):
-      cmd = 'vivado -mode batch -source synth.tcl > build.log'
+  def build(self, impl=False, **kwargs):
+      '''
+      Build the project with Vivado
+
+      Parameters
+      ----------
+      impl: bool, optional
+            If True, run implementation after out-of-context synthesis, writing timing.rpt and util_impl.rpt.
+            Otherwise run synthesis only, writing timing_synth.rpt and util.rpt.
+
+      Returns
+      ----------
+      success: bool
+               True if the build completed successfuly, otherwise False
+      '''
+      cmd = 'vivado -mode batch -source build.tcl > build.log'
       cwd = os.getcwd()
       os.chdir(self.config.output_dir)
+      with open('build_opt.tcl', 'w') as f:
+        f.write('array set opt {\n')
+        f.write(f'    impl {int(impl)}\n')
+        f.write('}\n')
       start = datetime.datetime.now()
       logger.info(f'build starting {start:%H:%M:%S}')
       logger.debug(f'Running build with command "{cmd}"')
@@ -273,23 +293,45 @@ class VHDLModel(ModelBase):
           return False
       return True
 
-  def read_report(self) -> dict:
+  def read_report(self, impl=False) -> dict:
     '''
-    Read the Synthesis report
+    Read the Synthesis report, or the out-of-context implementation reports
+    Parameters
+    ----------
+    impl: bool, optional
+          If True, read the utilization and timing from the out-of-context implementation
     Returns
     ----------
     dictionary of extracted report contents
     '''
-    vsynth_report = read_vsynth_report(f'{self.config.output_dir}/util.rpt')
+    util_file = 'util_impl.rpt' if impl else 'util.rpt'
+    vsynth_report = read_vsynth_report(f'{self.config.output_dir}/{util_file}')
     report = {}
     for key in ['lut', 'ff']:
       report[key] = vsynth_report[key]
 
+    if impl:
+      timing = read_vivado_timing_report(f'{self.config.output_dir}/timing.rpt') or {}
+      report.update(timing)
+      report['clock_period'] = self.config.clock_period
+      if timing.get('wns') is not None:
+        report['fmax'] = 1000 / (self.config.clock_period - timing['wns'])
+
     # VHDL latency and II are fixed by implementation
-    # use math ceil to return int
-    report['latency'] = 1 + self.max_depth + math.ceil(math.log2(self.n_trees))
+    report['latency'] = self._latency()
     report['interval'] = 1
     return report
+
+  def _latency(self) -> int:
+    # Tree: comparisons, activations, leaf select
+    tree = 3
+    # AddReduce over the trees and initPredict, one adder stage per halving
+    # with a register after the first adder stage and every adder_pipelining stages after it
+    adder_stages = math.ceil(math.log2(self.n_trees + 1))
+    add_reduce = math.ceil(adder_stages / self.config.adder_pipelining)
+    # BDT generates the normalisation register unless the normalisation integer representation is 1
+    normalisation = int(self._fp_converter.to_int(np.float64(self.norm)) != 1)
+    return tree + add_reduce + normalisation
 
 def make_model(ensembleDict, config):
     return VHDLModel(ensembleDict, config)
@@ -300,5 +342,7 @@ def auto_config():
               'OutputDir'   : 'my-conifer-prj',
               'Precision'   : 'ap_fixed<18,8>',
               'XilinxPart' : 'xcvu9p-flgb2104-2L-e',
+              'ClockPeriod' : 5,
+              'AdderPipelining' : 2,
              }
     return config

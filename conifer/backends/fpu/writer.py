@@ -31,13 +31,17 @@ class FPUInterfaceNode:
     self.child_right = child_right
     self.iclass = iclass
     self.is_leaf = is_leaf
+    self.threshold_float = threshold
+    self.score_float = score
 
   def scale(self, threshold, score):
-    if isinstance(threshold, np.ndarray):
-      self.threshold *= threshold[self.feature]
+    '''Set the threshold (non-leaf) or score (leaf) from the unscaled value, rounded as on the FPU'''
+    if not self.is_leaf:
+      # floor of the float32 product, matching the FPU's float32 input scaling and truncating cast
+      s = threshold[self.feature] if isinstance(threshold, np.ndarray) else threshold
+      self.threshold = int(np.floor(np.float32(self.threshold_float) * np.float32(s)))
     else:
-      self.threshold *= threshold
-    self.score *= score
+      self.score = int(np.rint(self.score_float * score))
 
   def pack(self) -> List[int] :
     '''
@@ -74,6 +78,15 @@ class FPUInterfaceTree:
     for node in self.nodes:
       node.scale(threshold, score)
 
+  def offset(self, base: int):
+    '''Return a copy of the tree with child addresses moved to start at node address base'''
+    nodes = []
+    for node in self.nodes:
+      cl = node.child_left + base if not node.is_leaf else node.child_left
+      cr = node.child_right + base if not node.is_leaf else node.child_right
+      nodes.append(FPUInterfaceNode(node.threshold, node.score, node.feature, cl, cr, node.iclass, node.is_leaf))
+    return FPUInterfaceTree(nodes)
+
   def pack(self):
     '''Pack the tree for sending to the FPU'''
     data = np.zeros((self.n_nodes(), 7), dtype='int')
@@ -107,7 +120,7 @@ class FPUInterfaceTree:
 
 class FPUConfig(ConfigBase):
   backend = 'fpu'
-  _config_fields = ConfigBase._config_fields + ['nodes', 'tree_engines', 'features', 'threshold_type', 'score_type', 'dynamic_scaler']
+  _config_fields = ConfigBase._config_fields + ['nodes', 'tree_engines', 'roots', 'features', 'threshold_type', 'score_type', 'dynamic_scaler']
   _config_fields.remove('output_dir')
   _config_fields.remove('project_name')
   _fpu_alts = {'nodes'          : ['Nodes'],
@@ -115,11 +128,13 @@ class FPUConfig(ConfigBase):
                'features'       : ['Features'],
                'threshold_type' : ['ThresholdType'],
                'score_type'     : ['ScoreType'],
-               'dynamic_scaler' : ['DynamicScaler']
+               'dynamic_scaler' : ['DynamicScaler'],
+               'roots'          : ['Roots']
                }
   _alternates = {**ConfigBase._alternates, **_fpu_alts}
   _fpu_defaults = {'nodes'          : 512,
                    'tree_engines'   : 100,
+                   'roots'          : 16,
                    'features'       : 16,
                    'threshold_type' : 16,
                    'score_type'     : 16,
@@ -131,13 +146,18 @@ class FPUConfig(ConfigBase):
     if validate:
       self._validate()
 
+  def _validate(self):
+    super(FPUConfig, self)._validate()
+    assert 1 <= self.roots <= self.nodes, f'FPU roots must be between 1 and nodes ({self.nodes}), got {self.roots}'
+
   def default_config():
     return copy.deepcopy(FPUConfig._defaults)
 
   def generate_codename(self):
-    template = 'fpu_{te}TE_{n}N_{f}F_{tt}T_{st}S_{ds}DS'
+    template = 'fpu_{te}TE_{n}N_{r}R_{f}F_{tt}T_{st}S_{ds}DS'
     codename = template.format(te = self.tree_engines,
                                n = self.nodes,
+                               r = self.roots,
                                f = self.features,
                                tt = self.threshold_type,
                                st = self.score_type,
@@ -194,18 +214,19 @@ class FPUModel(ModelBase):
     self.config = FPUModelConfig(config)
     #assert len(ensembleDict['trees']) == 1, 'Only binary classification models are currently supported'
     interface_trees = []
-    for ic, tree_class in enumerate(ensembleDict['trees']):
-      for tree in tree_class:
+    for trees_t in ensembleDict['trees']:
+      for ic, tree in enumerate(trees_t):
         interface_trees.append(FPUInterfaceTree.from_flat_tree_dictionary(tree, ic))
     self.interface_trees = interface_trees
 
-    fpu_cfg = self.config.fpu
-    self.pad_to(fpu_cfg.tree_engines, fpu_cfg.nodes)
+    assert not self.is_oblique(), f'Oblique splits are not supported by the FPU backend, please use the hls backend'
+    self.tree_engine_assignment = self.assign_tree_engines()
 
+    self.threshold_scale = np.ones(self.n_features, dtype='float32')
+    self.score_scale = 1.
     if self.config.fpu.dynamic_scaler:
-      t, s = self.derive_scales()
-      self.scale(t, s)
-      
+      self.set_scales(*self.derive_scales())
+
     assert not self.is_oblique(), f'Oblique splits are not supported by the FPU backend, please use the hls backend'
 
   def attach_device(self, device, batch_size=None):
@@ -222,74 +243,150 @@ class FPUModel(ModelBase):
     self.device = device
     self.load(batch_size=batch_size)
     
-  def pad_to(self, n_trees, n_nodes):
-    for tree in self.interface_trees:
-      tree.pad_to(n_nodes)
-    self.interface_trees += [FPUInterfaceTree._null_tree(n_nodes)] * (n_trees - self.n_trees)
+  def assign_tree_engines(self):
+    '''
+    Assign the model trees to the FPU Tree Engines.
+    When the model has no more trees than the FPU has Tree Engines, each tree gets its own Tree Engine.
+    Otherwise trees are packed into the Tree Engines as multiple roots, with the Tree Engine inference latency
+    (the sum of the depths of its trees) balanced as evenly as possible.
+    Returns
+    ----------
+    assignment: list of length (FPU TEs) of lists of tree indices into interface_trees
+    '''
+    fpu_cfg = self.config.fpu
+    n_tes, n_nodes, n_roots = fpu_cfg.tree_engines, fpu_cfg.nodes, fpu_cfg.roots
+    tree_nodes = [tree.n_nodes() for tree in self.interface_trees]
+    tree_depths = [tree.max_depth() for trees_c in self.trees for tree in trees_c]
+    assert len(self.interface_trees) <= n_tes * n_roots, f'Cannot pack model with {len(self.interface_trees)} trees to FPU target with {n_tes} Tree Engines and {n_roots} roots (maximum {n_tes * n_roots} trees)'
+    for i, n in enumerate(tree_nodes):
+      assert n <= n_nodes, f'Cannot pack tree {i} with {n} nodes to FPU target with {n_nodes} nodes'
 
-  def derive_scales(self):
+    def _assign(order, key):
+      assignment = [[] for _ in range(n_tes)]
+      nodes_used = [0] * n_tes
+      latency = [0] * n_tes
+      for i in order:
+        candidates = [te for te in range(n_tes) if len(assignment[te]) < n_roots and nodes_used[te] + tree_nodes[i] <= n_nodes]
+        if len(candidates) == 0:
+          return None
+        te = min(candidates, key=lambda te: key(te, latency, nodes_used))
+        assignment[te].append(i)
+        nodes_used[te] += tree_nodes[i]
+        latency[te] += tree_depths[i] + 1
+      return assignment
+
+    trees = range(len(self.interface_trees))
+    if len(trees) <= n_tes:
+      return [[i] for i in trees] + [[] for _ in range(n_tes - len(trees))]
+    # balance the latency, taking the deepest trees first
+    assignment = _assign(sorted(trees, key=lambda i: (tree_depths[i], tree_nodes[i]), reverse=True),
+                         lambda te, latency, nodes_used: (latency[te], nodes_used[te], te))
+    if assignment is None:
+      # fall back to first fit decreasing on the nodes, which packs tighter but may have worse latency
+      logger.warning('Could not balance trees over Tree Engines, falling back to first fit packing')
+      assignment = _assign(sorted(trees, key=lambda i: tree_nodes[i], reverse=True),
+                           lambda te, latency, nodes_used: te)
+    assert assignment is not None, f'Cannot pack model with {sum(tree_nodes)} nodes in {len(tree_nodes)} trees to FPU target with {n_tes} Tree Engines of {n_nodes} nodes and {n_roots} roots'
+    return assignment
+
+  def derive_scales(self, X=None, headroom=None):
     '''
     Derive threshold and score scale factors from static analysis of model parameters, and configured precision.
+    Parameters
+    ----------
+    X: ndarray of shape (n_samples, n_features), optional
+      Calibration inputs. If provided, each feature's range is extended to cover the largest magnitude in X
+    headroom: int, optional
+      Bits of the threshold type reserved above the feature range for unseen larger inputs.
+      Defaults to 0 if X is provided, otherwise a sixth of the threshold type magnitude bits (minimum 1)
     Returns
     ----------
     threshold_scales: ndarray of shape (n_features)
       Scale factors derived for thresholds
-    score_scales: ndarray of shape (n_classes)
-      Scale factors derived for scores
+    score_scale: float
+      Scale factor derived for scores
     '''
+    tbits = self.config.fpu.threshold_type - 1
+    if headroom is None:
+      headroom = 0 if X is not None else max(1, tbits // 6)
+    assert 0 <= headroom < tbits, f'headroom must be in [0, {tbits}), got {headroom}'
+    h = 2**(tbits - headroom) - 1
     # only scale thresholds of non-leaf nodes
     thresholds = np.array([t for trees_c in self.trees for tree in trees_c for t, f in zip(tree.threshold, tree.feature) if f != -2])
     features = np.array([f for trees_c in self.trees for tree in trees_c for f in tree.feature if f != -2])
-    threshold_scales = np.zeros(shape=self.n_features, dtype='float32')
-    h = 2**(self.config.fpu.threshold_type-1)-1
+    threshold_scales = np.ones(shape=self.n_features, dtype='float32')
     for i in range(self.n_features):
-      t = np.abs(thresholds[features == i])
-      t = t[t != 0]
-      threshold_scales[i] = 1. if len(t) == 0 else h / t.max()
-    # only scale the scores of leaf nodes
-    v = np.array([v for trees_c in self.trees for tree in trees_c for v, f in zip(tree.value, tree.feature) if f == -2])
-    v = np.abs(v[v != 0])
-    h = (2**(self.config.fpu.score_type-1)-1) / self.n_trees
-    score_scales = np.array([h / v.max()])
-    return threshold_scales, score_scales
+      r = np.abs(thresholds[features == i]).max(initial=0)
+      if X is not None:
+        r = max(r, np.abs(X[:, i]).max(initial=0))
+      if r > 0:
+        threshold_scales[i] = h / r
+    # bound the score sum by the worst case leaf of every tree, keeping room for leaf rounding
+    leaves = [np.array([v for v, f in zip(tree.value, tree.feature) if f == -2]) for trees_c in self.trees for tree in trees_c]
+    bound = max(abs(sum(v.max() for v in leaves)), abs(sum(v.min() for v in leaves)))
+    hs = max(2**(self.config.fpu.score_type - 1) - 1 - len(leaves) / 2, 1)
+    score_scale = 1. if bound == 0 else hs / bound
+    return threshold_scales, score_scale
 
-  def scale(self, threshold: float, score: float):
+  def set_scales(self, threshold, score: float):
     '''
-    Scale model tresholds and scores by scale factors
+    Set the model threshold and score scale factors, replacing any previous scaling
     Parameters
     ----------
     threshold: ndarray of shape (n_features) or scalar
       scale factors by which to multiply thresholds
-    score: ndarray of shape (n_classes) or scalar
-      scale factors by which to divide scores
+    score: scalar
+      scale factor by which to multiply scores
     '''
-    logger.info(f'Scaling model with threshold scales {threshold}, score scales {score}')
-    self.threshold_scale = threshold
+    logger.info(f'Scaling model with threshold scales {threshold}, score scale {score}')
+    self.threshold_scale = np.broadcast_to(np.asarray(threshold, dtype='float32'), (self.n_features,)).copy()
     self.score_scale = 1. / score
     for tree in self.interface_trees:
-      tree.scale(threshold, score)
+      tree.scale(self.threshold_scale, score)
+
+  def scale(self, threshold, score: float):
+    '''
+    Scale model tresholds and scores by scale factors, on top of any previous scaling
+    Parameters
+    ----------
+    threshold: ndarray of shape (n_features) or scalar
+      scale factors by which to multiply thresholds
+    score: scalar
+      scale factor by which to multiply scores
+    '''
+    self.set_scales(self.threshold_scale * threshold, score / self.score_scale)
 
   def pack(self):
     '''
     Pack model into FPU InterfaceDecisionTrees
     Returns
     ----------
-    data: ndarray of shape (FPU TEs, FPU nodes, 7), dtype int32
-      The packed InterfaceDecisionTrees
+    nodes: ndarray of shape (FPU TEs, FPU nodes, 7), dtype int32
+      The packed InterfaceDecisionTrees. The trees assigned to each TE are placed one after another.
+    roots: ndarray of shape (FPU TEs, FPU roots + 1), dtype int32
+      The number of trees assigned to each TE, followed by the address of each tree's root node
     '''
-    assert self.n_trees <= self.config.fpu.tree_engines, f'Cannot pack model with {self.n_trees} trees to FPU target with {self.config.fpu.tree_engines} Tree Engines'
-    assert 2**self.max_depth <= self.config.fpu.nodes, f'Cannot pack model with max_depth {self.max_depth} to FPU target with {self.nodes} nodes'
-    data = np.zeros((self.config.fpu.tree_engines, self.config.fpu.nodes, 7), dtype='int32')
-    for i, tree in enumerate(self.interface_trees):
-      data[i] = tree.pack()
-    return data
+    fpu_cfg = self.config.fpu
+    nodes = np.zeros((fpu_cfg.tree_engines, fpu_cfg.nodes, 7), dtype='int32')
+    roots = np.zeros((fpu_cfg.tree_engines, fpu_cfg.roots + 1), dtype='int32')
+    for te, tree_indices in enumerate(self.tree_engine_assignment):
+      te_nodes = []
+      roots[te, 0] = len(tree_indices)
+      for r, i in enumerate(tree_indices):
+        roots[te, r + 1] = len(te_nodes)
+        te_nodes += self.interface_trees[i].offset(len(te_nodes)).nodes
+      te_tree = FPUInterfaceTree(te_nodes)
+      te_tree.pad_to(fpu_cfg.nodes)
+      nodes[te] = te_tree.pack()
+    return nodes, roots
 
   def load(self, batch_size=None):
     '''
     Load model onto attached FPU device
     '''
     assert self.device is not None, 'No device attached! Did you load the driver and attach_device first?'
-    self.device.load(self.pack(), self._scales(), self.n_features, self.n_classes, batch_size)
+    nodes, roots = self.pack()
+    self.device.load(nodes, roots, self._scales(), self.n_features, self.n_classes, batch_size)
 
   @copydocstring(ModelBase.write)
   def decision_function(self, X):
@@ -303,7 +400,8 @@ class FPUModel(ModelBase):
     '''
     self.save()
     with open(f'{self.config.output_dir}/nodes.json', 'w') as f:
-      d = {'nodes' : self.pack().tolist(), 'scales' : self._scales().tolist()}
+      nodes, roots = self.pack()
+      d = {'nodes' : nodes.tolist(), 'roots' : roots.tolist(), 'scales' : self._scales().tolist()}
       json.dump(d, f)
 
   def _scales(self):
@@ -329,6 +427,7 @@ def auto_config():
     fpu_cfg = {
       "nodes": 512,
       "tree_engines": 100,
+      "roots": 16,
       "features": 16,
       "threshold_type": 16,
       "score_type": 16,
@@ -354,9 +453,15 @@ class FPUBuilder:
     self.board_builder = get_builder(self.cfg, self.cfg.board_config, top_name=top_name, ip_name=ip_name)
     self.output_dir = os.path.abspath(self.output_dir)
     self._metadata = ModelMetaData()
+    self._csim, self._cosim = False, False
 
   def default_cfg():
     return FPUBuilderConfig.default_config()
+
+  def _info(self):
+    '''The FPU info string, returned by the device'''
+    info = {'configuration' : self.cfg._to_dict(), 'metadata' : self._metadata._to_dict()}
+    return json.dumps(info)
 
   def write_params(self):
     with open(f'{self.output_dir}/parameters.h', 'w') as f:
@@ -367,14 +472,14 @@ class FPUBuilder:
       f.write(f'static const int NFEATURES={self.features};\n')
       f.write(f'static const int NTE={self.tree_engines};\n')
       f.write(f'static const int NNODES={self.nodes};\n')
+      f.write(f'static const int NROOTS={self.roots};\n')
       f.write(f'static const int ADDRBITS={math.ceil(np.log2(self.nodes))+1};\n')
       f.write(f'static const int FEATBITS={math.ceil(np.log2(self.features))+1};\n')
       f.write(f'static const int NCLASSES={1};\n')
       f.write(f'static const int CLASSBITS={1};\n')
       f.write(f'static const bool SCALER={"true" if self.dynamic_scaler else "false"};\n')
       f.write(f'typedef DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> DN;\n')
-      info = {'configuration' : self.cfg._to_dict(), 'metadata' : self._metadata._to_dict()}
-      info = json.dumps(info)
+      info = self._info()
       info_fmt = info.replace('"', r'\"')
       f.write(f'static const char* theInfo = "{info_fmt}";\n')
       f.write(f'static const int theInfoLength = {len(info)};\n')
@@ -391,6 +496,37 @@ class FPUBuilder:
       f.write(f'set export_format {self.board_builder.get_export_format()}\n')
       f.write(f'set m_axi_addr64 {str(self.board_builder.get_maxi64()).lower()}\n')
       f.write(f'set version {conifer.__version__.major}.{conifer.__version__.minor}\n')
+      f.write(f'set csim {int(self._csim)}\n')
+      f.write(f'set cosim {int(self._cosim)}\n')
+      if self._cosim:
+        with open(f'{self.output_dir}/tb_data/X.dat') as fX:
+          batch_size, n_features = [int(v) for v in fX.readline().split()]
+        f.write(f'set cosim_X_depth {max(batch_size * n_features, 1)}\n')
+        f.write(f'set cosim_y_depth {max(batch_size, 1)}\n')
+        f.write(f'set cosim_info_depth {len(self._info())}\n')
+
+  def write_testbench_data(self, model, X):
+    '''
+    Write a packed model and inputs for the HLS testbench, used for C Simulation and Cosimulation (see build).
+    The testbench writes its predictions to {output_dir}/{project_name}/solution1/csim/build/tb_data/y.dat for C Simulation.
+    Parameters
+    ----------
+    model: FPUModel
+      Model targeting this FPU configuration
+    X: ndarray of shape (batch_size, n_features)
+      Inputs, float32 for FPUs with the dynamic scaler, otherwise int32
+    '''
+    for key in ['tree_engines', 'nodes', 'roots', 'features', 'dynamic_scaler']:
+      assert getattr(model.config.fpu, key) == getattr(self.cfg, key), f'Model FPU {key} ({getattr(model.config.fpu, key)}) does not match the FPU being built ({getattr(self.cfg, key)})'
+    tb_dir = f'{self.output_dir}/tb_data'
+    os.makedirs(tb_dir, exist_ok=True)
+    nodes, roots = model.pack()
+    np.savetxt(f'{tb_dir}/nodes.dat', nodes.reshape(-1, 7), fmt='%d')
+    np.savetxt(f'{tb_dir}/roots.dat', roots, fmt='%d')
+    np.savetxt(f'{tb_dir}/scales.dat', model._scales(), fmt='%.9g')
+    with open(f'{tb_dir}/X.dat', 'w') as f:
+      f.write(f'{X.shape[0]} {X.shape[1]}\n')
+      np.savetxt(f, X, fmt='%.9g' if self.dynamic_scaler else '%d')
 
   def write(self):
     filedir = os.path.dirname(os.path.abspath(__file__))
@@ -399,12 +535,13 @@ class FPUBuilder:
     shutil.copyfile(f'{filedir}/src/build_hls.tcl', f'{self.output_dir}/build_hls.tcl')
     shutil.copyfile(f'{filedir}/src/fpu.cpp', f'{self.output_dir}/fpu.cpp')
     shutil.copyfile(f'{filedir}/src/fpu.h', f'{self.output_dir}/fpu.h')
+    shutil.copyfile(f'{filedir}/src/fpu_tb.cpp', f'{self.output_dir}/fpu_tb.cpp')
     with open(f'{self.output_dir}/{self.project_name}.json', 'w') as f:
       json.dump(self.cfg._to_dict(), f)
     self.write_params()
     self.write_tcl()
 
-  def build(self, csynth=True, bitfile=True, **build_kwargs):
+  def build(self, csynth=True, bitfile=True, csim=False, cosim=False, **build_kwargs):
     '''
     Build FPU project
     Parameters
@@ -413,7 +550,14 @@ class FPUBuilder:
       Run HLS C Synthesis
     bitfile: boolean (optional)
       Create Vivado IPI project, run synthesis and implementation
+    csim: boolean (optional)
+      Run HLS C Simulation of the testbench. Call write_testbench_data first.
+    cosim: boolean (optional)
+      Run HLS C/RTL Cosimulation of the testbench. Call write_testbench_data first.
     '''
+    self._csim, self._cosim = csim, cosim
+    if csim or cosim:
+      assert os.path.exists(f'{self.output_dir}/tb_data/X.dat'), 'No testbench data found, call write_testbench_data first'
     self.write()
     cwd = os.getcwd()
     os.chdir(self.output_dir)

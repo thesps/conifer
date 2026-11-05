@@ -256,7 +256,7 @@ def read_vsynth_report(filename):
         section = 4
 
       # extract the value from the tables in each section
-      if section == 1 and 'CLB LUTs*' in line:
+      if section == 1 and 'CLB LUTs' in line:
         report['lut'] = int(line.split('|')[2])
       elif section == 1 and 'CLB Registers' in line:
         report['ff'] = int(line.split('|')[2])
@@ -267,3 +267,27 @@ def read_vsynth_report(filename):
     return report
   else:
     return None
+
+def read_vivado_timing_report(filename):
+  '''
+  Extract the Design Timing Summary (wns, tns, whs, ths, wpws, tpws in ns) from a Vivado report_timing_summary file
+  '''
+  if not os.path.exists(filename):
+    return None
+  keys = ['wns', 'tns', 'tns_failing_endpoints', 'tns_total_endpoints',
+          'whs', 'ths', 'ths_failing_endpoints', 'ths_total_endpoints',
+          'wpws', 'tpws', 'tpws_failing_endpoints', 'tpws_total_endpoints']
+  with open(filename, 'r') as f:
+    lines = f.readlines()
+  for i, line in enumerate(lines):
+    if line.split()[:2] == ['WNS(ns)', 'TNS(ns)']:
+      values = lines[i + 2].split()
+      report = {}
+      for key, value in zip(keys, values):
+        try:
+          report[key] = int(value) if 'endpoints' in key else float(value)
+        except ValueError:
+          # 'NA' for unconstrained designs
+          report[key] = None
+      return report
+  return {}

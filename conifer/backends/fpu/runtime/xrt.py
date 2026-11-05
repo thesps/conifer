@@ -13,6 +13,7 @@ class XrtDriver:
         'features': fpu_info.features,
         'tree_engines': fpu_info.tree_engines,
         'nodes': fpu_info.nodes,
+        'roots': fpu_info.roots,
         'threshold_type' : fpu_info.threshold_type,
         'score_type' : fpu_info.score_type,
         'dynamic_scaler': fpu_info.dynamic_scaler,
@@ -20,7 +21,7 @@ class XrtDriver:
     self.config = FPUConfig(config_dictionary)
     logger.info(f'Initialized FPU driver for {kernel_name} with configuration: {self.config}')
 
-  def load(self, nodes: np.ndarray, scales: np.ndarray, n_features=1, n_classes=2, batch_size=1):
+  def load(self, nodes: np.ndarray, roots: np.ndarray, scales: np.ndarray, n_features=1, n_classes=2, batch_size=1):
     '''
     Load packed model onto FPU
 
@@ -28,6 +29,8 @@ class XrtDriver:
     ----------
     nodes: ndarray of shape (FPU TEs, FPU nodes, 7), dtype int32
       Packed nodes, from FPUModel.pack
+    roots: ndarray of shape (FPU TEs, FPU roots + 1), dtype int32
+      Packed roots, from FPUModel.pack
     scales: ndarray of shape (FPU features + 1), dtype float32
       Packed scale factors, from FPUModel._scales
     n_features: integer (optional)
@@ -39,8 +42,23 @@ class XrtDriver:
     '''
     assert n_classes == 2, "Only binary classification is currently supported"
     model_shape_info = ConiferModelShapeInfo(n_features, n_classes)
-    self.device.load(nodes, scales, batch_size, model_shape_info)
+    self.device.load(nodes, roots, scales, batch_size, model_shape_info)
     logger.info(f'Model with {n_features} features and {n_classes} classes loaded onto FPU')
+
+  def read(self):
+    '''
+    Read packed model from FPU
+
+    Returns
+    ----------
+    nodes: ndarray of shape (FPU TEs, FPU nodes, 7), dtype int32
+      Packed nodes, as from FPUModel.pack
+    roots: ndarray of shape (FPU TEs, FPU roots + 1), dtype int32
+      Packed roots, as from FPUModel.pack
+    '''
+    nodes, roots = self.device.read()
+    cfg = self.config
+    return nodes.reshape((cfg.tree_engines, cfg.nodes, 7)), roots.reshape((cfg.tree_engines, cfg.roots + 1))
 
   def allocate_buffers(self, batch_size=1):
     '''

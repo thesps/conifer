@@ -24,6 +24,8 @@ clf = GradientBoostingClassifier(n_estimators=20, learning_rate=1.0,
 cfg = conifer.backends.vhdl.auto_config()
 # Set the output directory to something unique
 cfg['OutputDir'] = 'prj_{}'.format(int(datetime.datetime.now().timestamp()))
+# Set the target clock period (ns) for implementation
+cfg['ClockPeriod'] = 2.5
 
 # Create and compile the model
 model = conifer.converters.convert_from_sklearn(clf, cfg)
@@ -33,5 +35,6 @@ model.compile()
 y_hdl = model.decision_function(X)
 y_skl = clf.decision_function(X)
 
-# Synthesize the model
-model.build()
+# Synthesize and implement the model out-of-context
+model.build(impl=True)
+print(model.read_report(impl=True))

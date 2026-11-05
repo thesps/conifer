@@ -8,7 +8,9 @@ use work.Types.all;
 
 entity AddReduce is
 generic(
-  id : string := "0"
+  id : string := "0";
+  depth : integer := 0;
+  pipelining : integer := 1
 );
 port(
   clk   : in std_logic := '0';
@@ -27,7 +29,9 @@ constant qLen : integer := (len + 1) / 2;
 
 component AddReduce is
 generic(
-  id : string := "0"
+  id : string := "0";
+  depth : integer := 0;
+  pipelining : integer := 1
 );
 port(
   clk   : in std_logic := '0';
@@ -40,26 +44,17 @@ end component AddReduce;
 
 begin
 
-G1 : if d'length <= 1 generate
+GN : if d'length <= 1 generate
     q <= d;
-end generate;
-
-G2 : if d'length = 2 generate
-    process(clk)
-    begin
-        if rising_edge(clk) then
-            q(q'left) <= d(d'left) + d(d'right);
-            q_vld(q'left) <= d_vld(d'left) and d_vld(d'right);
-        end if;
-    end process;
-end generate;
-
-GN : if d'length > 2 generate
+    q_vld <= d_vld;
+else generate
   -- Lengths are rounded up to nearest even
   signal dInt : tyArray(0 to intLen - 1) := (others => (others => '0'));
   signal qInt : tyArray(0 to qLen - 1) := (others => (others => '0'));
+  signal qReg : tyArray(0 to qLen - 1) := (others => (others => '0'));
   signal d_vldInt : boolArray(0 to intLen - 1) := (others => false);
   signal q_vldInt : boolArray(0 to qLen - 1) := (others => false);
+  signal q_vldReg : boolArray(0 to qLen - 1) := (others => false);
   begin
     dInt(0 to d'length - 1) <= d;
     d_vldInt(0 to d'length - 1) <= d_vld;
@@ -67,19 +62,28 @@ GN : if d'length > 2 generate
 
     GNSums:
     for i in 0 to qLen - 1 generate
-        Sum:
-        process(clk)
-        begin
+      qInt(i) <= dInt(2*i) + dInt(2*i+1);
+      q_vldInt(i) <= d_vldInt(2*i) and d_vldInt(2*i+1);
+    end generate;
+
+    GRegister:
+    -- insert a register every "pipelining" stages
+    if depth mod pipelining = 0 generate
+      process(clk)
+      begin
         if rising_edge(clk) then
-            qInt(i) <= dInt(2*i) + dInt(2*i+1);
-            q_vldInt(i) <= d_vldInt(2*i) and d_vldInt(2*i+1);
+          qReg <= qInt;
+          q_vldReg <= q_vldInt;
         end if;
-        end process;
+      end process;
+    else generate
+      qReg <= qInt;
+      q_vldReg <= q_vldInt;
     end generate;
 
     Reduce : AddReduce
-    generic map(id => id & "_C")
-    port map(clk, qInt, q_vldInt, q, q_vld);
+    generic map(id & "_C", depth+1, pipelining)
+    port map(clk, qReg, q_vldReg, q, q_vld);
 
 end generate;
 

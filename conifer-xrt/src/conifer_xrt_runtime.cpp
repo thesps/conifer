@@ -123,6 +123,7 @@ class ConiferFPUKernelInfo {
 public:
     int nodes = 0;
     int tree_engines = 0;
+    int roots = 0;
     int features = 0;
     int threshold_type;
     int score_type;
@@ -135,7 +136,7 @@ public:
         from_json(j.at("configuration"), *this);
     }
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(ConiferFPUKernelInfo, nodes, tree_engines, features, threshold_type, score_type, dynamic_scaler);
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(ConiferFPUKernelInfo, nodes, tree_engines, roots, features, threshold_type, score_type, dynamic_scaler);
 };
 
 int get_conifer_fpu_kernel_info_length(const int device_index, const std::string& xclbin_path, const std::string& kernel_name) {
@@ -144,7 +145,7 @@ int get_conifer_fpu_kernel_info_length(const int device_index, const std::string
   auto ip = xrt::ip(device, xclbin_id, kernel_name);
   ip.read_register(0x00); // dummy read to clear ap_start, ap_done
   ip.write_register(0x00, 1); // set ap_start to 1 to trigger info length read
-  return ip.read_register(0x7C);
+  return ip.read_register(0x94); // infoLength register offset
 }
 
 ConiferFPUKernelInfo get_conifer_fpu_kernel_info(const int device_index, const std::string& xclbin_path, const std::string& kernel_name) {
@@ -161,11 +162,11 @@ ConiferFPUKernelInfo get_conifer_fpu_kernel_info(const int device_index, const s
   auto kernel = xrt::kernel(device, xclbin_id, kernel_name, xrt::kernel::cu_access_mode::exclusive);
 
   // allocate buffer for info and dummy buffer for other args
-  xrt::bo info_bo = xrt::bo(device, info_length * sizeof(char), kernel.group_id(9));
+  xrt::bo info_bo = xrt::bo(device, info_length * sizeof(char), kernel.group_id(11));
   xrt::bo dummy_bo = xrt::bo(device, 4, kernel.group_id(0));
 
   // retrieve the info from the kernel
-  auto run = kernel(dummy_bo, dummy_bo, 0, 0, 0, dummy_bo, dummy_bo, dummy_bo, dummy_bo, info_bo, 0);
+  auto run = kernel(dummy_bo, dummy_bo, 0, 0, 0, dummy_bo, dummy_bo, dummy_bo, dummy_bo, dummy_bo, dummy_bo, info_bo, 0);
   run.wait();
   info_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
   std::string info_str(static_cast<char*>(info_bo.map()), info_length);
@@ -193,13 +194,20 @@ class ConiferFPUXRTRuntime {
   }
 
   void load(const pybind11::array_t<int>& nodes,
+            const pybind11::array_t<int>& roots,
             const pybind11::array_t<float>& scales,
             const int batch_size,
             const ConiferModelShapeInfo model_shape_info_)
             {
     model_shape_info = model_shape_info_;
-    xrt::bo nodes_bo = xrt::bo(device, fpu_info.tree_engines * fpu_info.nodes * 7 * sizeof(int), kernel.group_id(5));
-    xrt::bo scales_bo = xrt::bo(device, (fpu_info.features + 1) * sizeof(float), kernel.group_id(7));
+    xrt::bo roots_bo = xrt::bo(device, fpu_info.tree_engines * (fpu_info.roots + 1) * sizeof(int), kernel.group_id(5));
+    xrt::bo nodes_bo = xrt::bo(device, fpu_info.tree_engines * fpu_info.nodes * 7 * sizeof(int), kernel.group_id(7));
+    xrt::bo scales_bo = xrt::bo(device, (fpu_info.features + 1) * sizeof(float), kernel.group_id(9));
+
+    // copy roots data to device buffer
+    pybind11::buffer_info roots_info = roots.request();
+    roots_bo.write(roots_info.ptr);
+    roots_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
     // copy nodes data to device buffer
     pybind11::buffer_info nodes_info = nodes.request();
@@ -212,26 +220,30 @@ class ConiferFPUXRTRuntime {
     scales_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
     // Launch kernel in load mode
-    auto run = kernel(dummy_bo, dummy_bo, 1, 0, 0, nodes_bo, dummy_bo, scales_bo, dummy_bo, dummy_bo, 0);
+    auto run = kernel(dummy_bo, dummy_bo, 1, 0, 0, roots_bo, dummy_bo, nodes_bo, dummy_bo, scales_bo, dummy_bo, dummy_bo, 0);
     run.wait();
 
     allocate_buffers(batch_size);
   }
 
-  pybind11::array_t<int> read(){
-    xrt::bo nodes_bo = xrt::bo(device, fpu_info.tree_engines * fpu_info.nodes * 7 * sizeof(int), kernel.group_id(5));
-    xrt::bo scales_bo = xrt::bo(device, (fpu_info.features + 1) * sizeof(float), kernel.group_id(7));
+  pybind11::tuple read(){
+    xrt::bo roots_bo = xrt::bo(device, fpu_info.tree_engines * (fpu_info.roots + 1) * sizeof(int), kernel.group_id(6));
+    xrt::bo nodes_bo = xrt::bo(device, fpu_info.tree_engines * fpu_info.nodes * 7 * sizeof(int), kernel.group_id(8));
+    xrt::bo scales_bo = xrt::bo(device, (fpu_info.features + 1) * sizeof(float), kernel.group_id(10));
 
     // Launch kernel in read mode
-    auto run = kernel(dummy_bo, dummy_bo, 2, 0, 0, dummy_bo, nodes_bo, dummy_bo, scales_bo, dummy_bo, 0);
+    auto run = kernel(dummy_bo, dummy_bo, 2, 0, 0, dummy_bo, roots_bo, dummy_bo, nodes_bo, dummy_bo, scales_bo, dummy_bo, 0);
     run.wait();
     nodes_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    // Create numpy array from output buffer
-    size_t n = fpu_info.tree_engines * fpu_info.nodes * 7;
-    auto nodes = pybind11::array_t<int>(n);
+    roots_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    // Create numpy arrays from output buffers
+    auto nodes = pybind11::array_t<int>(fpu_info.tree_engines * fpu_info.nodes * 7);
     pybind11::buffer_info nodes_info = nodes.request();
     nodes_bo.read(nodes_info.ptr);
-    return nodes;
+    auto roots = pybind11::array_t<int>(fpu_info.tree_engines * (fpu_info.roots + 1));
+    pybind11::buffer_info roots_info = roots.request();
+    roots_bo.read(roots_info.ptr);
+    return pybind11::make_tuple(nodes, roots);
   }
 
   void allocate_buffers(const size_t batch_size){
@@ -264,7 +276,7 @@ class ConiferFPUXRTRuntime {
     Xbo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
     // Launch kernel
-    auto run = kernel(Xbo, Ybo, 3, batch_size, model_shape_info.n_features, dummy_bo, dummy_bo, dummy_bo, dummy_bo, dummy_bo, 0);
+    auto run = kernel(Xbo, Ybo, 3, batch_size, model_shape_info.n_features, dummy_bo, dummy_bo, dummy_bo, dummy_bo, dummy_bo, dummy_bo, dummy_bo, 0);
     run.wait();
 
     // Copy output data back to host
@@ -299,6 +311,7 @@ PYBIND11_MODULE(conifer_xrt_runtime, m){
     .def(pybind11::init<std::string>(), pybind11::arg("info_str"))
     .def_readonly("nodes", &ConiferFPUKernelInfo::nodes)
     .def_readonly("tree_engines", &ConiferFPUKernelInfo::tree_engines)
+    .def_readonly("roots", &ConiferFPUKernelInfo::roots)
     .def_readonly("features", &ConiferFPUKernelInfo::features)
     .def_readonly("threshold_type", &ConiferFPUKernelInfo::threshold_type)
     .def_readonly("score_type", &ConiferFPUKernelInfo::score_type)

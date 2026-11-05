@@ -61,6 +61,7 @@ begin
 
   -- Sum the output scores using the add tree-reduce
   AddTree : entity work.AddReduce
+  generic map(id => "0", depth => 0, pipelining => adder_pipelining)
   port map(clk => clk, d => yTrees, d_vld => y_vld_arr, q => yV, q_vld => y_vld_arr_v);
   yUnnormalised <= yV(0);
   y_vld_unnormalised <= y_vld_arr_v(0);
