@@ -252,7 +252,7 @@ class ConiferFPUXRTRuntime {
       throw std::runtime_error("Model shape info not set. Please load a model first.");
     }
     size_t input_size = batch_size * model_shape_info.n_features * sizeof(float);
-    size_t output_size = batch_size * model_shape_info.n_classes * sizeof(float);
+    size_t output_size = batch_size * outputs_per_sample() * sizeof(float);
     Xbo = xrt::bo(device, input_size, kernel.group_id(0));
     Ybo = xrt::bo(device, output_size, kernel.group_id(1));
   }
@@ -266,7 +266,7 @@ class ConiferFPUXRTRuntime {
     if(_check_X_buffer_size(X, Xbo) == false){
       throw std::runtime_error("Input buffer size does not match allocated buffer size.");
     }
-    if(_check_Y_buffer_size(X, Ybo, model_shape_info) == false){
+    if(Ybo.size() != batch_size * outputs_per_sample() * sizeof(float)){
       throw std::runtime_error("Output buffer size does not match allocated buffer size.");
     }
 
@@ -283,12 +283,17 @@ class ConiferFPUXRTRuntime {
     Ybo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
     // Create numpy array from output buffer
-    size_t n = batch_size * model_shape_info.n_classes;
+    size_t n = batch_size * outputs_per_sample();
     auto Y = pybind11::array_t<float>(n);
     pybind11::buffer_info Y_info = Y.request();
     Ybo.read(Y_info.ptr);
 
     return Y;
+  }
+
+  // The kernel writes one score per sample for binary classification, as for the other conifer backends
+  size_t outputs_per_sample() const {
+    return model_shape_info.n_classes == 2 ? 1 : model_shape_info.n_classes;
   }
 };
 
