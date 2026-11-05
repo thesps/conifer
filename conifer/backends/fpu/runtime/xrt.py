@@ -41,6 +41,8 @@ class XrtDriver:
       Batch size for allocating buffers
     '''
     assert n_classes == 2, "Only binary classification is currently supported"
+    batch_size = 1 if batch_size is None else batch_size
+    self.n_outputs = 1 if n_classes == 2 else n_classes
     model_shape_info = ConiferModelShapeInfo(n_features, n_classes)
     self.device.load(nodes, roots, scales, batch_size, model_shape_info)
     logger.info(f'Model with {n_features} features and {n_classes} classes loaded onto FPU')
@@ -81,6 +83,6 @@ class XrtDriver:
 
     Returns
     ----------
-    score: ndarray of shape (batch_size, n_classes)
+    score: ndarray of shape (batch_size, 1) for binary classification, else (batch_size, n_classes)
     '''
-    return self.device.decision_function(X)
+    return self.device.decision_function(X).reshape((-1, self.n_outputs))
