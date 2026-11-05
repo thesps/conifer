@@ -6,7 +6,7 @@ stages:
 
 generator:
   stage: generate
-  image: python:3.8-alpine
+  image: registry.cern.ch/docker.io/library/python:3.8-alpine
   tags:
     - k8s-default
   before_script:
@@ -34,7 +34,7 @@ pytests:
 # install conifer-xrt
 build-conifer-xrt:
   stage: build
-  image: ubuntu:22.04
+  image: registry.cern.ch/docker.io/library/ubuntu:22.04
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_SUBMODULE_DEPTH: 1

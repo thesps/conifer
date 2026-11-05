@@ -29,7 +29,7 @@ variables:
 
 .pytest-plain:
   extends: .pytest
-  image: ghdl/ghdl:7.0.0-dev-gcc-ubuntu-24.04
+  image: registry.cern.ch/docker.io/ghdl/ghdl:7.0.0-dev-gcc-ubuntu-24.04
   tags:
     - k8s-default
   before_script:
@@ -47,7 +47,7 @@ variables:
 # Check whether the dependency stack installs and imports on newer Python versions
 python-version-check:
   stage: test
-  image: ghdl/ghdl:7.0.0-dev-gcc-ubuntu-24.04
+  image: registry.cern.ch/docker.io/ghdl/ghdl:7.0.0-dev-gcc-ubuntu-24.04
   tags:
     - k8s-default
   allow_failure: true
