@@ -35,10 +35,10 @@ class VHDLConfig(MultiPrecisionConfig):
 class VHDLModel(ModelBase):
 
   # ieee.fixed_pkg resize styles for the ap_fixed score rounding and saturation modes
-  # AP_RND (round half up) is implemented as adding half an LSB then truncating
-  _round_styles = {'AP_TRN' : ('fixed_truncate', False), 'AP_RND' : ('fixed_truncate', True),
-                   'AP_RND_CONV' : ('fixed_round', False)}
-  _overflow_styles = {'AP_WRAP' : 'fixed_wrap', 'AP_SAT' : 'fixed_saturate'}
+  # RND (round half up) is implemented as adding half an LSB then truncating
+  _round_styles = {'TRN' : ('fixed_truncate', False), 'RND' : ('fixed_truncate', True),
+                   'RND_CONV' : ('fixed_round', False)}
+  _overflow_styles = {'WRAP' : 'fixed_wrap', 'SAT' : 'fixed_saturate'}
 
   def __init__(self, ensembleDict, config, metadata=None):
     super(VHDLModel, self).__init__(ensembleDict, config, metadata)
@@ -55,8 +55,8 @@ class VHDLModel(ModelBase):
       for tree in trees_class:
         tree.padTree(self.max_depth)
         # Convert the floating point values to integers
-        tree.threshold_int = np.array([self._threshold_converter.to_int(x) for x in tree.threshold])
-        tree.value_int = np.array([self._score_converter.to_int(x) for x in tree.value])
+        tree.threshold_int = self._threshold_converter.to_int(tree.threshold)
+        tree.value_int = self._score_converter.to_int(tree.value)
 
   def _validate_precisions(self):
     for name, converter in [('input', self._input_converter), ('threshold', self._threshold_converter),
@@ -65,14 +65,15 @@ class VHDLModel(ModelBase):
         raise ValueError(f'The VHDL backend supports only signed types, got {name} precision {converter.type_string}')
     # the rounding and saturation modes of the input and threshold types apply only to the conversion of values in Python
     score = self._score_converter
-    if score.rounding_mode not in self._round_styles:
+    # with no fractional bits there is never anything to round, e.g. ap_int defaults to TRN_ZERO
+    if score.fractional_bits != 0 and score.round_mode not in self._round_styles:
       raise ValueError(f'The VHDL backend supports score rounding modes {list(self._round_styles)}, got {score.type_string}')
-    if score.saturation_mode not in self._overflow_styles:
+    if score.overflow_mode not in self._overflow_styles:
       raise ValueError(f'The VHDL backend supports score saturation modes {list(self._overflow_styles)}, got {score.type_string}')
 
   def _normalise(self) -> bool:
     # the normalisation stage is needed unless the normalisation in the score type is exactly 1
-    return self._score_converter.to_double(np.float64(self.norm)) != 1.0
+    return self._score_converter.to_double(self.norm) != 1.0
 
   @copydocstring(ModelBase.write)
   def write(self):
@@ -143,8 +144,8 @@ class VHDLModel(ModelBase):
     for i in range(n_classes):
       fout[i].write(array_header_text)
       fout[i].write('package Arrays{} is\n\n'.format(i))
-      fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(self._score_converter.to_int(np.float64(self.init_predict[i]))))
-      fout[i].write('    constant normalisation : ty := to_ty({});\n'.format(self._score_converter.to_int(np.float64(self.norm))))
+      fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(self._score_converter.to_int(self.init_predict[i])))
+      fout[i].write('    constant normalisation : ty := to_ty({});\n'.format(self._score_converter.to_int(self.norm)))
 
     # Loop over fields (childrenLeft, childrenRight, threshold...)
     tree_fields = ['feature', 'threshold_int', 'value_int',
@@ -234,10 +235,10 @@ class VHDLModel(ModelBase):
           newline += f"  subtype {t} is signed({converter.width - 1} downto 0); -- {precision}\n"
           newline += f"  constant {t}_high : integer := {converter.integer_bits - 1};\n"
           newline += f"  constant {t}_low : integer := {-converter.fractional_bits};\n"
-        round_style, round_half_up = self._round_styles[self._score_converter.rounding_mode]
+        round_style, round_half_up = self._round_styles.get(self._score_converter.round_mode, self._round_styles['TRN'])
         newline += f"  constant ty_round_style : fixed_round_style_type := {round_style};\n"
         newline += f"  constant ty_round_half_up : boolean := {str(round_half_up).lower()};\n"
-        newline += f"  constant ty_overflow_style : fixed_overflow_style_type := {self._overflow_styles[self._score_converter.saturation_mode]};\n"
+        newline += f"  constant ty_overflow_style : fixed_overflow_style_type := {self._overflow_styles[self._score_converter.overflow_mode]};\n"
         newline += f"  constant normalise : boolean := {str(self._normalise()).lower()};\n"
         newline += "  constant adder_pipelining : integer := {};\n".format(cfg.adder_pipelining)
       else:
@@ -271,14 +272,14 @@ class VHDLModel(ModelBase):
 
       config = copy.deepcopy(self.config)
 
-      Xint = np.array([self._input_converter.to_int(x) for x in X.ravel()]).reshape(X.shape)
+      Xint = self._input_converter.to_int(X)
       np.savetxt('{}/SimulationInput.txt'.format(config.output_dir),
                 Xint, delimiter=' ', fmt='%d')
       success = simulator.run_sim(config.output_dir)
       if not success:
         return 
       y = np.loadtxt('{}/SimulationOutput.txt'.format(config.output_dir)).astype(np.int32)
-      y = np.array([self._score_converter.from_int(yi) for yi in y.ravel()]).reshape(y.shape)
+      y = self._score_converter.from_int(y)
       if np.ndim(y) == 1:
         y = np.expand_dims(y, 1)
 

@@ -1,93 +1,88 @@
-import os
+import re
 import numpy as np
-import datetime
-from conifer.utils.misc import _ap_include, _gcc_opts
+from quantizers import fixed_quantize
 import logging
 logger = logging.getLogger(__name__)
 
+# conifer precision strings use ap_ types, quantizers names the same modes without the AP_ prefix
+_ROUND_MODES = ('TRN', 'TRN_ZERO', 'RND', 'RND_ZERO', 'RND_INF', 'RND_MIN_INF', 'RND_CONV')
+_OVERFLOW_MODES = ('WRAP', 'SAT', 'SAT_ZERO', 'SAT_SYM')
+_MAX_EXACT_WIDTH = 53 # conversions go through double precision floats
+
 class FixedPointConverter:
   '''
-  A Python wrapper around ap_fixed types to easily emulate the correct number representations
+  Emulate ap_fixed and ap_int number representations in numpy, using the quantizers package
+  Conversions accept scalars or arrays, and return the same shape
   '''
 
   def __init__(self, type_string):
     '''
-    Construct the FixedPointConverter. Compiles the c++ library to use for conversions
+    Construct the FixedPointConverter
     args:
       type_string : string for the ap_ type, e.g. ap_fixed<16,6,AP_RND,AP_SAT>
     '''
-    self._parse(type_string)
-    logger.info(f'Constructing converter for {type_string}')
     self.type_string = type_string
-    self.sani_type = type_string.replace(' ','').replace('<','_').replace('>','').replace(',','_')
-    self.sani_type += f'_{int(datetime.datetime.now().timestamp()) + np.random.randint(0, 2**32)}'
-    filedir = os.path.dirname(os.path.abspath(__file__))
-    cpp_filedir = f"./.fp_converter_{self.sani_type}"
-    cpp_filename = cpp_filedir + f'/{self.sani_type}.cpp'
-    os.makedirs(cpp_filedir, exist_ok=True)
-
-    fin = open(f'{filedir}/fixed_point_conversions.cpp', 'r')
-    fout = open(cpp_filename, 'w')
-    for line in fin.readlines():
-      newline = line
-      if '// conifer insert typedef' in line:
-        newline =  f"typedef {type_string} T;\n"
-      # Python caches extension modules by name, so each converter needs a unique module name
-      if 'PYBIND11_MODULE(fixed_point' in line:
-        newline = line.replace('fixed_point', self.sani_type)
-      fout.write(newline)
-    fin.close()
-    fout.close()
-
-    curr_dir = os.getcwd()
-    os.chdir(cpp_filedir)
-    cmd = f"g++ -O3 -shared -std=c++11 -fPIC $(python3 -m pybind11 --includes) {_ap_include()} {_gcc_opts()} {self.sani_type}.cpp -o {self.sani_type}.so"
-    logger.debug(f'Compiling with command {cmd}')
-    try:
-      ret_val = os.system(cmd)
-      if ret_val != 0:
-        raise Exception(f'Failed to compile FixedPointConverter {self.sani_type}.cpp')
-    finally:
-      os.chdir(curr_dir)
-
-    os.chdir(cpp_filedir)
-    logger.debug(f'Importing compiled module {self.sani_type}.so')
-    try:
-      import importlib.util
-      spec = importlib.util.spec_from_file_location(self.sani_type, f'{self.sani_type}.so')
-      self.lib = importlib.util.module_from_spec(spec)
-      spec.loader.exec_module(self.lib)
-    except ImportError:
-      os.chdir(curr_dir)
-      raise Exception("Can't import pybind11 bridge, is it compiled?")
-    os.chdir(curr_dir)
+    self._parse(type_string)
+    self._k = int(self.signed)
+    self._i = self.integer_bits - self._k
+    self._f = self.fractional_bits
+    logger.debug(f'Constructed converter for {type_string}')
 
   def _parse(self, type_string):
+    m = re.fullmatch(r'\s*ap_(fixed|ufixed|int|uint)\s*<(.*)>\s*', type_string)
+    if m is None:
+      raise ValueError(f'Could not parse fixed point type {type_string}')
+    kind = m.group(1)
+    args = [arg.strip() for arg in m.group(2).split(',')]
+    self.signed = kind in ('fixed', 'int')
+    n_args = (1, 1) if kind in ('int', 'uint') else (2, 5)
+    if not n_args[0] <= len(args) <= n_args[1]:
+      raise ValueError(f'Could not parse fixed point type {type_string}')
+    self.width = int(args[0])
+    self.integer_bits = self.width if kind in ('int', 'uint') else int(args[1])
+    self.fractional_bits = self.width - self.integer_bits
+    # casting a float to ap_int truncates towards zero, while ap_fixed defaults to AP_TRN
+    default_round = 'AP_TRN_ZERO' if kind in ('int', 'uint') else 'AP_TRN'
+    self.round_mode = self._parse_mode(args[2] if len(args) > 2 else default_round, _ROUND_MODES, type_string)
+    self.overflow_mode = self._parse_mode(args[3] if len(args) > 3 else 'AP_WRAP', _OVERFLOW_MODES, type_string)
+    if len(args) > 4 and int(args[4]) != 0:
+      raise ValueError(f'Non-zero saturation bits are not supported: {type_string}')
+    if self.signed and self.width == 1 and self.overflow_mode == 'SAT_SYM':
+      raise ValueError(f'1-bit signed AP_SAT_SYM is not supported: {type_string}') # quantizers gives 0, ap_fixed gives -1
+    if self.width > _MAX_EXACT_WIDTH:
+      logger.warning(f'{type_string} is too wide to convert exactly using double precision')
 
-    if np.any([i in type_string for i in ['int', 'uint']]):
-      self.width = int(type_string.split('<')[1].replace('>', ''))
-      self.integer_bits = self.width
-      self.fractional_bits = 0
-      self.signed = not ('uint' in type_string)
-      self.rounding_mode = 'AP_TRN'
-      self.saturation_mode = 'AP_WRAP'
-    elif 'fixed' in type_string:
-      t = type_string.split('<')[1].replace('>','')
-      self.width = int(t.split(',')[0].strip())
-      self.integer_bits = int(t.split(',')[1].strip())
-      self.fractional_bits = self.width - self.integer_bits
-      self.signed = not ('ufixed' in type_string)
-      modes = [m.strip() for m in t.split(',')[2:]]
-      self.rounding_mode = modes[0] if len(modes) > 0 else 'AP_TRN'
-      self.saturation_mode = modes[1] if len(modes) > 1 else 'AP_WRAP'
-    else:
-      logger.error(f'Could not parse {type_string}')
+  @staticmethod
+  def _parse_mode(mode, modes, type_string):
+    if not mode.startswith('AP_') or mode[3:] not in modes:
+      raise ValueError(f'Unsupported mode {mode} in {type_string}, expected one of {", ".join("AP_" + m for m in modes)}')
+    return mode[3:]
+
+  def _quantize(self, x, round_mode, overflow_mode):
+    x = np.asarray(x, dtype=np.float64)
+    # match the ap_ types for non-finite values: NaN behaves as +inf, and inf only survives saturation
+    x = np.where(np.isnan(x), np.inf, x)
+    if overflow_mode in ('WRAP', 'SAT_ZERO'):
+      x = np.where(np.isinf(x), 0., x)
+    if overflow_mode == 'WRAP':
+      # exact, unlike the wrap in quantizers which loses the sign bias for large x
+      x = np.fmod(x, 2.0 ** self.integer_bits)
+    return fixed_quantize(x, self._k, self._i, self._f, round_mode, overflow_mode)
+
+  @staticmethod
+  def _unwrap(x):
+    return x.item() if np.ndim(x) == 0 else x
 
   def to_int(self, x):
-    return self.lib.to_int(x)
+    '''Get the integer representation of the fixed point value of x'''
+    y = self._quantize(x, self.round_mode, self.overflow_mode)
+    return self._unwrap(np.ldexp(y, self._f).astype(np.int64))
 
   def to_double(self, x):
-    return self.lib.to_double(x)
+    '''Get the double representation of the fixed point value of x'''
+    return self._unwrap(self._quantize(x, self.round_mode, self.overflow_mode))
 
   def from_int(self, x):
-    return self.lib.from_int(x)
+    '''Set the underlying bits of the fixed point value from integer x, return the double'''
+    y = np.ldexp(np.asarray(x, dtype=np.float64), -self._f)
+    return self._unwrap(self._quantize(y, 'TRN', 'WRAP'))
