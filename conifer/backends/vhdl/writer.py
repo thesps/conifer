@@ -32,18 +32,21 @@ class VHDLConfig(MultiPrecisionConfig):
   def default_config():
     return copy.deepcopy(VHDLConfig._defaults)
 
-  def _extra_validate(self):
-    # TODO: proagate different precisions properly through backend
-    # for now enforce that all the precisions are equal
-    assert self.input_precision == self.threshold_precision, f'input & threshold precision must be equal, got: {self.input_precision} & {self.threshold_precision}'
-    assert self.threshold_precision == self.score_precision, f'threshold & score precision must be equal, got: {self.threshold_precision} & {self.score_precision}'
-
 class VHDLModel(ModelBase):
+
+  # ieee.fixed_pkg resize styles for the ap_fixed score rounding and saturation modes
+  # AP_RND (round half up) is implemented as adding half an LSB then truncating
+  _round_styles = {'AP_TRN' : ('fixed_truncate', False), 'AP_RND' : ('fixed_truncate', True),
+                   'AP_RND_CONV' : ('fixed_round', False)}
+  _overflow_styles = {'AP_WRAP' : 'fixed_wrap', 'AP_SAT' : 'fixed_saturate'}
 
   def __init__(self, ensembleDict, config, metadata=None):
     super(VHDLModel, self).__init__(ensembleDict, config, metadata)
     self.config = VHDLConfig(config)
-    self._fp_converter = FixedPointConverter(self.config.input_precision)
+    self._input_converter = FixedPointConverter(self.config.input_precision)
+    self._threshold_converter = FixedPointConverter(self.config.threshold_precision)
+    self._score_converter = FixedPointConverter(self.config.score_precision)
+    self._validate_precisions()
     trees = ensembleDict.get('trees', None)
     assert trees is not None, f'Missing expected key trees in ensembleDict'
     assert not self.is_oblique(), f'Oblique splits are not supported by the VHDL backend, please use the hls backend'
@@ -52,9 +55,25 @@ class VHDLModel(ModelBase):
       for tree in trees_class:
         tree.padTree(self.max_depth)
         # Convert the floating point values to integers
-        tree.threshold_int = np.array([self._fp_converter.to_int(x) for x in tree.threshold])
-        tree.value_int = np.array([self._fp_converter.to_int(x) for x in tree.value])
-        
+        tree.threshold_int = np.array([self._threshold_converter.to_int(x) for x in tree.threshold])
+        tree.value_int = np.array([self._score_converter.to_int(x) for x in tree.value])
+
+  def _validate_precisions(self):
+    for name, converter in [('input', self._input_converter), ('threshold', self._threshold_converter),
+                            ('score', self._score_converter)]:
+      if not converter.signed:
+        raise ValueError(f'The VHDL backend supports only signed types, got {name} precision {converter.type_string}')
+    # the rounding and saturation modes of the input and threshold types apply only to the conversion of values in Python
+    score = self._score_converter
+    if score.rounding_mode not in self._round_styles:
+      raise ValueError(f'The VHDL backend supports score rounding modes {list(self._round_styles)}, got {score.type_string}')
+    if score.saturation_mode not in self._overflow_styles:
+      raise ValueError(f'The VHDL backend supports score saturation modes {list(self._overflow_styles)}, got {score.type_string}')
+
+  def _normalise(self) -> bool:
+    # the normalisation stage is needed unless the normalisation in the score type is exactly 1
+    return self._score_converter.to_double(np.float64(self.norm)) != 1.0
+
   @copydocstring(ModelBase.write)
   def write(self):
 
@@ -71,7 +90,7 @@ class VHDLModel(ModelBase):
     """
 
     array_cast_text = """    constant value : tyArray2DnNodes(0 to nTrees - 1) := to_tyArray2D(value_int);
-        constant threshold : txArray2DnNodes(0 to nTrees - 1) := to_txArray2D(threshold_int);"""
+        constant threshold : ttArray2DnNodes(0 to nTrees - 1) := to_ttArray2D(threshold_int);"""
 
     bdt_instantiation_template = """  BDT{} : entity work.BDT
     generic map(
@@ -124,8 +143,8 @@ class VHDLModel(ModelBase):
     for i in range(n_classes):
       fout[i].write(array_header_text)
       fout[i].write('package Arrays{} is\n\n'.format(i))
-      fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(self._fp_converter.to_int(np.float64(self.init_predict[i]))))
-      fout[i].write('    constant normalisation : ty := to_ty({});\n'.format(self._fp_converter.to_int(np.float64(self.norm))))
+      fout[i].write('    constant initPredict : ty := to_ty({});\n'.format(self._score_converter.to_int(np.float64(self.init_predict[i]))))
+      fout[i].write('    constant normalisation : ty := to_ty({});\n'.format(self._score_converter.to_int(np.float64(self.norm))))
 
     # Loop over fields (childrenLeft, childrenRight, threshold...)
     tree_fields = ['feature', 'threshold_int', 'value_int',
@@ -208,10 +227,18 @@ class VHDLModel(ModelBase):
         newline += "  constant nLeaves : integer := {};\n".format(2 ** self.max_depth)
         newline += "  constant nFeatures : integer := {};\n".format(self.n_features)
         newline += "  constant nClasses : integer := {};\n\n".format(n_classes)
-        newline += "  subtype tx is signed({} downto 0);\n".format(self._fp_converter.width - 1)
-        newline += "  subtype ty is signed({} downto 0);\n".format(self._fp_converter.width - 1)
-        newline += "  constant norm_slice_h : integer := {};\n".format(self._fp_converter.width * 2 - self._fp_converter.integer_bits - 1)
-        newline += "  constant norm_slice_l : integer := {};\n".format(self._fp_converter.fractional_bits)
+        # signed representations of the input, threshold, and score, and the sfixed index range of each
+        for t, converter, precision in [('tx', self._input_converter, cfg.input_precision),
+                                        ('tt', self._threshold_converter, cfg.threshold_precision),
+                                        ('ty', self._score_converter, cfg.score_precision)]:
+          newline += f"  subtype {t} is signed({converter.width - 1} downto 0); -- {precision}\n"
+          newline += f"  constant {t}_high : integer := {converter.integer_bits - 1};\n"
+          newline += f"  constant {t}_low : integer := {-converter.fractional_bits};\n"
+        round_style, round_half_up = self._round_styles[self._score_converter.rounding_mode]
+        newline += f"  constant ty_round_style : fixed_round_style_type := {round_style};\n"
+        newline += f"  constant ty_round_half_up : boolean := {str(round_half_up).lower()};\n"
+        newline += f"  constant ty_overflow_style : fixed_overflow_style_type := {self._overflow_styles[self._score_converter.saturation_mode]};\n"
+        newline += f"  constant normalise : boolean := {str(self._normalise()).lower()};\n"
         newline += "  constant adder_pipelining : integer := {};\n".format(cfg.adder_pipelining)
       else:
         newline = line
@@ -244,14 +271,14 @@ class VHDLModel(ModelBase):
 
       config = copy.deepcopy(self.config)
 
-      Xint = np.array([self._fp_converter.to_int(x) for x in X.ravel()]).reshape(X.shape)
+      Xint = np.array([self._input_converter.to_int(x) for x in X.ravel()]).reshape(X.shape)
       np.savetxt('{}/SimulationInput.txt'.format(config.output_dir),
                 Xint, delimiter=' ', fmt='%d')
       success = simulator.run_sim(config.output_dir)
       if not success:
         return 
       y = np.loadtxt('{}/SimulationOutput.txt'.format(config.output_dir)).astype(np.int32)
-      y = np.array([self._fp_converter.from_int(yi) for yi in y.ravel()]).reshape(y.shape)
+      y = np.array([self._score_converter.from_int(yi) for yi in y.ravel()]).reshape(y.shape)
       if np.ndim(y) == 1:
         y = np.expand_dims(y, 1)
 
@@ -325,12 +352,11 @@ class VHDLModel(ModelBase):
   def _latency(self) -> int:
     # Tree: comparisons, activations, leaf select
     tree = 3
-    # AddReduce over the trees and initPredict, one adder stage per halving
+    # AddReduce over the trees, one adder stage per halving, then the initPredict adder stage
     # with a register after the first adder stage and every adder_pipelining stages after it
-    adder_stages = math.ceil(math.log2(self.n_trees + 1))
+    adder_stages = math.ceil(math.log2(self.n_trees)) + 1
     add_reduce = math.ceil(adder_stages / self.config.adder_pipelining)
-    # BDT generates the normalisation register unless the normalisation integer representation is 1
-    normalisation = int(self._fp_converter.to_int(np.float64(self.norm)) != 1)
+    normalisation = int(self._normalise())
     return tree + add_reduce + normalisation
 
 def make_model(ensembleDict, config):

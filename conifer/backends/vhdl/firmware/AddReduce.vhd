@@ -62,7 +62,7 @@ else generate
 
     GNSums:
     for i in 0 to qLen - 1 generate
-      qInt(i) <= dInt(2*i) + dInt(2*i+1);
+      qInt(i) <= add_ty(dInt(2*i), dInt(2*i+1));
       q_vldInt(i) <= d_vldInt(2*i) and d_vldInt(2*i+1);
     end generate;
 
