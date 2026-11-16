@@ -15,6 +15,8 @@
 // HLS takes only Verilog blackbox RTL. The ports are those HLS connects for the FPU_df_bb arguments:
 // x_i for each feature, y, then roots_i and nodes_i memory ports for each Tree Engine, concatenated for FPU_df_hls
 // The ports and their connections are written by the conifer FPU writer
+// The timescale is that of the HLS generated RTL: some versions of xsim require every module to have one in cosimulation
+`timescale 1 ns / 1 ps
 module FPU_df_bb(
   input ap_clk,
   input ap_rst,

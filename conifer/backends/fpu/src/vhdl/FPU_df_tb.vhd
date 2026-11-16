@@ -12,11 +12,11 @@
 -- Source location: https://github.com/thesps/conifer
 
 -- Standalone testbench for FPU_df, with one cycle latency memory models. The configuration is in fpu_pkg.
--- Reads packed node and roots words, and X, as binary strings one per line:
---   NODES_FILE : NTE * 2**NAWIDTH node words, Tree Engine by Tree Engine
---   ROOTS_FILE : NTE * 2**RAWIDTH roots words
---   X_FILE     : one sample per line, X[NFEATURES-1] first
--- Writes one y per line to Y_FILE, then the number of cycles from the first X accepted to the last y
+-- Reads the testbench data written by FPUBuilder.write_testbench_data, for an FPU without the dynamic scaler:
+--   NODES_FILE : NNODES lines per Tree Engine of the 7 node fields: threshold score feature child_left child_right iclass is_leaf
+--   ROOTS_FILE : one line per Tree Engine: the number of trees, then the root node addresses (NROOTS + 1 values)
+--   X_FILE     : the number of samples and the number of features, then one sample per line
+-- Writes one y per line to Y_FILE, and reports the cycles from the first X accepted to the last y, and the node memory reads
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -25,11 +25,10 @@ use work.fpu_pkg.all;
 
 entity FPU_df_tb is
   generic(
-    NSAMPLES   : integer := 1;
-    NODES_FILE : string := "nodes.mem";
-    ROOTS_FILE : string := "roots.mem";
-    X_FILE     : string := "X.mem";
-    Y_FILE     : string := "y.out"
+    NODES_FILE : string := "../tb_data/nodes.dat";
+    ROOTS_FILE : string := "../tb_data/roots.dat";
+    X_FILE     : string := "../tb_data/X.dat";
+    Y_FILE     : string := "y.dat"
   );
 end entity;
 
@@ -38,18 +37,36 @@ architecture sim of FPU_df_tb is
   constant RDEPTH   : integer := 2**RAWIDTH;
   type node_mem_t is array(0 to NTE * NDEPTH - 1) of node_word_t;
   type root_mem_t is array(0 to NTE * RDEPTH - 1) of roots_word_t;
-  type x_mem_t is array(0 to NSAMPLES - 1) of features_t;
+
+  -- the node memory word from the 7 node fields, as written to the nodes file
+  function to_node_word(v : integer_vector(0 to 6)) return node_word_t is
+    variable n : node_t;
+  begin
+    n.threshold   := to_signed(v(0), TBITS);
+    n.score       := to_signed(v(1), UBITS);
+    n.feature     := unsigned(to_signed(v(2), FEATBITS));
+    n.child_left  := to_signed(v(3), ADDRBITS);
+    n.child_right := to_signed(v(4), ADDRBITS);
+    n.iclass      := to_unsigned(v(5), CLASSBITS);
+    n.is_leaf     := '1' when v(6) = 1 else '0';
+    return to_std_logic_vector(n);
+  end function;
 
   impure function read_nodes return node_mem_t is
     file f : text open read_mode is NODES_FILE;
     variable l : line;
-    variable b : bit_vector(NODEBITS - 1 downto 0);
-    variable m : node_mem_t;
+    variable v : integer_vector(0 to 6);
+    -- addresses beyond NNODES hold null nodes
+    variable m : node_mem_t := (others => to_node_word((0, 0, -2, -1, -1, 0, 1)));
   begin
-    for i in m'range loop
-      readline(f, l);
-      read(l, b);
-      m(i) := to_stdlogicvector(b);
+    for te in 0 to NTE - 1 loop
+      for i in 0 to NNODES - 1 loop
+        readline(f, l);
+        for j in v'range loop
+          read(l, v(j));
+        end loop;
+        m(te * NDEPTH + i) := to_node_word(v);
+      end loop;
     end loop;
     return m;
   end function;
@@ -57,28 +74,46 @@ architecture sim of FPU_df_tb is
   impure function read_roots return root_mem_t is
     file f : text open read_mode is ROOTS_FILE;
     variable l : line;
-    variable b : bit_vector(ADDRBITS - 1 downto 0);
-    variable m : root_mem_t;
+    variable v : integer;
+    variable m : root_mem_t := (others => (others => '0'));
   begin
-    for i in m'range loop
+    for te in 0 to NTE - 1 loop
       readline(f, l);
-      read(l, b);
-      m(i) := to_stdlogicvector(b);
+      for i in 0 to NROOTS loop
+        read(l, v);
+        m(te * RDEPTH + i) := std_logic_vector(to_signed(v, ADDRBITS));
+      end loop;
     end loop;
     return m;
   end function;
 
+  -- the number of samples, or of features, from the first line of X_FILE
+  impure function read_X_shape(dim : integer) return integer is
+    file f : text open read_mode is X_FILE;
+    variable l : line;
+    variable v : integer_vector(0 to 1);
+  begin
+    readline(f, l);
+    read(l, v(0));
+    read(l, v(1));
+    return v(dim);
+  end function;
+
+  constant NSAMPLES : integer := read_X_shape(0);
+  type x_mem_t is array(0 to NSAMPLES - 1) of features_t;
+
   impure function read_X return x_mem_t is
     file f : text open read_mode is X_FILE;
     variable l : line;
-    variable b : bit_vector(NFEATURES * TBITS - 1 downto 0);
-    variable m : x_mem_t;
+    variable v : integer;
+    variable m : x_mem_t := (others => (others => (others => '0')));
   begin
+    readline(f, l);
     for i in m'range loop
       readline(f, l);
-      read(l, b);
-      for j in 0 to NFEATURES - 1 loop
-        m(i)(j) := signed(to_stdlogicvector(b((j + 1) * TBITS - 1 downto j * TBITS)));
+      for j in 0 to read_X_shape(1) - 1 loop
+        read(l, v);
+        m(i)(j) := to_signed(v, TBITS);
       end loop;
     end loop;
     return m;
@@ -157,13 +192,8 @@ begin
       write(l, to_integer(y));
       writeline(f, l);
     end loop;
-    -- cycles from the first X accepted to the last y
-    write(l, string'("cycles "));
-    write(l, cycle - t_first);
-    writeline(f, l);
-    write(l, string'("node_reads "));
-    write(l, n_reads);
-    writeline(f, l);
+    report "FPU_df_tb: " & integer'image(NSAMPLES) & " samples, " & integer'image(cycle - t_first) &
+           " cycles from the first X accepted to the last y, " & integer'image(n_reads) & " node memory reads";
     finished <= true;
     wait;
   end process;

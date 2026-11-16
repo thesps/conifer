@@ -477,6 +477,8 @@ class _VHDLWriter:
   '''
   vhdl_files = ['fpu_pkg.vhd', 'TreeEngine.vhd', 'FPU_df.vhd', 'FPU_df_hls.vhd']
   vhdl_tb_files = ['FPU_df_tb.vhd']
+  # xsim of FPU_df_tb on the project testbench data, and out of context synthesis of FPU_df_hls with the project part and clock
+  vhdl_scripts = ['xsim_tb.sh', 'synth_ooc.tcl']
 
   def __init__(self, cfg):
     '''cfg: FPUConfig'''
@@ -491,7 +493,7 @@ class _VHDLWriter:
     self.nodebits = self.tbits + self.ubits + self.featbits + 2 * self.addrbits + self.classbits + 1
 
   def constants(self):
-    return {'NTE' : self.nte, 'NFEATURES' : self.nf, 'NROOTS' : self.cfg.roots, 'TBITS' : self.tbits, 'UBITS' : self.ubits,
+    return {'NTE' : self.nte, 'NFEATURES' : self.nf, 'NNODES' : self.cfg.nodes, 'NROOTS' : self.cfg.roots, 'TBITS' : self.tbits, 'UBITS' : self.ubits,
             'FEATBITS' : self.featbits, 'ADDRBITS' : self.addrbits, 'CLASSBITS' : self.classbits,
             'NAWIDTH' : self.nawidth, 'RAWIDTH' : self.rawidth}
 
@@ -501,12 +503,12 @@ class _VHDLWriter:
     return [f'#define FPU_FOR_EACH_FEATURE(M) {each(self.nf)}', f'#define FPU_FOR_EACH_TE(M) {each(self.nte)}']
 
   def write_vhdl(self, odir, testbench=True):
-    '''Write the VHDL to odir: the package with the configuration, and the other sources'''
+    '''Write the VHDL to odir: the package with the configuration, the other sources, and the scripts to simulate and synthesize it'''
     filedir = os.path.dirname(os.path.abspath(__file__))
     os.makedirs(odir, exist_ok=True)
     constants = '\n'.join(f'  constant {k} : integer := {v};' for k, v in self.constants().items())
     _fill_template(f'{filedir}/src/vhdl/fpu_pkg.vhd', f'{odir}/fpu_pkg.vhd', {'constants' : constants})
-    for v in self.vhdl_files[1:] + (self.vhdl_tb_files if testbench else []):
+    for v in self.vhdl_files[1:] + (self.vhdl_tb_files if testbench else []) + self.vhdl_scripts:
       shutil.copyfile(f'{filedir}/src/vhdl/{v}', f'{odir}/{v}')
 
   def _memories(self):
