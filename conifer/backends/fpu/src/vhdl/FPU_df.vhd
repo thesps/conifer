@@ -51,6 +51,10 @@ architecture rtl of FPU_df is
   signal X_r       : features_t := (others => (others => '0'));
   signal busy      : std_logic := '0';
   signal start     : std_logic;
+  -- start, registered for the Tree Engines: it reaches all of them, so it has a large fan-out
+  signal start_r   : std_logic := '0';
+  signal busy_d    : std_logic := '0';
+  signal fin       : std_logic;
   signal te_done   : std_logic_vector(0 to NTE - 1);
   signal te_y      : ty_array(0 to NTE - 1);
   signal all_done  : std_logic;
@@ -64,18 +68,29 @@ begin
   X_rdy <= not busy;
   start <= X_vld and not busy;
   all_done <= '1' when te_done = (te_done'range => '1') else '0';
+  -- the Tree Engines start on start_r, a clock after start, and clear done when started.
+  -- So all_done is only seen once they finish from the clock after that, when busy_d is set
+  fin <= busy and busy_d and all_done;
 
   process(clk)
   begin
     if rising_edge(clk) then
       if rst = '1' then
-        busy <= '0';
-      elsif start = '1' then
-        X_r  <= X;
-        busy <= '1';
-      elsif busy = '1' and all_done = '1' then
-        -- the Tree Engines clear done when started, so all_done is only seen once they finish
-        busy <= '0';
+        busy    <= '0';
+        busy_d  <= '0';
+        start_r <= '0';
+      else
+        start_r <= start;
+        busy_d  <= busy;
+        if start = '1' then
+          busy <= '1';
+        elsif fin = '1' then
+          busy <= '0';
+        end if;
+      end if;
+      -- X is captured with the handshake (X_vld and X_rdy), so it need not be held after it
+      if start = '1' then
+        X_r <= X;
       end if;
     end if;
   end process;
@@ -85,8 +100,8 @@ begin
       port map(
         clk        => clk,
         rst        => rst,
-        start      => start,
-        -- X is registered on start, before the Tree Engines first use it
+        start      => start_r,
+        -- X is registered on start, before the Tree Engines start
         X          => X_r,
         y          => te_y(i),
         done       => te_done(i),
@@ -106,7 +121,7 @@ begin
       if rst = '1' then
         sums_vld <= (others => '0');
       else
-        sums_vld(0) <= busy and all_done;
+        sums_vld(0) <= fin;
         for l in 1 to NLEV loop
           sums_vld(l) <= sums_vld(l - 1);
         end loop;

@@ -67,6 +67,7 @@ architecture rtl of TreeEngine is
                               is_leaf => '1');
   signal active    : std_logic_vector(0 to 1) := (others => '0'); -- the thread has trees to finish
   signal n_left    : count_arr_t := (others => (others => '0'));     -- trees left, including the current one
+  signal more      : std_logic_vector(0 to 1) := (others => '0');     -- n_left > 1, registered: it selects the node address
   signal ridx      : ridx_arr_t := (others => 0);                     -- roots index of the next root to read
   signal root_pf   : std_logic_vector(0 to 1) := (others => '0');     -- a root read was issued in the last cycle
   signal next_root : root_arr_t := (others => (others => '0'));
@@ -81,14 +82,17 @@ architecture rtl of TreeEngine is
     return imin(r + n, NROOTS);
   end function;
 
-  -- X[feature] <= threshold, for the node n
+  -- X[feature] <= threshold, for the node n.
+  -- Leaves have feature -2 and their comparison is unused, so there is no range check on the feature: its low FB bits
+  -- index X, and the indices from NFEATURES up (only reached by leaves) are folded back into range. A range check on
+  -- the whole feature lengthens the path from the node memory to go_left, the critical path.
+  constant FB : integer := clog2(NFEATURES);
   function compare(n : node_t; Xv : features_t) return std_logic is
     variable f : integer;
   begin
-    -- leaves have feature -2: their comparison is unused, so any feature out of range compares X[0]
-    f := to_integer(n.feature);
+    f := to_integer(n.feature(FB - 1 downto 0));
     if f >= NFEATURES then
-      f := 0;
+      f := f - 2**(FB - 1);
     end if;
     if Xv(f) <= n.threshold then
       return '1';
@@ -102,7 +106,7 @@ begin
   done <= done_r;
 
   -- memory reads
-  process(state, start, ph, active, node, go_left, n_left, next_root, ridx)
+  process(state, start, ph, active, node, go_left, more, next_root, ridx)
   begin
     roots_en   <= '0';
     roots_addr <= std_logic_vector(to_unsigned(ridx(ph), RAWIDTH));
@@ -132,7 +136,7 @@ begin
             else
               nodes_addr <= std_logic_vector(node(ph).child_right(NAWIDTH - 1 downto 0));
             end if;
-          elsif n_left(ph) > 1 then
+          elsif more(ph) = '1' then
             -- the thread's next tree's root node, and the root after it
             nodes_en   <= '1';
             nodes_addr <= next_root(ph)(NAWIDTH - 1 downto 0);
@@ -175,11 +179,14 @@ begin
             active    <= (others => '0');
             n_left(0) <= count - count / 2 + 1;
             n_left(1) <= count / 2 + 1;
+            more      <= (others => '0');
             if count > 0 then
               active(0) <= '1';
+              more(0)   <= '1';
             end if;
             if count > 1 then
               active(1) <= '1';
+              more(1)   <= '1';
             end if;
             ridx(0) <= ridx_add(1, 2);
             ridx(1) <= ridx_add(2, 2);
@@ -203,14 +210,21 @@ begin
                 if active(t) = '1' then
                   if node(t).is_leaf = '1' then
                     acc(t) <= acc(t) + node(t).score;
-                    if n_left(t) > 1 then
+                    if more(t) = '1' then
                       n_left(t)   <= n_left(t) - 1;
+                      -- HLS cosimulation compiles this as VHDL-93, without conditional assignments in processes
+                      if n_left(t) > 2 then
+                        more(t) <= '1';
+                      else
+                        more(t) <= '0';
+                      end if;
                       inflight(t) <= '1';
                       root_pf(t)  <= '1';
                       ridx(t)     <= ridx_add(ridx(t), 2);
                       still       := '1';
                     else
                       n_left(t) <= (others => '0');
+                      more(t)   <= '0';
                       active(t) <= '0';
                     end if;
                   else
