@@ -464,23 +464,10 @@ class FPUBuilder:
   def default_cfg():
     return FPUBuilderConfig.default_config()
 
-  @property
-  def board_builder(self):
-    '''The board builder of the HLS target'''
-    return self.target.board_builder
-
   def _info(self):
     '''The FPU info string, returned by the device'''
     info = {'configuration' : self.cfg._to_dict(), 'metadata' : self._metadata._to_dict()}
     return json.dumps(info)
-
-  def write_params(self):
-    '''Write parameters.h, for the HLS target'''
-    self.target.write_params()
-
-  def write_tcl(self):
-    '''Write hls_parameters.tcl, for the HLS target'''
-    self.target.write_tcl()
 
   def write_testbench_data(self, model, X):
     '''
