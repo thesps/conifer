@@ -11,7 +11,7 @@
 #
 # Source location: https://github.com/thesps/conifer
 
-# Out of context synthesis of an FPU's VHDL: FPU_df_hls for the hls interface, or the top of another interface
+# Out of context synthesis of an FPU's VHDL: FPU_df_hls for FPUBuilder, or the top level of another FPU builder
 # Run in an FPUBuilder project: vivado -mode batch -source vhdl/synth_ooc.tcl
 # The top, part, clocks, VHDL files and constraints are those of the project, from synth_parameters.tcl
 # Writes utilization.rpt, timing.rpt and cdc.rpt to the vhdl directory, and prints the worst negative slack

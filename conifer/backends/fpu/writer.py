@@ -1,15 +1,16 @@
 import copy
+import math
 import numpy as np
 import json
+import shutil
 import os
 from typing import List, Union
 import logging
 logger = logging.getLogger(__name__)
 from conifer.model import ModelBase, ConfigBase, ModelMetaData
-from conifer.utils import copydocstring, FixedPointType
-from conifer.backends.boards import get_board_config, BoardConfig
-from conifer.backends.fpu.core import _VHDLWriter, _resolve_type
-from conifer.backends.fpu.targets import targets as _targets
+from conifer.utils import copydocstring, address_bits, FixedPointType
+from conifer.backends.common import _TOOLS, get_hls, get_hls_build_command
+from conifer.backends.boards import get_board_config, get_builder, BoardConfig, ZynqConfig, AlveoConfig
 
 class FPUInterfaceNode:
   '''
@@ -166,52 +167,86 @@ class FPUConfig(ConfigBase):
                                ds = '' if self.dynamic_scaler else 'N')
     return codename
 
-class FPUBuilderConfig(FPUConfig):
-  backend = 'fpu_builder'
-  # interface: what is built around the VHDL core, one of targets.targets. 'hls': the HLS FPU for a board. Other
-  # interfaces are registered with targets.register_target. The hls interface takes board (default pynq-z2), and the
-  # others xilinx_part
-  _config_fields = ConfigBase._config_fields + FPUConfig._config_fields + ['board', 'clock_period', 'interface', 'xilinx_part']
-  _fpu_builder_alts = {'board' : [], 'clock_period' : ['ClockPeriod'], 'interface' : ['Interface'], 'xilinx_part' : []}
-  _alternates = {**ConfigBase._alternates, **FPUConfig._alternates, **_fpu_builder_alts}
-  _fpu_builder_defaults = {'clock_period' : 10, 'interface' : 'hls'}
-  _defaults = {**ConfigBase._defaults, **FPUConfig._defaults, **_fpu_builder_defaults}
-  _allow_undefined = FPUConfig._allow_undefined + ['board', 'xilinx_part']
-  # The alternate names of the optional fields, read here: ConfigBase sets an optional field from each of its names
-  # in turn, so would unset it if an alternate name is missing
-  _optional_alts = {'board' : ['Board'], 'xilinx_part' : ['XilinxPart']}
-  _board_default = 'pynq-z2'
+  # The bit widths derived from the configuration, as the constants of the VHDL package fpu_pkg (in brackets)
+  @property
+  def threshold_bits(self):
+    '''The width of a threshold, and of a feature (TBITS)'''
+    return FixedPointType(_resolve_type(self.threshold_type)).width
 
+  @property
+  def score_bits(self):
+    '''The width of a score (UBITS)'''
+    return FixedPointType(_resolve_type(self.score_type)).width
+
+  @property
+  def feature_bits(self):
+    '''The width of a node's feature index (FEATBITS)'''
+    return math.ceil(np.log2(self.features)) + 1
+
+  @property
+  def node_address_bits(self):
+    '''The width of a node address, as in a node's children and the roots memory words (ADDRBITS)'''
+    return math.ceil(np.log2(self.nodes)) + 1
+
+  @property
+  def class_bits(self):
+    '''The width of a node's class index (CLASSBITS)'''
+    return 1
+
+  @property
+  def nodes_memory_address_bits(self):
+    '''The address width of a Tree Engine's node memory (NAWIDTH)'''
+    return address_bits(self.nodes)
+
+  @property
+  def roots_memory_address_bits(self):
+    '''The address width of a Tree Engine's roots memory: the number of trees, then the roots (RAWIDTH)'''
+    return address_bits(self.roots + 1)
+
+  @property
+  def node_bits(self):
+    '''The width of a node memory word (NODEBITS): threshold, score, feature, left and right child, class, leaf'''
+    return self.threshold_bits + self.score_bits + self.feature_bits + 2 * self.node_address_bits + self.class_bits + 1
+
+class FPUBuilderBaseConfig(FPUConfig):
+  '''The configuration of every FPU builder: the FPU, the project, and the FPU clock period (ns)'''
+  _config_fields = ConfigBase._config_fields + FPUConfig._config_fields + ['clock_period']
+  _fpu_builder_base_alts = {'clock_period' : ['ClockPeriod']}
+  _alternates = {**ConfigBase._alternates, **FPUConfig._alternates, **_fpu_builder_base_alts}
+  _fpu_builder_base_defaults = {'clock_period' : 10}
+  _defaults = {**ConfigBase._defaults, **FPUConfig._defaults, **_fpu_builder_base_defaults}
+
+  def default_config():
+    return copy.deepcopy(FPUBuilderBaseConfig._defaults)
+
+class FPUBuilderConfig(FPUBuilderBaseConfig):
+  '''The configuration of FPUBuilder: the HLS FPU for a board'''
+  backend = 'fpu_builder'
+  # board before clock_period, as in the saved configurations
+  _config_fields = ConfigBase._config_fields + FPUConfig._config_fields + ['board', 'clock_period']
+  _fpu_builder_alts = {'board' : ['Board']}
+  _alternates = {**FPUBuilderBaseConfig._alternates, **_fpu_builder_alts}
+  _fpu_builder_defaults = {'board' : 'pynq-z2'}
+  _defaults = {**FPUBuilderBaseConfig._defaults, **_fpu_builder_defaults}
   def __init__(self, configDict, validate=True):
-    configDict = dict(configDict)
-    for key, alts in self._optional_alts.items():
-      for alt in alts:
-        if configDict.get(key, None) is None and configDict.get(alt, None) is not None:
-          configDict[key] = configDict[alt]
     super(FPUBuilderConfig, self).__init__(configDict, validate=False)
-    if getattr(self, 'interface', None) == 'hls':
-      if self.board is None:
-        self.board = self._board_default
-      if isinstance(self.board, str):
-        self.board_config = get_board_config(self.board)
-      elif isinstance(self.board, dict):
-        self.board_config = get_board_config(self.board.get('name', None))
-      elif isinstance(self.board, BoardConfig):
-        self.board_config = self.board
+    if isinstance(self.board, str):
+      self.board_config = get_board_config(self.board)
+    elif isinstance(self.board, dict):
+      self.board_config = get_board_config(self.board.get('name', None))
+    elif isinstance(self.board, BoardConfig):
+      self.board_config = self.board
     if validate:
       self._validate()
 
-  def _validate(self):
-    super(FPUBuilderConfig, self)._validate()
-    assert self.interface in _targets, f'Unknown FPU interface "{self.interface}", expected one of {list(_targets)}'
-    if self.interface == 'hls':
-      assert self.xilinx_part is None, f'The hls interface is built for a board: set board (not xilinx_part, which is "{self.xilinx_part}")'
-    else:
-      assert self.board is None, f'The {self.interface} interface is built for a Xilinx part: set xilinx_part (not board, which is "{self.board}")'
-      assert self.xilinx_part is not None, f'The {self.interface} interface is built for a Xilinx part: set xilinx_part'
-
   def default_config():
     return copy.deepcopy(FPUBuilderConfig._defaults)
+
+  def top_name(self):
+    top_names = {ZynqConfig  : 'FPU_Zynq',
+                 AlveoConfig : 'FPU_Alveo',
+                 }
+    return top_names.get(type(self.board_config), None)
 
 class FPUModelConfig(ConfigBase):
   backend = 'fpu'
@@ -468,33 +503,94 @@ def auto_config():
     config['FPU'] = fpu_cfg
     return config
 
-class FPUBuilder:
-  '''
-  Write and build an FPU: the VHDL core FPU_df (core.py), and around it the target selected by the 'interface'
-  config key (targets.py)
-  '''
+def _resolve_type(t):
+  if isinstance(t, int):
+    return f'ap_fixed<{t},{t}>'
+  elif isinstance(t, str):
+    return t
 
-  def __init__(self, cfg,):
-    self.cfg = FPUBuilderConfig(cfg)
-    for key, value in FPUBuilderConfig.default_config().items():
+def _fill_template(src, dst, inserts):
+  '''Copy src to dst, replacing each line containing the marker 'conifer insert {key}' with inserts[key]'''
+  with open(src) as fin, open(dst, 'w') as fout:
+    for line in fin:
+      for key, text in inserts.items():
+        if f'conifer insert {key}' in line:
+          line = text + '\n'
+          break
+      fout.write(line)
+
+def _copy_vhdl_sources(odir, files):
+  '''Copy the named files from src/vhdl to odir'''
+  filedir = os.path.dirname(os.path.abspath(__file__))
+  for v in files:
+    shutil.copyfile(f'{filedir}/src/vhdl/{v}', f'{odir}/{v}')
+
+class FPUBuilderBase:
+  '''
+  The base of the FPU builders. Writes the project configuration and the VHDL decision function FPU_df, from the
+  templates in src/vhdl, to {output_dir}/vhdl:
+    - fpu_pkg.vhd, with the FPU configuration constants written, TreeEngine.vhd and FPU_df.vhd: core_vhdl_files
+    - the testbench FPU_df_tb.vhd, and xsim_tb.sh to simulate a testbench
+    - synth_ooc.tcl, the out of context synthesis of the builder's top level, with write_synth_parameters
+  Subclasses write and build what is around FPU_df: FPUBuilder the HLS FPU for a board. Other packages may add others.
+  '''
+  config_class = FPUBuilderBaseConfig
+  core_vhdl_files = ['fpu_pkg.vhd', 'TreeEngine.vhd', 'FPU_df.vhd']
+  _core_vhdl_tb_files = ['FPU_df_tb.vhd']
+  _core_vhdl_scripts = ['xsim_tb.sh', 'synth_ooc.tcl']
+
+  def __init__(self, cfg):
+    self.cfg = self.config_class(cfg)
+    for key, value in self.config_class.default_config().items():
       setattr(self, key, getattr(self.cfg, key, value))
     self.output_dir = os.path.abspath(self.output_dir)
-    self._metadata = ModelMetaData()
-    self.target = _targets[self.cfg.interface](self)
 
-  def default_cfg():
-    return FPUBuilderConfig.default_config()
+  @classmethod
+  def default_cfg(cls):
+    return cls.config_class.default_config()
 
-  def _info(self):
-    '''The FPU info string, returned by the device'''
-    info = {'configuration' : self.cfg._to_dict(), 'metadata' : self._metadata._to_dict()}
-    return json.dumps(info)
+  def _vhdl_constants(self):
+    '''The constants of fpu_pkg.vhd'''
+    c = self.cfg
+    return {'NTE' : c.tree_engines, 'NFEATURES' : c.features, 'NNODES' : c.nodes, 'NROOTS' : c.roots,
+            'TBITS' : c.threshold_bits, 'UBITS' : c.score_bits, 'FEATBITS' : c.feature_bits, 'ADDRBITS' : c.node_address_bits,
+            'CLASSBITS' : c.class_bits, 'NAWIDTH' : c.nodes_memory_address_bits, 'RAWIDTH' : c.roots_memory_address_bits}
+
+  def write(self):
+    '''Write the project: the configuration, and the VHDL decision function to {output_dir}/vhdl'''
+    logger.info(f"Writing project to {self.output_dir}")
+    os.makedirs(self.output_dir, exist_ok=True)
+    with open(f'{self.output_dir}/{self.project_name}.json', 'w') as f:
+      json.dump(self.cfg._to_dict(), f)
+    filedir = os.path.dirname(os.path.abspath(__file__))
+    vdir = f'{self.output_dir}/vhdl'
+    os.makedirs(vdir, exist_ok=True)
+    constants = '\n'.join(f'  constant {k} : integer := {v};' for k, v in self._vhdl_constants().items())
+    _fill_template(f'{filedir}/src/vhdl/fpu_pkg.vhd', f'{vdir}/fpu_pkg.vhd', {'constants' : constants})
+    _copy_vhdl_sources(vdir, self.core_vhdl_files[1:] + self._core_vhdl_tb_files + self._core_vhdl_scripts)
+
+  def write_synth_parameters(self, top, part, vhdl_files, clocks, xdc_files=[]):
+    '''
+    Write vhdl/synth_parameters.tcl, the parameters of the out of context synthesis script vhdl/synth_ooc.tcl
+    Parameters
+    ----------
+    top: the top level entity
+    part: the Xilinx part
+    vhdl_files: the VHDL sources, in compile order: names in the vhdl directory, or paths
+    clocks: dictionary of clock port name to period (ns). The first is the FPU clock
+    xdc_files: constraint files, in the vhdl directory
+    '''
+    with open(f'{self.output_dir}/vhdl/synth_parameters.tcl', 'w') as f:
+      f.write(f'set top {top}\n')
+      f.write(f'set part {part}\n')
+      f.write(f'set clocks {{{" ".join(f"{k} {v}" for k, v in clocks.items())}}}\n')
+      f.write(f'set vhdl_files {{{" ".join(vhdl_files)}}}\n')
+      f.write(f'set xdc_files {{{" ".join(xdc_files)}}}\n')
 
   def write_testbench_data(self, model, X):
     '''
-    Write a packed model and inputs for the testbenches, to {output_dir}/tb_data: those of the VHDL core (vhdl/xsim_tb.sh)
-    and of the target. The HLS testbench is used for C Simulation and Cosimulation (see build), and writes its predictions
-    to {output_dir}/{project_name}/solution1/csim/build/tb_data/y.dat for C Simulation.
+    Write a packed model and inputs for the testbenches to {output_dir}/tb_data: FPU_df_tb (vhdl/xsim_tb.sh), and those
+    of the subclass.
     Parameters
     ----------
     model: FPUModel
@@ -513,16 +609,171 @@ class FPUBuilder:
     with open(f'{tb_dir}/X.dat', 'w') as f:
       f.write(f'{X.shape[0]} {X.shape[1]}\n')
       np.savetxt(f, X, fmt='%.9g' if self.dynamic_scaler else '%d')
-    self.target.write_testbench_data(model, X)
+
+  def build(self, **kwargs):
+    raise NotImplementedError
+
+  def package(self):
+    raise NotImplementedError
+
+class FPUBuilder(FPUBuilderBase):
+  '''
+  The HLS FPU (src/fpu.cpp) for a board: built with Vitis HLS, then by the board's builder (Vivado for Zynq boards,
+  v++ for Alveo). The decision function is the VHDL FPU_df, an RTL blackbox of the HLS, written from the templates in
+  src and src/vhdl:
+    - vhdl/FPU_df_hls.vhd: FPU_df with the HLS port names, copied
+    - FPU_df_bb.v: the Verilog shim from the HLS blackbox ports to the VHDL FPU_df_hls, with the ports written
+    - fpu_bb.h, fpu_bb.cpp: the C declaration and model of the blackbox, copied
+    - FPU_df_bb.json: the HLS blackbox description
+  The blackbox takes each feature as a scalar, and each Tree Engine's node and roots memories as arrays. The macros
+  listing the features and Tree Engines for fpu_bb.h are written to parameters.h.
+  The testbench data (write_testbench_data) is for HLS C Simulation and Cosimulation (see build), whose testbench writes
+  its predictions to {output_dir}/{project_name}/solution1/csim/build/tb_data/y.dat for C Simulation.
+  '''
+  config_class = FPUBuilderConfig
+  _blackbox_vhdl_files = ['FPU_df_hls.vhd']
+
+  def __init__(self, cfg,):
+    super().__init__(cfg)
+    top_name = self.cfg.top_name()
+    ip_name = f'{top_name}_0'
+    self.board_builder = get_builder(self.cfg, self.cfg.board_config, top_name=top_name, ip_name=ip_name)
+    self._metadata = ModelMetaData()
+    self._csim, self._cosim = False, False
+
+  def _info(self):
+    '''The FPU info string, returned by the device'''
+    info = {'configuration' : self.cfg._to_dict(), 'metadata' : self._metadata._to_dict()}
+    return json.dumps(info)
+
+  def _blackbox_all_vhdl_files(self):
+    '''The VHDL sources of the blackbox in compile order: the core's, then FPU_df_hls'''
+    return self.core_vhdl_files + self._blackbox_vhdl_files
+
+  def write_params(self):
+    with open(f'{self.output_dir}/parameters.h', 'w') as f:
+      f.write('#ifndef CONIFER_FPU_PARAMS_H_\n#define CONIFER_FPU_PARAMS_H_\n')
+      f.write('#include "fpu.h"\n')
+      f.write(f'typedef {_resolve_type(self.threshold_type)} T;\n')
+      f.write(f'typedef {_resolve_type(self.score_type)} U;\n')
+      f.write(f'static const int NFEATURES={self.features};\n')
+      f.write(f'static const int NTE={self.tree_engines};\n')
+      f.write(f'static const int NNODES={self.nodes};\n')
+      f.write(f'static const int NROOTS={self.roots};\n')
+      f.write(f'static const int ADDRBITS={self.cfg.node_address_bits};\n')
+      f.write(f'static const int FEATBITS={self.cfg.feature_bits};\n')
+      f.write(f'static const int NCLASSES={1};\n')
+      f.write(f'static const int CLASSBITS={self.cfg.class_bits};\n')
+      f.write(f'static const bool SCALER={"true" if self.dynamic_scaler else "false"};\n')
+      f.write(f'typedef DecisionNode<T,U,FEATBITS,ADDRBITS,CLASSBITS> DN;\n')
+      f.write('// the features and Tree Engines, as lists of M(i) for the VHDL blackbox arguments (see fpu_bb.h)\n')
+      for line in self._parameter_macros():
+        f.write(line + '\n')
+      info = self._info()
+      info_fmt = info.replace('"', r'\"')
+      f.write(f'static const char* theInfo = "{info_fmt}";\n')
+      f.write(f'static const int theInfoLength = {len(info)};\n')
+      f.write('#endif\n')
+
+  def write_tcl(self):
+    import conifer
+    with open(f'{self.output_dir}/hls_parameters.tcl', 'w') as f:
+      f.write(f'set prj_name {self.project_name}\n')
+      f.write(f'set top {self.cfg.top_name()}\n')
+      f.write(f'set part {self.cfg.board_config.xilinx_part}\n')
+      f.write(f'set clock_period {self.clock_period}\n')
+      f.write(f'set flow_target {self.board_builder.get_flow_target()}\n')
+      f.write(f'set export_format {self.board_builder.get_export_format()}\n')
+      f.write(f'set m_axi_addr64 {str(self.board_builder.get_maxi64()).lower()}\n')
+      f.write(f'set version {conifer.__version__.major}.{conifer.__version__.minor}\n')
+      f.write(f'set csim {int(self._csim)}\n')
+      f.write(f'set cosim {int(self._cosim)}\n')
+      f.write(f'set vhdl_files {{{" ".join(self._blackbox_all_vhdl_files())}}}\n')
+      if self._cosim:
+        with open(f'{self.output_dir}/tb_data/X.dat') as fX:
+          batch_size, n_features = [int(v) for v in fX.readline().split()]
+        f.write(f'set cosim_X_depth {max(batch_size * n_features, 1)}\n')
+        f.write(f'set cosim_y_depth {max(batch_size, 1)}\n')
+        f.write(f'set cosim_info_depth {len(self._info())}\n')
+
+  def _parameter_macros(self):
+    '''The lines for parameters.h listing the features and Tree Engines, for fpu_bb.h'''
+    each = lambda n: ' '.join(f'M({i})' for i in range(n))
+    return [f'#define FPU_FOR_EACH_FEATURE(M) {each(self.features)}', f'#define FPU_FOR_EACH_TE(M) {each(self.tree_engines)}']
+
+  def _blackbox_memories(self):
+    '''The blackbox memory arguments, in argument order: (name, address width, data width) of roots_i then nodes_i'''
+    c = self.cfg
+    return ([(f'roots_{i}', c.roots_memory_address_bits, c.node_address_bits) for i in range(c.tree_engines)] +
+            [(f'nodes_{i}', c.nodes_memory_address_bits, c.node_bits) for i in range(c.tree_engines)])
+
+  def _write_blackbox_shim(self, fname):
+    '''
+    Write the Verilog shim FPU_df_bb from the template src/FPU_df_bb.v, inserting:
+      - ports: those HLS connects to the blackbox arguments. x_i for each feature, and for each memory roots_i, nodes_i:
+          output [AW-1:0] roots_0_address0, output roots_0_ce0, input [DW-1:0] roots_0_q0
+      - connections: the ports to FPU_df_hls, which takes each of X, nodes_addr, nodes_en, ... as one vector
+          with element i at bits [(i+1)*W-1 : i*W]. So the ports are concatenated last first:
+          .nodes_addr({nodes_1_address0, nodes_0_address0})
+    '''
+    c = self.cfg
+    ports = [f'input [31:0] x_{i}' for i in range(c.features)]
+    for name, awidth, dwidth in self._blackbox_memories():
+      ports += [f'output [{awidth-1}:0] {name}_address0',
+                f'output {name}_ce0',
+                f'input [{dwidth-1}:0] {name}_q0']
+
+    def concat(signals):
+      return '{' + ', '.join(reversed(signals)) + '}'
+
+    connections = {'X' : concat([f'x_{i}[{c.threshold_bits-1}:0]' for i in range(c.features)])}
+    for mem in ['nodes', 'roots']:
+      for vhdl_port, verilog_port in [('addr', 'address0'), ('en', 'ce0'), ('q', 'q0')]:
+        connections[f'{mem}_{vhdl_port}'] = concat([f'{mem}_{i}_{verilog_port}' for i in range(c.tree_engines)])
+
+    filedir = os.path.dirname(os.path.abspath(__file__))
+    _fill_template(f'{filedir}/src/FPU_df_bb.v', fname,
+                   {'ports' : ',\n'.join(f'  {p}' for p in ports),
+                    'connections' : ',\n'.join(f'  .{port}({signal})' for port, signal in connections.items())})
+
+  def _write_blackbox_json(self, fname):
+    '''
+    Write the HLS blackbox description FPU_df_bb.json from the template src/FPU_df_bb.json, inserting c_parameters:
+    each argument of FPU_df_bb in order, and the shim ports HLS connects it to
+    '''
+    def scalar_in(name):
+      return {'c_name' : name, 'c_port_direction' : 'in', 'rtl_ports' : {'data_read_in' : name}}
+
+    def scalar_out(name):
+      return {'c_name' : name, 'c_port_direction' : 'out',
+              'rtl_ports' : {'data_write_out' : name, 'data_write_valid' : f'{name}_ap_vld'}}
+
+    def memory(name):
+      return {'c_name' : name, 'c_port_direction' : 'in', 'RAM_type' : 'RAM_1P',
+              'rtl_ports' : {'RAM_address' : f'{name}_address0', 'RAM_clock_enable' : f'{name}_ce0', 'RAM_data_read_in' : f'{name}_q0'}}
+
+    filedir = os.path.dirname(os.path.abspath(__file__))
+    with open(f'{filedir}/src/FPU_df_bb.json') as f:
+      bb = json.load(f)
+    bb['c_parameters'] = ([scalar_in(f'x_{i}') for i in range(self.features)] +
+                          [scalar_out('y')] +
+                          [memory(name) for name, _, _ in self._blackbox_memories()])
+    with open(fname, 'w') as f:
+      json.dump(bb, f, indent=2)
 
   def write(self):
-    '''Write the project: the configuration, the VHDL core, then the target'''
-    logger.info(f"Writing project to {self.output_dir}")
-    os.makedirs(self.output_dir, exist_ok=True)
-    with open(f'{self.output_dir}/{self.project_name}.json', 'w') as f:
-      json.dump(self.cfg._to_dict(), f)
-    _VHDLWriter(self.cfg).write(self.output_dir)
-    self.target.write()
+    '''Write the project: the configuration, the VHDL decision function, and the HLS FPU with its blackbox'''
+    super().write()
+    filedir = os.path.dirname(os.path.abspath(__file__))
+    od = self.output_dir
+    for f in ['build_hls.tcl', 'fpu.cpp', 'fpu.h', 'fpu_tb.cpp', 'fpu_bb.h', 'fpu_bb.cpp']:
+      shutil.copyfile(f'{filedir}/src/{f}', f'{od}/{f}')
+    self.write_params()
+    self.write_tcl()
+    _copy_vhdl_sources(f'{od}/vhdl', self._blackbox_vhdl_files)
+    self._write_blackbox_shim(f'{od}/FPU_df_bb.v')
+    self._write_blackbox_json(f'{od}/FPU_df_bb.json')
+    self.write_synth_parameters('FPU_df_hls', self.cfg.board_config.xilinx_part, self._blackbox_all_vhdl_files(), {'ap_clk' : self.clock_period})
 
   def build(self, csynth=True, bitfile=True, csim=False, cosim=False, **build_kwargs):
     '''
@@ -537,10 +788,27 @@ class FPUBuilder:
       Run HLS C Simulation of the testbench. Call write_testbench_data first.
     cosim: boolean (optional)
       Run HLS C/RTL Cosimulation of the testbench. Call write_testbench_data first.
-    These options are for the hls interface. The build options of other interfaces are passed in build_kwargs:
-    see the build of the interface's target.
     '''
-    return self.target.build(csynth=csynth, bitfile=bitfile, csim=csim, cosim=cosim, **build_kwargs)
+    self._csim, self._cosim = csim, cosim
+    if csim or cosim:
+      assert os.path.exists(f'{self.output_dir}/tb_data/X.dat'), 'No testbench data found, call write_testbench_data first'
+    self.write()
+    cwd = os.getcwd()
+    os.chdir(self.output_dir)
+    success = True
+    if csynth:
+      hls_tool = get_hls()
+      if hls_tool is None:
+        logger.error("No HLS in PATH (looked for {}). Did you source the appropriate Xilinx Toolchain?".format(', '.join(_TOOLS.values())))
+        success = False
+      else:
+        cmd = f'{get_hls_build_command(hls_tool, "build_hls.tcl")} > hls_build.log'
+        logger.info(f'Building FPU HLS with command "{cmd}"')
+        success = success and os.system(cmd)==0
+    if success and bitfile:
+      success = success and self.board_builder.build(**build_kwargs)
+    os.chdir(cwd)
+    return success
 
   def package(self):
-    self.target.package()
+    self.board_builder.package()
