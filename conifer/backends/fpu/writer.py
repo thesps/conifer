@@ -168,26 +168,46 @@ class FPUConfig(ConfigBase):
 
 class FPUBuilderConfig(FPUConfig):
   backend = 'fpu_builder'
-  # interface: what is built around the VHDL core, one of targets.targets. 'hls': the HLS FPU for a board
-  _config_fields = ConfigBase._config_fields + FPUConfig._config_fields + ['board', 'clock_period', 'interface']
-  _fpu_builder_alts = {'board' : ['Board'], 'clock_period' : ['ClockPeriod'], 'interface' : ['Interface']}
+  # interface: what is built around the VHDL core, one of targets.targets. 'hls': the HLS FPU for a board, 'rtl': the
+  # RTL FPU for a Xilinx part. So the hls interface takes board (default pynq-z2), and the others xilinx_part
+  _config_fields = ConfigBase._config_fields + FPUConfig._config_fields + ['board', 'clock_period', 'interface', 'xilinx_part']
+  _fpu_builder_alts = {'board' : [], 'clock_period' : ['ClockPeriod'], 'interface' : ['Interface'], 'xilinx_part' : []}
   _alternates = {**ConfigBase._alternates, **FPUConfig._alternates, **_fpu_builder_alts}
-  _fpu_builder_defaults = {'board' : 'pynq-z2', 'clock_period' : 10, 'interface' : 'hls'}
+  _fpu_builder_defaults = {'clock_period' : 10, 'interface' : 'hls'}
   _defaults = {**ConfigBase._defaults, **FPUConfig._defaults, **_fpu_builder_defaults}
+  _allow_undefined = FPUConfig._allow_undefined + ['board', 'xilinx_part']
+  # The alternate names of the optional fields, read here: ConfigBase sets an optional field from each of its names
+  # in turn, so would unset it if an alternate name is missing
+  _optional_alts = {'board' : ['Board'], 'xilinx_part' : ['XilinxPart']}
+  _board_default = 'pynq-z2'
+
   def __init__(self, configDict, validate=True):
+    configDict = dict(configDict)
+    for key, alts in self._optional_alts.items():
+      for alt in alts:
+        if configDict.get(key, None) is None and configDict.get(alt, None) is not None:
+          configDict[key] = configDict[alt]
     super(FPUBuilderConfig, self).__init__(configDict, validate=False)
-    if isinstance(self.board, str):
-      self.board_config = get_board_config(self.board)
-    elif isinstance(self.board, dict):
-      self.board_config = get_board_config(self.board.get('name', None))
-    elif isinstance(self.board, BoardConfig):
-      self.board_config = self.board
+    if getattr(self, 'interface', None) == 'hls':
+      if self.board is None:
+        self.board = self._board_default
+      if isinstance(self.board, str):
+        self.board_config = get_board_config(self.board)
+      elif isinstance(self.board, dict):
+        self.board_config = get_board_config(self.board.get('name', None))
+      elif isinstance(self.board, BoardConfig):
+        self.board_config = self.board
     if validate:
       self._validate()
 
   def _validate(self):
     super(FPUBuilderConfig, self)._validate()
     assert self.interface in _targets, f'Unknown FPU interface "{self.interface}", expected one of {list(_targets)}'
+    if self.interface == 'hls':
+      assert self.xilinx_part is None, f'The hls interface is built for a board: set board (not xilinx_part, which is "{self.xilinx_part}")'
+    else:
+      assert self.board is None, f'The {self.interface} interface is built for a Xilinx part: set xilinx_part (not board, which is "{self.board}")'
+      assert self.xilinx_part is not None, f'The {self.interface} interface is built for a Xilinx part: set xilinx_part'
 
   def default_config():
     return copy.deepcopy(FPUBuilderConfig._defaults)
@@ -471,8 +491,9 @@ class FPUBuilder:
 
   def write_testbench_data(self, model, X):
     '''
-    Write a packed model and inputs for the HLS testbench, used for C Simulation and Cosimulation (see build).
-    The testbench writes its predictions to {output_dir}/{project_name}/solution1/csim/build/tb_data/y.dat for C Simulation.
+    Write a packed model and inputs for the testbenches, to {output_dir}/tb_data: those of the VHDL core (vhdl/xsim_tb.sh)
+    and of the target. The HLS testbench is used for C Simulation and Cosimulation (see build), and writes its predictions
+    to {output_dir}/{project_name}/solution1/csim/build/tb_data/y.dat for C Simulation.
     Parameters
     ----------
     model: FPUModel
@@ -491,6 +512,7 @@ class FPUBuilder:
     with open(f'{tb_dir}/X.dat', 'w') as f:
       f.write(f'{X.shape[0]} {X.shape[1]}\n')
       np.savetxt(f, X, fmt='%.9g' if self.dynamic_scaler else '%d')
+    self.target.write_testbench_data(model, X)
 
   def write(self):
     '''Write the project: the configuration, the VHDL core, then the target'''
@@ -514,6 +536,8 @@ class FPUBuilder:
       Run HLS C Simulation of the testbench. Call write_testbench_data first.
     cosim: boolean (optional)
       Run HLS C/RTL Cosimulation of the testbench. Call write_testbench_data first.
+    These options are for the hls interface. The build options of other interfaces are passed in build_kwargs:
+    see the target's build (RTLTarget.build for the rtl interface).
     '''
     return self.target.build(csynth=csynth, bitfile=bitfile, csim=csim, cosim=cosim, **build_kwargs)
 

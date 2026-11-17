@@ -11,20 +11,26 @@
 #
 # Source location: https://github.com/thesps/conifer
 
-# Out of context synthesis of the VHDL decision function as integrated in HLS (FPU_df_hls), without the HLS
+# Out of context synthesis of an FPU's VHDL: FPU_df_hls for the hls interface, FPU_rtl for the rtl interface
 # Run in an FPUBuilder project: vivado -mode batch -source vhdl/synth_ooc.tcl
-# The part, clock period and VHDL files are those of the project, from hls_parameters.tcl
-# Writes utilization.rpt and timing.rpt to the vhdl directory, and prints the worst negative slack
+# The top, part, clocks, VHDL files and constraints are those of the project, from synth_parameters.tcl
+# Writes utilization.rpt, timing.rpt and cdc.rpt to the vhdl directory, and prints the worst negative slack
 set dir [file dirname [file normalize [info script]]]
-source [file join $dir .. hls_parameters.tcl]
+source [file join $dir synth_parameters.tcl]
 cd $dir
 read_vhdl -vhdl2008 $vhdl_files
-# the clock is read before synthesis, so synthesis is timing driven
+# the clocks are read before synthesis, so synthesis is timing driven
 set f [open ooc_clock.xdc w]
-puts $f "create_clock -name ap_clk -period $clock_period \[get_ports ap_clk\]"
+foreach {name period} $clocks {
+  puts $f "create_clock -name $name -period $period \[get_ports $name\]"
+}
 close $f
 read_xdc -mode out_of_context ooc_clock.xdc
-synth_design -top FPU_df_hls -part $part -mode out_of_context
+foreach x $xdc_files {
+  read_xdc $x
+}
+synth_design -top $top -part $part -mode out_of_context
 report_utilization -file utilization.rpt
 report_timing_summary -file timing.rpt
-puts "FPU_df_hls WNS [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]] ns at period $clock_period ns"
+report_cdc -details -file cdc.rpt
+puts "$top WNS [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]] ns at period [lindex $clocks 1] ns"

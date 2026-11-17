@@ -1,17 +1,22 @@
 '''
 FPU targets: what an FPUBuilder builds around the VHDL core FPU_df (core.py), selected by the 'interface' config key.
   - 'hls' (HLSTarget): the HLS FPU, with FPU_df as an RTL blackbox, built for a board (Zynq or Alveo, see conifer.backends.boards)
+  - 'rtl' (RTLTarget): FPU_rtl, the FPU with its memories and a configuration port, for RTL designs on a Xilinx part
+Other targets can be added with register_target.
 '''
 import json
 import math
 import os
 import shutil
+import warnings
+import zipfile
 import numpy as np
 import logging
 logger = logging.getLogger(__name__)
 from conifer.backends.common import _TOOLS, get_hls, get_hls_build_command
 from conifer.backends.boards import get_builder, ZynqConfig, AlveoConfig
 from conifer.backends.fpu.core import _VHDLWriter, _resolve_type, _fill_template
+from conifer.backends.fpu.memory_map import FPUMemoryMap
 
 class FPUTarget:
   '''
@@ -30,6 +35,28 @@ class FPUTarget:
 
   def package(self):
     raise NotImplementedError
+
+  def write_testbench_data(self, model, X):
+    '''Write any testbench data of the target, after FPUBuilder.write_testbench_data writes that of the core'''
+    pass
+
+  def write_synth_parameters(self, top, part, vhdl_files, clocks, xdc_files=[]):
+    '''
+    Write vhdl/synth_parameters.tcl, the parameters of the out of context synthesis script vhdl/synth_ooc.tcl
+    Parameters
+    ----------
+    top: the top level entity
+    part: the Xilinx part
+    vhdl_files: the VHDL sources, in compile order
+    clocks: dictionary of clock port name to period (ns). The first is the FPU clock
+    xdc_files: constraint files, in the vhdl directory
+    '''
+    with open(f'{self.builder.output_dir}/vhdl/synth_parameters.tcl', 'w') as f:
+      f.write(f'set top {top}\n')
+      f.write(f'set part {part}\n')
+      f.write(f'set clocks {{{" ".join(f"{k} {v}" for k, v in clocks.items())}}}\n')
+      f.write(f'set vhdl_files {{{" ".join(vhdl_files)}}}\n')
+      f.write(f'set xdc_files {{{" ".join(xdc_files)}}}\n')
 
 class _HLSBlackboxWriter:
   '''
@@ -199,6 +226,7 @@ class HLSTarget(FPUTarget):
     self.write_params()
     self.write_tcl()
     _HLSBlackboxWriter(self.cfg).write(od)
+    self.write_synth_parameters('FPU_df_hls', self.cfg.board_config.xilinx_part, _HLSBlackboxWriter(self.cfg).all_vhdl_files(), {'ap_clk' : self.builder.clock_period})
 
   def build(self, csynth=True, bitfile=True, csim=False, cosim=False, **build_kwargs):
     '''See FPUBuilder.build'''
@@ -227,4 +255,110 @@ class HLSTarget(FPUTarget):
   def package(self):
     self.board_builder.package()
 
-targets = {'hls' : HLSTarget}
+class RTLTarget(FPUTarget):
+  '''
+  FPU_rtl (src/vhdl/FPU_rtl.vhd): the FPU with its Tree Engine memories, and a configuration port to load the model
+  from another clock domain, independent of any bus protocol. For RTL designs, on the config's xilinx_part.
+  The memory map of the configuration port is in fpu_rtl_pkg.vhd, and its Python mirror in memory_map.py.
+  Without the dynamic scaler: the inputs are scaled to the threshold type by the design.
+  Writes to {output_dir}/vhdl: the core, the FPU_rtl sources, the constraints FPU_rtl_cdc.xdc, the testbench
+  FPU_rtl_tb, and the parameters for synth_ooc.tcl.
+  '''
+  vhdl_files = ['fpu_rtl_pkg.vhd', 'FPU_mem.vhd', 'FPU_rtl.vhd']
+  vhdl_tb_files = ['FPU_rtl_tb.vhd']
+  # the out of context synthesis script, shared with the hls interface
+  vhdl_scripts = ['synth_ooc.tcl']
+  xdc_files = ['FPU_rtl_cdc.xdc']
+  top = 'FPU_rtl'
+  tb = 'FPU_rtl_tb'
+  # the configuration clock period for out of context synthesis (ns): that of ipbus
+  cfg_clock_period = 32
+  # the build options of the HLS target, unused here
+  _hls_build_options = {'csynth' : True, 'bitfile' : True, 'csim' : False, 'cosim' : False}
+
+  def __init__(self, builder):
+    super().__init__(builder)
+    assert not self.cfg.dynamic_scaler, f'The {self.cfg.interface} FPU has no dynamic scaler, set dynamic_scaler to False'
+
+  def target_vhdl_files(self):
+    '''The VHDL sources of the target, in compile order after the core's: names in the vhdl directory, or paths'''
+    return self.vhdl_files
+
+  def all_vhdl_files(self):
+    '''The VHDL sources in compile order: the core's, then the target's'''
+    return _VHDLWriter.vhdl_files + self.target_vhdl_files()
+
+  def clocks(self):
+    '''The clock ports and their periods (ns) for out of context synthesis: the FPU clock first'''
+    return {'clk' : self.builder.clock_period, 'cfg_clk' : self.cfg_clock_period}
+
+  def write(self):
+    '''Write the FPU_rtl sources, testbench, constraints and synthesis parameters, around the core already written'''
+    filedir = os.path.dirname(os.path.abspath(__file__))
+    vdir = f'{self.builder.output_dir}/vhdl'
+    _VHDLWriter.copy_sources(vdir, self.vhdl_files + self.vhdl_tb_files + self.vhdl_scripts)
+    _fill_template(f'{filedir}/src/vhdl/FPU_rtl_cdc.xdc', f'{vdir}/FPU_rtl_cdc.xdc',
+                   {'max_delay' : f'set fpu_rtl_cdc_max_delay {self.builder.clock_period}'})
+    self.write_synth_parameters(self.top, self.cfg.xilinx_part, self.all_vhdl_files(), self.clocks(), self.xdc_files)
+
+  def write_testbench_data(self, model, X):
+    '''Write the configuration writes loading the model to tb_data/cfg_writes.dat, for FPU_rtl_tb'''
+    writes = FPUMemoryMap(self.cfg).writes(*model.pack())
+    np.savetxt(f'{self.builder.output_dir}/tb_data/cfg_writes.dat', writes, fmt='%08x')
+
+  def build(self, sim=False, synth=True, **build_kwargs):
+    '''
+    Build the RTL FPU. Writes the project, then:
+    Parameters
+    ----------
+    sim: boolean (optional)
+      Simulate the testbench (FPU_rtl_tb) with xsim, writing y.dat, readback.dat and info.dat to the vhdl directory.
+      Call write_testbench_data first.
+    synth: boolean (optional)
+      Synthesize the top (FPU_rtl) out of context with Vivado, writing utilization.rpt, timing.rpt and cdc.rpt to the vhdl directory
+    The options of the HLS target (csynth, bitfile, csim, cosim) are ignored, with a warning if not their default
+    '''
+    ignored = [k for k, v in build_kwargs.items() if k in self._hls_build_options and v != self._hls_build_options[k]]
+    if ignored:
+      warnings.warn(f'The build options {ignored} are for the hls interface, and are ignored by the {self.cfg.interface} interface')
+    unknown = [k for k in build_kwargs if k not in self._hls_build_options]
+    assert not unknown, f'Unknown build options {unknown} for the {self.cfg.interface} interface'
+    b = self.builder
+    if sim:
+      assert os.path.exists(f'{b.output_dir}/tb_data/cfg_writes.dat'), 'No testbench data found, call write_testbench_data first'
+    b.write()
+    success = True
+    vdir = f'{b.output_dir}/vhdl'
+    if sim:
+      cmd = f'sh {vdir}/xsim_tb.sh {self.tb} {" ".join(self.target_vhdl_files())} > {vdir}/xsim.log 2>&1'
+      logger.info(f'Simulating the RTL FPU with command "{cmd}"')
+      success = success and os.system(cmd) == 0
+    if success and synth:
+      cmd = f'cd {vdir} && vivado -mode batch -nojournal -nolog -source synth_ooc.tcl > synth.log 2>&1'
+      logger.info(f'Synthesizing the RTL FPU with command "{cmd}"')
+      success = success and os.system(cmd) == 0
+    return success
+
+  def package(self):
+    '''Zip the RTL sources and constraints, with the configuration, to {output_dir}/{project_name}.zip'''
+    b = self.builder
+    with zipfile.ZipFile(f'{b.output_dir}/{b.project_name}.zip', 'w') as z:
+      for f in self.all_vhdl_files() + self.xdc_files:
+        z.write(os.path.join(b.output_dir, 'vhdl', f), os.path.basename(f))
+      z.write(f'{b.output_dir}/{b.project_name}.json', f'{b.project_name}.json')
+
+targets = {'hls' : HLSTarget, 'rtl' : RTLTarget}
+
+def register_target(name : str, target):
+  '''
+  Register a new FPU target, selected by the 'interface' config key
+
+  Parameters
+  ----------
+  name: str
+      The interface name
+  target: subclass of FPUTarget
+  '''
+  assert name not in targets, f'An FPU target with interface "{name}" is already registered'
+  assert issubclass(target, FPUTarget), f'Expected a subclass of FPUTarget, got {target}'
+  targets[name] = target
