@@ -168,8 +168,9 @@ class FPUConfig(ConfigBase):
 
 class FPUBuilderConfig(FPUConfig):
   backend = 'fpu_builder'
-  # interface: what is built around the VHDL core, one of targets.targets. 'hls': the HLS FPU for a board, 'rtl': the
-  # RTL FPU for a Xilinx part. So the hls interface takes board (default pynq-z2), and the others xilinx_part
+  # interface: what is built around the VHDL core, one of targets.targets. 'hls': the HLS FPU for a board. Other
+  # interfaces are registered with targets.register_target. The hls interface takes board (default pynq-z2), and the
+  # others xilinx_part
   _config_fields = ConfigBase._config_fields + FPUConfig._config_fields + ['board', 'clock_period', 'interface', 'xilinx_part']
   _fpu_builder_alts = {'board' : [], 'clock_period' : ['ClockPeriod'], 'interface' : ['Interface'], 'xilinx_part' : []}
   _alternates = {**ConfigBase._alternates, **FPUConfig._alternates, **_fpu_builder_alts}
@@ -537,7 +538,7 @@ class FPUBuilder:
     cosim: boolean (optional)
       Run HLS C/RTL Cosimulation of the testbench. Call write_testbench_data first.
     These options are for the hls interface. The build options of other interfaces are passed in build_kwargs:
-    see the target's build (RTLTarget.build for the rtl interface).
+    see the build of the interface's target.
     '''
     return self.target.build(csynth=csynth, bitfile=bitfile, csim=csim, cosim=cosim, **build_kwargs)
 

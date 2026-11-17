@@ -14,5 +14,3 @@ try:
 except ImportError:
     XrtDriver = None
     logger.debug('xrt runtime module could not be imported. Interacting with XRT-based accelerators will not be possible.')
-# the RTL FPU driver needs only a bus to read and write its configuration port
-from conifer.backends.fpu.runtime.rtl import RTLDriver
